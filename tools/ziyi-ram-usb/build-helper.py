@@ -30,12 +30,17 @@ if subprocess.check_output(["git", "-C", str(root), "status", "--porcelain", "--
     raise RuntimeError("dirty GPL source")
 # Xiaomi's published source references an absent, optional hardware-ID Kconfig.
 # Add only a NEW disabled stub; never patch unrelated sources or mask failures.
-stub = root / "drivers/misc/hwid/Kconfig"
-if stub.exists(): raise RuntimeError("optional HWID assumption changed")
-stub.parent.mkdir(exist_ok=True)
-with stub.open("x") as f: f.write('config MI_HARDWARE_ID\n\tbool\n\tdefault n\n')
+for name, symbol in [('hwid','MI_HARDWARE_ID'),('plaid','XIAOMI_GPU_PLAID')]:
+    stub = root / f"drivers/misc/{name}/Kconfig"
+    if stub.exists(): raise RuntimeError("optional Xiaomi source assumption changed")
+    stub.parent.mkdir(exist_ok=True)
+    with stub.open("x") as f: f.write(f'config {symbol}\n\tbool\n\tdefault n\n')
+    makefile=stub.with_name('Makefile')
+    if not makefile.exists():
+        with makefile.open('x') as f: f.write('# Optional Xiaomi component omitted by GPL release; no objects.\n')
 missing=[]
 for kconfig in root.rglob("Kconfig*"):
+    if str(kconfig.relative_to(root)).startswith('scripts/kconfig/tests/'): continue
     if not kconfig.is_file(): continue
     for name in re.findall(r'^\s*source\s+"([^"$*]+)"', kconfig.read_text(errors="replace"), re.M):
         if not (root/name).exists(): missing.append(str(kconfig.relative_to(root))+": "+name)

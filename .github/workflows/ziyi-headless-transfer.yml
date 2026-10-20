@@ -1,0 +1,63 @@
+name: ziyi encrypted root transport chunks
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ziyi-xnu-s2]
+    paths: [.github/workflows/ziyi-headless-transfer.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  split:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 39516221989
+          name: ziyi-headless-root-encrypted
+          path: encrypted
+      - name: Verify and split only encrypted bytes
+        shell: python
+        run: |
+          import hashlib,json
+          from pathlib import Path
+          p=Path('encrypted/ziyi-headless-root.enc')
+          r=json.loads(Path('encrypted/report.json').read_text())
+          assert r['rootSha256']=='3182c24764d970c2bfe7bec5c6f73f07b79aae602047ab9aae29f79756532006'
+          assert r['artifactSha256']=='2fd63dac366e409a03eac1592690d250a33fbf734f5046a4a3921047b5ec8df4'
+          h=hashlib.sha256();rows=[]
+          with p.open('rb') as f:
+              for i in range(3):
+                  b=f.read(400*1024*1024)
+                  assert b
+                  h.update(b)
+                  dest=Path(f'root-chunk-{i}');dest.mkdir()
+                  (dest/'chunk.bin').write_bytes(b)
+                  rows.append({'index':i,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()})
+              assert f.read(1)==b''
+          assert h.hexdigest()==r['artifactSha256'] and p.stat().st_size==r['artifactBytes']
+          for i in range(3):
+              Path(f'root-chunk-{i}/chunks.json').write_text(json.dumps(rows,indent=2))
+              Path(f'root-chunk-{i}/report.json').write_bytes(Path('encrypted/report.json').read_bytes())
+              Path(f'root-chunk-{i}/fsck.txt').write_bytes(Path('encrypted/fsck.txt').read_bytes())
+          print(json.dumps(rows))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ziyi-root-chunk-0
+          path: root-chunk-0/
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ziyi-root-chunk-1
+          path: root-chunk-1/
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ziyi-root-chunk-2
+          path: root-chunk-2/
+          compression-level: 0
+          retention-days: 3
