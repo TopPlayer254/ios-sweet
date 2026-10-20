@@ -28,6 +28,18 @@ if actual != PIN:
     raise RuntimeError("GPL source pin mismatch")
 if subprocess.check_output(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"]):
     raise RuntimeError("dirty GPL source")
+# Xiaomi's published source references an absent, optional hardware-ID Kconfig.
+# Add only a NEW disabled stub; never patch unrelated sources or mask failures.
+stub = root / "drivers/misc/hwid/Kconfig"
+if stub.exists(): raise RuntimeError("optional HWID assumption changed")
+stub.parent.mkdir(exist_ok=True)
+with stub.open("x") as f: f.write('config MI_HARDWARE_ID\n\tbool\n\tdefault n\n')
+missing=[]
+for kconfig in root.rglob("Kconfig*"):
+    if not kconfig.is_file(): continue
+    for name in re.findall(r'^\s*source\s+"([^"$*]+)"', kconfig.read_text(errors="replace"), re.M):
+        if not (root/name).exists(): missing.append(str(kconfig.relative_to(root))+": "+name)
+if missing: raise RuntimeError("unresolved source Kconfigs: " + repr(missing))
 run(["gcc", "-O2", "-Wall", "-Wextra", "-Werror", "-DZIYI_HOST_TEST", here / "ram-usb-init.c", here / "sha256.c", "-o", out / "host-server"])
 with (out / "protocol-tests.json").open("w") as f:
     run([sys.executable, here / "test-protocol.py", out / "host-server"], stdout=f)
@@ -48,7 +60,7 @@ run(make + ["gki_defconfig"])
 # All other modules become disabled when MODULES=n; no Android module loader.
 promote = {
  "COMMON_CLK_QCOM", "MSM_GCC_WAIPIO", "SM_GCC_DIWALI", "QCOM_CLK_RPMH",
- "QCOM_COMMAND_DB", "QCOM_RPMH", "QCOM_RPMH_REGULATOR", "REGULATOR_RPMH",
+ "QCOM_COMMAND_DB", "QCOM_RPMH", "QCOM_RPMH_REGULATOR", "REGULATOR_RPMH", "ARM_SMMU",
  "QCOM_GDSC_REGULATOR", "REGULATOR_STUB", "PINCTRL_WAIPIO", "PINCTRL_DIWALI",
  "PINCTRL_CAPE", "PINCTRL_QCOM_SPMI_PMIC", "SPMI_MSM_PMIC_ARB", "MFD_SPMI_PMIC",
  "QCOM_SCM", "QCOM_SMEM", "QCOM_SOCINFO", "QCOM_AOSS_QMP", "HWSPINLOCK_QCOM",
