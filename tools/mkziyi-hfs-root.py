@@ -9,6 +9,7 @@ import importlib.util
 import json
 from pathlib import Path
 import plistlib
+import re
 import struct
 import subprocess
 import sys
@@ -108,8 +109,19 @@ def main():
         with image.open('rb') as f:
             f.seek(1024)
             assert f.read(2) == b'HX'
-        with (out/'fsck.txt').open('xb') as log:
-            run(['/sbin/fsck_hfs', '-f', '-n', image], stdout=log, stderr=subprocess.STDOUT)
+        # Native fsck operates on the raw device of this exact new image.
+        # The attachment is read-only and unmounted; never guess a disk number.
+        attached = run(['hdiutil', 'attach', '-readonly', '-nomount', '-plist', image], capture_output=True)
+        devices = [e['dev-entry'] for e in plistlib.loads(attached.stdout)['system-entities'] if 'dev-entry' in e]
+        assert len(devices) == 1 and re.fullmatch(r'/dev/disk[0-9]+', devices[0]), devices
+        device = devices[0]
+        try:
+            check = subprocess.run(['sudo', '/sbin/fsck_hfs', '-f', '-n', device.replace('/dev/disk', '/dev/rdisk')], capture_output=True)
+            (out/'fsck.txt').write_bytes(check.stdout+check.stderr)
+            print((check.stdout+check.stderr).decode(errors='replace'), flush=True)
+            check.check_returncode()
+        finally:
+            run(['hdiutil', 'detach', device])
         mounted = False
         try:
             run(['hdiutil', 'attach', '-readonly', '-nobrowse', '-owners', 'on', '-mountpoint', mount, image])
