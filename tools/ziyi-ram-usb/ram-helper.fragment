@@ -1,0 +1,64 @@
+# RAM USB loader candidate. Final .config and linked-symbol gates are mandatory.
+CONFIG_MODULES=n
+CONFIG_LOCALVERSION="-ziyi-ram-usb"
+CONFIG_LOCALVERSION_AUTO=n
+CONFIG_WERROR=n
+CONFIG_LTO_NONE=y
+CONFIG_LTO_CLANG=n
+CONFIG_CFI_CLANG=n
+CONFIG_KASAN=n
+CONFIG_KEXEC=y
+# CONFIG_KEXEC_FILE is not set
+# CONFIG_DEVMEM is not set
+# CONFIG_DEVKMEM is not set
+# CONFIG_BLOCK is not set
+# CONFIG_MTD is not set
+# CONFIG_SCSI is not set
+# CONFIG_MMC is not set
+# CONFIG_PSTORE is not set
+# CONFIG_EFI is not set
+# CONFIG_EFIVAR_FS is not set
+# CONFIG_NVMEM_QCOM_QFPROM is not set
+# CONFIG_QCOM_QFPROM is not set
+# CONFIG_QCOM_QFPROM_SYS is not set
+# CONFIG_POWER_RESET_QCOM_DOWNLOAD_MODE is not set
+# CONFIG_QCOM_MEMORY_DUMP_V2 is not set
+# CONFIG_QCOM_MINIDUMP is not set
+# CONFIG_QCOM_RAMDUMP is not set
+# CONFIG_QCOM_Q6V5_PAS is not set
+# CONFIG_REMOTEPROC is not set
+# CONFIG_QCOM_WDT_CORE is not set
+# CONFIG_WATCHDOG is not set
+# CONFIG_ANDROID_VENDOR_HOOKS is not set
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_INITRAMFS_FORCE=y
+CONFIG_DEVTMPFS=y
+CONFIG_TMPFS=y
+CONFIG_SHMEM=y
+CONFIG_POSIX_TIMERS=y
+CONFIG_TTY=y
+CONFIG_PROC_FS=y
+CONFIG_SYSFS=y
+CONFIG_CONFIGFS_FS=y
+CONFIG_USB_GADGET=y
+CONFIG_USB_DWC3=y
+CONFIG_USB_DWC3_MSM=y
+CONFIG_USB_CONFIGFS=y
+CONFIG_USB_CONFIGFS_ACM=y
+# CONFIG_USB_CONFIGFS_MASS_STORAGE is not set
+# CONFIG_DRM is not set
+# CONFIG_SOUND is not set
+# CONFIG_SND is not set
+# CONFIG_MEDIA_SUPPORT is not set
+# CONFIG_WLAN is not set
+# CONFIG_BT is not set
+# CONFIG_CFG80211 is not set
+# CONFIG_MAC80211 is not set
+# CONFIG_INPUT_TOUCHSCREEN is not set
+# CONFIG_QCOM_KGSL is not set
+CONFIG_FB=y
+CONFIG_FB_SIMPLE=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+# Preserve clocks/power for the inherited display; don't execute Android init.
+CONFIG_CMDLINE="rdinit=/ziyi-ram-init maxcpus=1 clk_ignore_unused pd_ignore_unused regulator_ignore_unused panic=0 loglevel=7"
+CONFIG_CMDLINE_FORCE=y

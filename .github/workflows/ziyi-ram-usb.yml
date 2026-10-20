@@ -1,0 +1,46 @@
+name: ziyi storage-disabled RAM USB helper
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ziyi-xnu-s2]
+    paths:
+      - .github/workflows/ziyi-ram-usb.yml
+      - tools/ziyi-ram-usb/**
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install cross tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu libc6-dev-arm64-cross flex bison bc libssl-dev libelf-dev
+      - name: Checkout pinned GPL ziyi source
+        run: |
+          git clone --depth 1 --single-branch --branch ziyi-s-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git "$RUNNER_TEMP/ziyi-linux"
+          test "$(git -C "$RUNNER_TEMP/ziyi-linux" rev-parse HEAD)" = 24856283d18328b8473cd10991c15749b88d7bf9
+      - name: Test actual protocol and build receive-only helper
+        run: |
+          set -o pipefail
+          python3 tools/ziyi-ram-usb/build-helper.py "$RUNNER_TEMP/ziyi-linux" "$RUNNER_TEMP/ram-usb" 2>&1 | tee "$RUNNER_TEMP/ram-usb-build.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ziyi-ram-usb-candidate
+          path: |
+            ${{ runner.temp }}/ram-usb/Image
+            ${{ runner.temp }}/ram-usb/ziyi-ram-init
+            ${{ runner.temp }}/ram-usb/helper.config
+            ${{ runner.temp }}/ram-usb/protocol-tests.json
+            ${{ runner.temp }}/ram-usb/build-audit.json
+            ${{ runner.temp }}/ram-usb/init-elf.txt
+            ${{ runner.temp }}/ram-usb/selected.fragment
+            ${{ runner.temp }}/ram-usb-build.log
+          if-no-files-found: error
+          retention-days: 14
