@@ -21,7 +21,7 @@
 
 #define MAX_PACKET 65536U
 #define MAGIC "ZYRMUSB1"
-enum { HELLO=1, ECHO=2, BEGIN=3, DATA=4, END=5, INFO=6 };
+enum { OP_HELLO=1, OP_ECHO=2, OP_BEGIN=3, OP_DATA=4, OP_END=5, OP_INFO=6 };
 enum { OK=0, BAD_FRAME=1, BAD_SESSION=2, BAD_ARGUMENT=3, BAD_STATE=4,
        BAD_HASH=5, NO_MEMORY=6 };
 struct asset { uint8_t *p, expected[32]; uint64_t size, used; int sealed; };
@@ -52,26 +52,26 @@ static int serve(int fd) {
   if(fullread(fd,packet,n))break;
   if(crc32(packet,n)!=le32(h+20)){reply(op,seq,BAD_FRAME,NULL,0);break;}
   next++;
-  if(!hello&&op!=HELLO)status=BAD_SESSION;
-  else if(op==HELLO){
+  if(!hello&&op!=OP_HELLO)status=BAD_SESSION;
+  else if(op==OP_HELLO){
    if(hello||n!=16)status=BAD_SESSION;
    else { hello=1; memcpy(extra,packet,16);put32(extra+16,getpid());put32(extra+20,1);
     put64(extra+24,limits[0]);put64(extra+32,limits[1]);put64(extra+40,limits[2]);extra_n=48; }
-  }else if(op==ECHO){ if(reply(op,seq,OK,packet,n))break;continue;
-  }else if(op==BEGIN){
+  }else if(op==OP_ECHO){ if(reply(op,seq,OK,packet,n))break;continue;
+  }else if(op==OP_BEGIN){
    uint32_t id=n>=4?le32(packet):3; uint64_t size=n>=12?le64(packet+4):0;
    if(n!=44||id>=3||size==0||size>limits[id])status=BAD_ARGUMENT;
    else if(assets[id].p)status=BAD_STATE;
    else { void *p=mmap(NULL,size,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
     if(p==MAP_FAILED)status=NO_MEMORY;
     else {assets[id].p=p;assets[id].size=size;memcpy(assets[id].expected,packet+12,32);} }
-  }else if(op==DATA){
+  }else if(op==OP_DATA){
    uint32_t id=n>=4?le32(packet):3;uint64_t offset=n>=12?le64(packet+4):0;
    if(n<=12||id>=3)status=BAD_ARGUMENT;
    else { struct asset *a=&assets[id]; uint64_t bytes=n-12;
     if(!a->p||a->sealed||offset!=a->used||offset>a->size||bytes>a->size-offset)status=BAD_STATE;
     else {memcpy(a->p+offset,packet+12,bytes);a->used+=bytes;} }
-  }else if(op==END){
+  }else if(op==OP_END){
    uint32_t id=n==4?le32(packet):3;
    if(id>=3)status=BAD_ARGUMENT;
    else { struct asset *a=&assets[id];
@@ -82,7 +82,7 @@ static int serve(int fd) {
      else a->sealed=1;
     }
    }
-  }else if(op==INFO){
+  }else if(op==OP_INFO){
    uint32_t id=n==4?le32(packet):3;
    if(id>=3)status=BAD_ARGUMENT;
    else { struct asset *a=&assets[id];put64(extra,a->size);put64(extra+8,a->used);put32(extra+16,a->sealed);extra_n=20; }
