@@ -1,8 +1,8 @@
 # ios-sweet
 
-**Apple's iOS 16 running on a Redmi Note 10 Pro.**
+**Apple's iOS 16 running on a Xiaomi 13 Lite.**
 
-This project ports Apple's open-source XNU kernel (xnu-8796, the iOS 16 generation) to the Xiaomi Redmi Note 10 Pro (`sweet`, Qualcomm SM7150 / Snapdragon 732G). On top of it runs the **unmodified iOS 16.7.16 (20H392) userland of the iPhone X**: launchd, the system daemons, backboardd, SpringBoard and the stock apps.
+This project ports Apple's open-source XNU kernel (xnu-8796, the iOS 16 generation) to the Xiaomi 13 Lite (`ziyi`, Qualcomm SM7450 / Snapdragon 7 Gen 1). On top of it runs the **unmodified iOS 16.7.16 (20H392) userland of the iPhone X**: launchd, the system daemons, backboardd, SpringBoard and the stock apps.
 
 As of **2026-10-18** the phone boots to the **iOS home screen**. You can unlock it, open Settings, pull down Control Center and the notification center, and use the touchscreen and the hardware buttons. Rendering runs entirely on the CPU; there is no GPU driver.
 
@@ -49,7 +49,7 @@ There is no serial port (the debug UART is wired as SPI on this board). The kern
 
 ## How to do it yourself
 
-You need a Redmi Note 10 Pro (`sweet`, global or Indian variant, SM7150) with an **unlocked bootloader**, a Linux PC, and a GitHub account for the kernel build. This is the exact path used for the screenshots above; other variants or firmware may need changes. **Everything on `userdata` is lost.** Bootloaders, recovery, modem and persist partitions are never touched.
+You need a Xiaomi 13 Lite (`ziyi`, global variant, SM7450) with an **unlocked bootloader**, a Linux PC, and a GitHub account for the kernel build. This is the exact path used for the screenshots above; other variants or firmware may need changes. **Everything on `userdata` is lost.** Bootloaders, recovery, modem and persist partitions are never touched.
 
 ### 0. Back up the phone
 
