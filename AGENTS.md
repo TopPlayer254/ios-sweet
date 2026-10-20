@@ -4,7 +4,7 @@
   Read README.md, NOTES.md and Documentation/ziyi/DONOR-AUDIT-20261020.md.
 - Current goal is a real Apple lock screen with advancing clocks. Record
   PosterBoard process/rendering evidence separately; a shim drawing is not iOS.
-- Last phone evidence is S2X build10: the complete source-CI kernel boots
+- First complete-source PID1 evidence is S2X build10: the source-CI kernel boots
   native Darwin through BSD and executes our diagnostic PID1 on mockfs/md0,
   with console/syscalls/5-second heartbeat. X CRC907f3943, all11 segment/BSS,
   ADT and boot_args hashes matched. Read the S2-PID1 checkpoint report.
@@ -14,8 +14,14 @@
   CI39507288859 built an own-source32MiB HFSX diagnostic root and passed
   fsck/readonly reread plus PC digest/CRC/content checks. Phone S2P build11
   PASS CRC1241a774 proves11segment/ADT/args hashes, entry disabled.
-  HFS mount/new init execution remain the next S2X check; use completed
+  HFS mount/new init follow-on results are below; use completed
   P proof before entry. Read the Apple userland audit report.
+- HFS X11 passed RAM hashes then hit uipc_mbuf.c:1743 before mount. X12
+  adds only mbuf_pool=2 to the same payload/layout; a pinned byte-checked
+  command-line transition reuses P11 root/kernel proof, with new args hashed
+  on the phone before entry. X12 PASSED HFS md0 mount, own PID1, two file
+  reads/symlink lookup and5s heartbeat (6/10 at300/320s), no visible panic.
+  X preentry CRC25075121,11segment/ADT/new args SHA match. Apple UI is unproven.
 - Current experiments remain RAM-only. The user's 2026-10-20 conditional
   storage authorization applies only near userspace, after complete verified
   backups of both GPT copies and all affected partitions including userdata,

@@ -5,6 +5,12 @@
 Это собственный тестовый userspace, пока без Apple launchd/графического UI.
 Все текущие эксперименты — fastboot boot, без записей в разделы.
 
+**21 октября:** build12 перешёл с mockfs к настоящему32MiB HFSX root на md0.
+Свой PID1 подтвердил два file reads и symlink lookup;6/10 heartbeat за300/320s.
+X CRC25075121 и11segments/ADT/args SHA прошли. mbuf_pool=2 устранил
+bootstrap threshold panic; kernel/root/layout не менялись. Apple runtime
+ещё впереди. [Новый HFS checkpoint и Apple audit](IOS-SWEET-20261021-APPLE-USERLAND.md).
+
 ## Доказательство
 
 Запись180s: `Artifacts/ziyi/ios-sweet/IOS-SWEET-20261020-S2X-device7/camo-run.mkv`.
@@ -94,7 +100,10 @@ launchd/dyld и PreBoard/PosterBoard, но полный runtime cache2.55GiB н�
 следующий опыт проверит реальное дерево files/symlinks нашим PID1 до Apple
 runtime. CI39507288859 fsck/readonly reread и PC artifact checks PASS;
 S2P build11/device9 подтвердил32MiB HFS root в RAM, CRC1241a774,
-все11segments/ADT/args SHA совпали. HFS mount на телефоне ещё не доказан.
+все11segments/ADT/args SHA совпали. X build11 получил mbuf minimum assertion
+до HFS mount; build12 повторяет с одним новым boot arg mbuf_pool=2, без
+изменений kernel/root/layout. Build12 затем прошёл HFS mount/PID1/read/symlink,
+итог в обновлении выше.
 [Новый аудит и минимальный опыт](IOS-SWEET-20261021-APPLE-USERLAND.md).
 Старые partial files сохранены. Это не резерв для полного partition backup. Работа с GPT/UFS
 по-прежнему требует выполнения отдельных

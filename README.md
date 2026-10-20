@@ -4,7 +4,7 @@ Target: ziyi / SM7450, iPhone X (`iPhone10,3`, D22AP) iOS 16.7.16 userland.
 Current goal: a real Apple lock screen with advancing clocks; prove
 PosterBoard execution/rendering separately from SpringBoard's lock screen.
 
-**Native Darwin/XNU and a diagnostic PID1 now boot on ziyi in RAM.**
+**Native Darwin/XNU, a real HFSX RAM root and our diagnostic PID1 boot on ziyi.**
 Apple launchd, the Apple logo and Apple graphical userspace remain ahead.
 The inherited sweet screenshots describe the donor phone.
 
@@ -33,7 +33,10 @@ As of 2026-10-21:
   filesystem experiment. CI39507288859 passed native fsck/readonly reread
   and independent PC artifact checks. Phone S2P build11 passed full RAM
   delivery hashes (CRC1241a774), with XNU entry disabled. HFS mount has
-  not yet run on the phone.
+  now passed: X build12 adds only mbuf_pool=2 to avoid the64MiB auto-config
+  gate, mounts HFS md0 and runs our PID1 with two verified file reads,
+  symlink traversal and5s heartbeat (6/10 messages at300/320s), no visible panic.
+  X preentry CRC25075121; kernel/root/ADT/layout bytes are unchanged.
 
 Current phone experiments remain RAM-only. Storage writes are conditionally
 authorized only immediately before userspace, after complete verified GPT

@@ -1,0 +1,24 @@
+name: ziyi read-only Apple cache transport audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ziyi-xnu-s2]
+    paths:
+      - .github/workflows/ziyi-apple-cache.yml
+      - tools/audit-ziyi-apple-cache.py
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify official SystemOS and measure cache without executing it
+        run: python3 tools/audit-ziyi-apple-cache.py "$RUNNER_TEMP/ziyi-apple-cache"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ziyi-apple-cache-report
+          path: ${{ runner.temp }}/ziyi-apple-cache/report.json
+          if-no-files-found: error
+          retention-days: 14

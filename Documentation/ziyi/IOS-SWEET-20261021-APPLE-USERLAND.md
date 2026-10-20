@@ -1,8 +1,10 @@
-# ziyi: аудит Apple userspace и следующий RAM root
+# ziyi: HFS RAM root работает; аудит Apple userspace
 
-21 октября 2026, Europe/Moscow. Телефон в этом аудите не использовался.
-Аппаратная база остаётся S2X build10: полный source-CI XNU cb8d9246,
-md0/mockfs, собственный диагностический PID1 и пятисекундный heartbeat.
+21 октября 2026, Europe/Moscow. Apple images исследованы только на ПК;
+отдельные RAM-only телефонные опыты с нашим HFS root описаны ниже.
+Аппаратная база — полный source-CI XNU cb8d9246. Build10 доказал mockfs/PID1;
+**build12 теперь смонтировал настоящий HFSX root на md0**, запустил собственный
+PID1 и подтвердил чтение двух файлов, symlink lookup и пятисекундный heartbeat.
 Apple launchd и графические процессы на ziyi ещё не исполнялись.
 
 ## Проверенные входные данные
@@ -66,17 +68,25 @@ commit3e5ba1a2d04c3a221eab66b99e0e0dd90a470150,
 готовность standalone extraction/rebase. Отчёт:
 `Artifacts/ziyi/ios-sweet/20261021-dyld-cache-index/audit.json`.
 
+Проверен и [Apple dsc_extractor.cpp на том же commit](https://github.com/apple-oss-distributions/dyld/blob/3e5ba1a2d04c3a221eab66b99e0e0dd90a470150/other-tools/dsc_extractor.cpp):
+в optimize_loadcommands он обнуляет rebase/bind/weak/lazy info и exports trie,
+прямо ориентируясь на lldb symbols. Поэтому его обычный output нельзя считать
+готовыми standalone runtime dylibs. Уменьшенный root потребует проверенной
+реконструкции runtime metadata либо другого способа использовать shared cache;
+простой extract/copy не снимает этот барьер. Исходник/hash сохранены локально
+в `20261021-apple-runtime-source/`; код extractor не исполнялся.
+
 Наличие PosterBoard.app не доказывает запуск lock screen. LC_LOAD_DYLIB также
 показывает, почему копирования одного119K executable недостаточно. Реальные
 часы/экран и исполнение PosterBoard проверяются отдельно.
 
-## Минимальный следующий опыт: HFS root в RAM
+## Пройденный опыт: HFS root в RAM
 
-Текущий mockfs отдаёт всё устройство как один Mach-O. Он доказал PID1, но
+Изначальный mockfs отдаёт всё устройство как один Mach-O. Он доказал PID1, но
 не обслуживает настоящее дерево root с dyld, libraries, plists и symlinks.
 В закреплённой серии patch0026 встроен Apple OSS HFS; mockfs_check_macho
 отклоняет filesystem image, позволяя следующему filesystem попытаться mountroot.
-Регистрация HFS уже видна в телефоном логе; само HFS mount ещё не доказано.
+Регистрация HFS была видна ранее; build12 теперь доказал и mount/root exec.
 
 Подготовлен отдельный маленький диагностический root, **без Apple assets**:
 
@@ -123,10 +133,78 @@ P не содержит indirect entry, X содержит единственн�
 **S2P-device9 PASS:**5/5 optical packets,416bytes, CRC `1241a774`, flags63,
 stage4. Payload/aggregate11segments/ADT/boot_args совпали с host SHA256;
 BRK, context/canary/FDT/source bounds прошли. Uncached load/hash214.471s.
-Фактические FDT B4E30000, payload B5031000..B7FFEDD0, размер50126544bytes;
+Фактические FDT B4E30000, payload B5031000..B7FFEED0, размер50126544bytes;
 оба диапазона не пересекаются, окна FD/stack/framebuffer не затронуты.
 Entry был compiled out. Это доказанная доставка HFS bytes в RAM;
-HFS mount и запуск нового init ещё требуют S2X.
+HFS mount и запуск нового init ещё требуют успешного S2X.
+
+### S2X build11: предел mbuf bootstrap, до HFS
+
+X preentry CRC `83724eda` PASS, все11segment/ADT/args SHA совпали. После
+entry XNU прошёл VM/IOKit/CPU1/1/self-SGI1/BSD MAC и регистрацию HFS, затем
+panic в `bsd/kern/uipc_mbuf.c:1743`:
+`m_total(MC_BIGCL) == 0 && m_minlimit(MC_BIGCL) != 0`.
+Кадры270/330/415s и полная420s запись заморожены в S2X-device9. HFS mount
+не достигнут, новый init не исполнялся. Это не ошибка CRC/root delivery.
+
+Из buildtree именно CI39475233522 извлечены unix_startup.c/uipc_mbuf.c/
+mbuf.h/param.c/arm_vm_init.c, хеши и расчёт сохранены в `20261021-mbuf-audit/`.
+arm_vm_init задаёт sane_size после вычитания ранних allocations. Уже после
+top доступно не более66289664bytes (<64MiB). bsd_mbuf_cluster_reserve
+автоматически увеличивает пул только при sane_size >64MiB либо явном ncl.
+Без override остаётся medium CONFIG_NMBCLUSTERS=256 (512KiB); при16K pages
+mbuf_table_init округляет минимум4K BIGCL до нуля. Полученный panic согласуется
+с этим конкретным порогом; это source-derived объяснение, не измерение всех
+внутренних kernel variables.
+
+### Build12: одно дополнение boot args
+
+Добавлено ровно ` mbuf_pool=2`; ядро, HFS root, ADT, placement и все сегменты
+побайтно сохранены. При2MiB получается1024 2K clusters, BIGCL minimum4.
+1MiB недостаточно:512clusters тоже дают нулевой minimum. Этот параметр
+изолирует bootstrap condition; networking и реальная нагрузка не тестируются.
+
+Payload SHA `08284932baac0d6be14540994dfd48e20e94d0b3f4965d0bc5561c3d0ffde407`;
+X image SHA `c71e2cc2b2c05bdd24ab621eb25518b1d71588a85daab781ae37224d7692b1b4`.
+Host native loader/full arena/negative-input и optical audits PASS.
+Повтор использует завершённый P build11 для неизменных kernel/root bytes:
+реальный runner проверяет old image/proof, оба args SHA, идентичность всех
+bytes вне CommandLine и только точное добавление mbuf_pool=2 для двух pinned
+payload hashes. Новый X самостоятельно проверяет новые args до entry.
+Пять отрицательных guard cases (иной pool, bytes вне command, stale image,
+изменённый loaded digest, иной payload) отвергнуты до mocked device gate.
+Это не новый P build12.
+
+**X build12/device10 HFS PID1 PASS.** Preentry CRC `25075121`, все11segment/
+ADT/new args hashes совпали; loaded/ADT digest идентичны P11. XNU вывел
+`mbinit: done [2 MB total pool size, (1/0) split]`, нашёл md0 и смонтировал
+ZIYIRAMRoot. Затем exec собственного /sbin/launchd дал:
+`ZIYI HFS proof PASS: PID1, two file reads, symlink lookup`.
+Кадры300/320s содержат6/10 heartbeat сообщений: ещё4 за20s, panic не виден.
+Это настоящий HFS driver/vnode/directory/symlink/read/exec path в RAM,
+но /sbin/launchd всё ещё наш диагностический init, не Apple launchd.
+
+## Минимальный следующий эксперимент
+
+HFS root теперь не является неподтверждённой предпосылкой. Следующий шаг на
+ПК — unpack только43 runtime cache files без .symbols, сверить размеры/UUID
+с cache index и измерить сжатый transport budget с независимым round-trip.
+Так можно оценить RAM-only доставку настоящего cache; размер2.55GiB нельзя
+просто добавить в текущий payload/128MiB arena. Места будущего большого root,
+memory ownership, ABL staging и download limits требуют отдельного доказательства.
+Это измерение не запускает Apple код и не требует разделов телефона.
+
+Windows 7z25.01 извлёк41/43 файла, но .28.dyldlinkedit и .42.dyldlinkedit
+используют ZBM-rsrc/LZBITMAP и были отвергнуты как Unsupported Method.
+Partial outputs сохранены отдельно с failure.json; полного gzip замера на
+них нет. Подготовлен macOS read-only CI: native APFS decompression,
+все42 UUID,43file hashes, gzip-level6 sizing и decode/hash round-trip.
+Публикуется только JSON report, без Apple image/cache assets.
+
+После выбора реального runtime/root layout — минимальный Apple dyld/launchd
+опыт с явным критерием entry/runtime, затем базовые Apple services и graphics.
+Не считать extraction-for-lldb готовым dynamic runtime и не менять UFS профиль
+только ради обхода RAM budget.
 
 После HFS proof следующий опыт должен изолировать Apple dyld/runtime до GUI.
 Не заменять PID1 на launchd без реального root/dependency/diagnostic плана.
@@ -137,8 +215,8 @@ Upstream mkiosroot.sh делает большой HFS root для userdata; он
 
 ## Расстояние до крупных рубежей
 
-Darwin + собственный PID1 достигнуты и повторены на полном source-CI kernel.
-Следующий барьер — настоящее root tree и Apple dynamic runtime. Apple boot logo,
+Darwin + собственный PID1 достигнуты и повторены на полном source-CI kernel;
+настоящее HFS root tree теперь тоже доказано. Следующий барьер — Apple dynamic runtime. Apple boot logo,
 Apple launchd, PreBoard, PosterBoard/живой lock screen и SpringBoard пока не
 достигнуты. Порядок UI процессов не предполагается строго линейным; проценты
 и сроки до GUI по текущим данным не обоснованы.

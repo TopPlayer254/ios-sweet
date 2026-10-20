@@ -55,12 +55,23 @@ file reads and symlink traversal with our static PID1, before Apple runtime.
 The macOS workflow builds only our root/init, without Apple assets.
 CI39507288859 passed native fsck/readonly reread, ZIP digest/CRC and
 PC HFS/init/sentinel read-back; source files match a fresh pinned clone.
-P/X build11 pass guarded loader/optical audits. Phone HFS mount remains unproven.
+P/X build11 pass guarded loader/optical audits. Follow-on HFS results are below.
 S2P build11/device9 passed on the phone: CRC1241a774, all11 segment/BSS,
 ADT and boot_args hashes matched, entry disabled;214.471s uncached hashing.
 HFS root SHA b69a1ae3b0df915c4a267338bafaf8d519b2c5d612a5f403471327dd93b4fa43,
 PA8020c0000+2000000, ADT8040c0000, args8040c4000, top8040c8000.
 The128MiB managed arena and all10 kernel segment bytes are unchanged.
+X build11 preentry CRC83724eda passed, then uipc_mbuf.c:1743 asserted before
+HFS mount. The32MiB root leaves sane_size below the64MiB auto-config gate;
+the medium fallback yields zero BIGCL minimum. Build12 adds only mbuf_pool=2,
+with kernel/root/ADT/layout unchanged. Host audits and five negative runner
+guard cases pass. It reuses exact P11 root/kernel proof and validates the
+new command line/hash before device I/O and again on the phone before entry.
+Build12 then PASSED HFS mount on md0 and our PID1's two file reads/symlink
+lookup.6/10 heartbeat messages at300/320s (5s interval), no visible panic.
+X preentry CRC25075121, all11segments/ADT/new args hashes matched.
+Apple launchd/UI remain unproven; next host work measures runtime cache
+transport size and a feasible RAM/root layout before Apple code execution.
 See [Apple userland audit](Documentation/ziyi/IOS-SWEET-20261021-APPLE-USERLAND.md).
 Keep phone storage untouched until all backup/restore gates below are met.
 Do not run the original sweet shim UFS fallback or its installation commands.
