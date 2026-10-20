@@ -97,7 +97,10 @@ shutil.copy2(build / ".config", out / "helper.config")
 run(make + [f"-j{min(os.cpu_count() or 2, 8)}", "Image"])
 image = build / "arch/arm64/boot/Image"
 with image.open("rb") as f: header = f.read(64)
-if header[56:60] != b"ARM\x64" or int.from_bytes(header[16:24],"little") > image.stat().st_size:
+effective_size=int.from_bytes(header[16:24],"little")
+# arm64 image.h defines image_size as _end - _text, INCLUDING NOBITS BSS.
+# objcopy Image need not contain the BSS bytes; reserve the effective footprint.
+if header[56:60] != b"ARM\x64" or not image.stat().st_size <= effective_size <= 128*(1<<20):
     raise RuntimeError("invalid ARM64 Image header/size")
 symbols = subprocess.check_output(["llvm-nm-14", "--defined-only", str(build / "vmlinux")], text=True)
 for forbidden in ["ufshcd_init", "mmc_init", "mtdcore_init", "efi_set_variable", "ramoops_probe", "qcom_qfprom_probe"]:
@@ -106,6 +109,9 @@ if not re.search(r"\bdwc3_msm_probe$", symbols, re.M): raise RuntimeError("MSM U
 shutil.copy2(image, out / "Image")
 run(["llvm-readelf-14", "-h", "-l", out / "ziyi-ram-init"], stdout=(out / "init-elf.txt").open("w"))
 report = {"result":"HOST_BUILD_PASS_NOT_PHONE_TESTED", "gpl_source": PIN,
+ "image_effective_bytes":effective_size,"image_text_offset":int.from_bytes(header[8:16],"little"),
+ "image_flags":int.from_bytes(header[24:32],"little"),
+ "optional_stubs":{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for n in ['hwid','plaid'] for p in [(root/f'drivers/misc/{n}/Kconfig'),(root/f'drivers/misc/{n}/Makefile')]},
  "scope":"receive-only USB; no kexec syscall or phone image packaging", "config_y": required_y,
  "config_n":required_n, "source_hashes":{}, "artifact_hashes":{}}
 for f in sorted(here.iterdir()):
