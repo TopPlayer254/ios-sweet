@@ -13,7 +13,7 @@ import struct
 import subprocess
 import sys
 
-MKINIT_SHA = '8f2596e97428dca8429d62013d351f3a08a46ef19792127d1d207745922f1a89'
+MKINIT_SHA = '79b8585105d4ecfc6f47542563577d0c55c22e7eaa517cffb367cf24e7c4e8ac'
 TOKEN = b'ZIYI-HFS-RAMROOT-v1\n'
 
 
@@ -65,7 +65,8 @@ def main():
     out = a.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     wrapper = a.mkinit.resolve()
-    assert sha(wrapper) == MKINIT_SHA
+    # Git's Windows checkout may use CRLF; pin the canonical Git source bytes.
+    assert hashlib.sha256(wrapper.read_bytes().replace(b'\r\n', b'\n')).hexdigest() == MKINIT_SHA
     source = Path(__file__).with_name('ziyi-hfs-init.S')
     run([a.clang, '-target', 'arm64-apple-ios16.0', '-c', source, '-o', out/'init.o'])
     sys.dont_write_bytecode = True
