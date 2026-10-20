@@ -85,7 +85,7 @@ def main():
         mount = out/'mount'
         mount.mkdir()
         run(['hdiutil', 'create', '-size', '32m', '-fs', 'HFSX', '-layout', 'NONE',
-             '-format', 'UDRW', '-volname', 'ZIYIRAMRoot', writable])
+             '-volname', 'ZIYIRAMRoot', writable])
         mounted = False
         try:
             run(['hdiutil', 'attach', '-nobrowse', '-owners', 'on', '-mountpoint', mount, writable])
