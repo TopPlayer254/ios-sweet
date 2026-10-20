@@ -1,0 +1,29 @@
+name: ziyi diagnostic RAM HFS root
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ziyi-xnu-s2]
+    paths:
+      - .github/workflows/ziyi-ramroot.yml
+      - tools/mkziyi-hfs-root.py
+      - tools/ziyi-hfs-init.S
+permissions:
+  contents: read
+jobs:
+  root:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build own diagnostic init and new 32 MiB HFSX image
+        run: python3 tools/mkziyi-hfs-root.py --out "$RUNNER_TEMP/ziyi-hfs-root"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ziyi-hfs-root
+          path: |
+            ${{ runner.temp }}/ziyi-hfs-root/ziyi-hfs-root.cdr
+            ${{ runner.temp }}/ziyi-hfs-root/ziyi-hfs-init
+            ${{ runner.temp }}/ziyi-hfs-root/audit.json
+            ${{ runner.temp }}/ziyi-hfs-root/fsck.txt
+          if-no-files-found: error
+          retention-days: 14
