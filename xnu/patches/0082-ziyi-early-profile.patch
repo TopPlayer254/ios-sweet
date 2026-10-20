@@ -3207,3 +3207,20 @@
  
  /* GICv3 register definitions; see GICv3 spec (Arm IHI 0069G) */
  #define GICD_CTLR                 0x0
+--- a/osfmk/arm64/machine_routines.c
++++ b/osfmk/arm64/machine_routines.c
+@@ -2274,6 +2274,14 @@
+ 	__builtin_arm_wsr64("CNTV_CTL_EL0", cntvctl);
++#if !defined(ZIYI_EARLY_PROFILE)
+ 	/* disable the physical timer as a precaution, as its registers reset to architecturally unknown values */
+ 	__builtin_arm_wsr64("CNTP_CTL_EL0", CNTP_CTL_EL0_IMASKED);
++#else
++	/* ziyi S2X traps on this physical timer register at EL1. Keep the
++	 * successful CNTV enable above; only the unused CNTP precaution is
++	 * omitted. Higher-EL policy has not been read or changed. Physical
++	 * timer PPIs are not enabled by this first-core profile.
++	 */
++#endif
+ }
+ 
+ void
