@@ -4,8 +4,18 @@
   Read README.md, NOTES.md and Documentation/ziyi/DONOR-AUDIT-20261020.md.
 - Current goal is a real Apple lock screen with advancing clocks. Record
   PosterBoard process/rendering evidence separately; a shim drawing is not iOS.
-- Last phone evidence is S1 native diagnostic. S2 CI/kernel/provider/layout
-  checks are host-only. Darwin, Apple logo and userspace remain unproven.
+- Last phone evidence is S2X build10: the complete source-CI kernel boots
+  native Darwin through BSD and executes our diagnostic PID1 on mockfs/md0,
+  with console/syscalls/5-second heartbeat. X CRC907f3943, all11 segment/BSS,
+  ADT and boot_args hashes matched. Read the S2-PID1 checkpoint report.
+  Apple launchd/logo/PreBoard/PosterBoard/SpringBoard remain unproven.
+- Apple OS/SystemOS/AppOS images and APFS/Mach-O inventories now pass host
+  verification. Runtime cache2.55GiB exceeds the tested128MiB arena.
+  CI39507288859 built an own-source32MiB HFSX diagnostic root and passed
+  fsck/readonly reread plus PC digest/CRC/content checks. Phone S2P build11
+  PASS CRC1241a774 proves11segment/ADT/args hashes, entry disabled.
+  HFS mount/new init execution remain the next S2X check; use completed
+  P proof before entry. Read the Apple userland audit report.
 - Current experiments remain RAM-only. The user's 2026-10-20 conditional
   storage authorization applies only near userspace, after complete verified
   backups of both GPT copies and all affected partitions including userdata,

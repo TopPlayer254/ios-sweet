@@ -4,21 +4,36 @@ Target: ziyi / SM7450, iPhone X (`iPhone10,3`, D22AP) iOS 16.7.16 userland.
 Current goal: a real Apple lock screen with advancing clocks; prove
 PosterBoard execution/rendering separately from SpringBoard's lock screen.
 
-**iOS and Darwin have not booted on this ziyi yet.** The inherited sweet
-screenshots and working-feature claims describe the donor phone.
+**Native Darwin/XNU and a diagnostic PID1 now boot on ziyi in RAM.**
+Apple launchd, the Apple logo and Apple graphical userspace remain ahead.
+The inherited sweet screenshots describe the donor phone.
 
-As of 2026-10-20:
+As of 2026-10-21:
 
 - S1 passed one RAM-only native shim diagnostic on ziyi, with owned
   stack/vectors, controlled exception, counter and CRC-checked telemetry.
-- S2 XNU compiled successfully in [CI 39465333531](https://github.com/TopPlayer254/ios-sweet/actions/runs/39465333531).
-  Downloaded artifact digests, kernel sums, all ten changed source files,
-  plain arm64 Mach-O and ten linked disabled hardware providers were checked.
-- The 17170616-byte kernel SHA-256 is
-  `cef8ea2eab946ce04e0fe3c70371b27784429297d5eb47d0f4311ef951d8637d`.
-- Verified Apple D22AP identity metadata and a static RAM payload layout
-  exist locally. A bounded native loader and runtime memory/interrupt
-  validation remain before an S2 phone boot. This branch is not a ready image.
+- S2X booted through 16K MMU/VM/pmap, platform IOKit, boot CPU 1/1,
+  self-SGI1, BSD/HFS and kernel-thread tests. A 32K mockfs RAM disk runs
+  our static diagnostic PID1, with console/syscalls and a 5-second heartbeat.
+- Reproduced with the exact source-built [CI 39475233522](https://github.com/TopPlayer254/ios-sweet/actions/runs/39475233522)
+  kernel, commit `08b7f85b9899ae7ff5e839232a764b57cf01b89c`.
+  Kernel SHA-256 `cb8d9246ce087ac472de727e4ee4a42b894eac6a2b5a8168fca2296cb40465ec`.
+  Artifact digests/CRC, twelve source files, final Mach-O/provider stubs
+  and phone RAM hashes were verified; source-CI X snapshot CRC `907f3943`.
+- Initial fixes: narrow early framebuffer mapping to active pixels,
+  omit an inaccessible physical-timer precaution, and match SweetCPU
+  to actual `qcom,sm7450` compatibility. CNTV remains enabled; self-SGI
+  delivery and timed sleeps work.
+- No Apple root filesystem or graphical iOS process has run on ziyi yet.
+  OS/SystemOS/AppOS images now pass manifest SHA384/ZIP CRC and independent
+  reread. A read-only APFS/Mach-O audit identified plain arm64 launchd/dyld
+  and the actual PreBoard/PosterBoard executables. The runtime cache is
+  2.55GiB without symbols, beyond the tested128MiB arena.
+  A separate32MiB diagnostic HFS RAM-root workflow prepares the next
+  filesystem experiment. CI39507288859 passed native fsck/readonly reread
+  and independent PC artifact checks. Phone S2P build11 passed full RAM
+  delivery hashes (CRC1241a774), with XNU entry disabled. HFS mount has
+  not yet run on the phone.
 
 Current phone experiments remain RAM-only. Storage writes are conditionally
 authorized only immediately before userspace, after complete verified GPT
@@ -26,7 +41,9 @@ and affected-partition backups (including userdata) and an established
 restore procedure. Those gates have not been met. The S2 kernel removes
 UFS/persistent logging and unported input/USB/power provider bodies.
 
-See [the donor audit and experiment plan](Documentation/ziyi/DONOR-AUDIT-20261020.md)
+See [the PID1 checkpoint](Documentation/ziyi/IOS-SWEET-20261020-S2-PID1.md),
+[Apple userland audit](Documentation/ziyi/IOS-SWEET-20261021-APPLE-USERLAND.md),
+[the donor audit](Documentation/ziyi/DONOR-AUDIT-20261020.md)
 and [NOTES.md](NOTES.md) for the active handoff.
 
 Source foundation and credit: [dipa-studio/ios-sweet](https://github.com/dipa-studio/ios-sweet/tree/fdad0de8dc0e75c5ea84762adc03f7232dc91f19),
