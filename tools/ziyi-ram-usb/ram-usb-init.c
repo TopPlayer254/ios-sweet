@@ -110,7 +110,7 @@ static void gadget(void) {
   if(d){while((e=readdir(d)))if(e->d_name[0]!='.') {if(udc[0])halt("multiple UDC");snprintf(udc,sizeof(udc),"%s",e->d_name);}closedir(d);}
   if(!udc[0])sleep(1);
  }
- if(!udc[0])halt("no UDC after 120 seconds");value("UDC",udc);chdir("/");
+ if(!udc[0])halt("no UDC after 120 seconds");value("UDC",udc);if(chdir("/"))halt("return cwd");
 }
 int main(void) {
  if(getpid()!=1)return 90;

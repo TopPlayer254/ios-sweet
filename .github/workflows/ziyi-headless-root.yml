@@ -1,0 +1,34 @@
+name: ziyi encrypted headless Apple launchd probe root
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ziyi-xnu-s2]
+    paths:
+      - .github/workflows/ziyi-headless-root.yml
+      - tools/build-ziyi-headless-root.py
+      - tools/ziyi-launchd-child.S
+      - tools/headless-root-public.pem
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install cryptography
+      - name: Build and validate local RAM root, upload encrypted bytes only
+        run: python3 tools/build-ziyi-headless-root.py "$RUNNER_TEMP/ziyi-headless-root"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ziyi-headless-root-encrypted
+          path: |
+            ${{ runner.temp }}/ziyi-headless-root/ziyi-headless-root.enc
+            ${{ runner.temp }}/ziyi-headless-root/report.json
+            ${{ runner.temp }}/ziyi-headless-root/fsck.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 3
