@@ -98,6 +98,7 @@ run(["gcc", "-O2", "-Wall", "-Wextra", "-Werror", "-DZIYI_HOST_TEST", here / "ra
 with (out / "protocol-tests.json").open("w") as f:
     run([sys.executable, here / "test-protocol.py", out / "host-server"], stdout=f)
 cross=["aarch64-linux-gnu-gcc", "-static", "-nostdlib", "-no-pie", "-fno-pie", "-ffreestanding", "-fno-builtin",
+       "-U_FORTIFY_SOURCE", "-D_FORTIFY_SOURCE=0", # ABI headers only; own bounded formatter, no glibc _chk runtime
        "-fno-stack-protector", "-fno-tree-loop-distribute-patterns", "-mno-outline-atomics", "-mgeneral-regs-only",
        "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-misleading-indentation", "-Wl,--build-id=sha1",
        "-Wl,-e,ziyi_linux_entry", here/"ram-entry.S", here/"ram-crt.S", here/"ram-minic.c"]
