@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
-      CCACHE_DIR: ${{ runner.temp }}/ziyi-ccache
       CCACHE_MAXSIZE: 2G
       CCACHE_COMPILERCHECK: content
     steps:
@@ -35,6 +34,8 @@ jobs:
           git clone --depth 1 --single-branch --branch ziyi-s-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git "$RUNNER_TEMP/ziyi-linux"
           test "$(git -C "$RUNNER_TEMP/ziyi-linux" rev-parse HEAD)" = 24856283d18328b8473cd10991c15749b88d7bf9
       - name: Test actual protocol and build receive-only helper
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ziyi-ccache
         run: |
           set -o pipefail
           python3 tools/ziyi-ram-usb/build-helper.py "$RUNNER_TEMP/ziyi-linux" "$RUNNER_TEMP/ram-usb" 2>&1 | tee "$RUNNER_TEMP/ram-usb-build.log"
