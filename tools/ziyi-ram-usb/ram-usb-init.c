@@ -188,6 +188,10 @@ int main(void) {
  dir("/proc");dir("/sys");if(mount("proc","/proc","proc",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("proc");
  if(mount("sysfs","/sys","sysfs",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("sysfs");
  trace("proc/sysfs mounted");
+ int profile_fd=open("/sys/firmware/devicetree/base/soc/ssusb@a600000/ziyi,ram-usb-device-only",O_RDONLY|O_CLOEXEC);
+ trace("RAM selector DTB usb boolean present=%d",profile_fd>=0);
+ if(profile_fd>=0)close(profile_fd);
+ snapshot("/proc/cmdline");
  boot_usb_history();
  /* debugfs seq_file locking is not bounded by O_NONBLOCK; do not read it. */
  snapshot("/proc/meminfo");

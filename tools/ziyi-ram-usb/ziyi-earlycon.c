@@ -9,7 +9,27 @@
 #include <linux/io.h>
 #include <linux/printk.h>
 #include <linux/serial_core.h>
+#include <linux/string.h>
 #include <asm/early_ioremap.h>
+
+/* ABL may select vendor_boot's DTB. This explicit, opt-in kernel parameter
+ * selects our RAM profile independently of appended-DTB selection. Keep
+ * state outside initdata: regulator late work runs after free_initmem(). */
+static bool ram_usb_profile;
+static int __init setup_ram_usb_profile(char *value)
+{
+    if (!value || strcmp(value, "1"))
+        return 0;
+    ram_usb_profile = true;
+    pr_info("ZIYI RAM PROFILE: explicit command-line selector enabled\n");
+    return 1;
+}
+__setup("ziyi_ram_usb=", setup_ram_usb_profile);
+
+bool ziyi_ram_usb_mode(void)
+{
+    return ram_usb_profile;
+}
 
 #define FB_BASE 0xb8000000ULL
 #define FB_STRIDE 4320U

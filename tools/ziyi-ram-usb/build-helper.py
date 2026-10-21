@@ -182,6 +182,7 @@ required_n = ["MODULES", "BLOCK", "MTD", "SCSI", "MMC", "PSTORE", "DEVMEM", "DEV
 required_y += ["GENERIC_IDLE_POLL_SETUP", "CPU_IDLE", "ARM_PSCI_CPUIDLE", "ARM_PSCI_CPUIDLE_DOMAIN"]
 assert "nohlt" in settings.get("CONFIG_CMDLINE", "").strip('"').split()
 assert "cpuidle.off=1" in settings.get("CONFIG_CMDLINE", "").strip('"').split()
+assert "ziyi_ram_usb=1" in settings.get("CONFIG_CMDLINE", "").strip('"').split()
 for key in required_y:
     if settings.get("CONFIG_"+key) != "y": raise RuntimeError(f"required builtin {key} missing")
 for key in required_n:
@@ -218,6 +219,7 @@ symbols = subprocess.check_output(["llvm-nm-14", "--defined-only", str(build / "
 for forbidden in ["ufshcd_init", "mmc_init", "mtdcore_init", "efi_set_variable", "ramoops_probe", "qcom_qfprom_probe"]:
     if re.search(r"\b"+forbidden+r"$", symbols, re.M): raise RuntimeError("forbidden linked path: "+forbidden)
 if not re.search(r"\bdwc3_msm_probe$", symbols, re.M): raise RuntimeError("MSM USB driver not linked")
+if not re.search(r"\bziyi_ram_usb_mode$", symbols, re.M): raise RuntimeError("explicit RAM selector not linked")
 shutil.copy2(image, out / "Image")
 run(["llvm-readelf-14", "-h", "-l", out / "ziyi-ram-init"], stdout=(out / "init-elf.txt").open("w"))
 report = {"result":"HOST_BUILD_PASS_NOT_PHONE_TESTED", "gpl_source": PIN,

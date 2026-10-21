@@ -19,10 +19,10 @@ def apply(root, source_fixes):
     body = text[start:end]
     anchor = '\tclass_for_each_device(&regulator_class, NULL, NULL,\n\t\t\t      regulator_late_cleanup);\n'
     assert body.count(anchor) == 1
-    guard = ('\t{\n'
+    guard = ('\t{\n\t\textern bool ziyi_ram_usb_mode(void);\n'
              '\t\tstruct device_node *ram_usb = of_find_node_by_path("/soc/ssusb@a600000");\n'
-             '\t\tbool keep_inherited = ram_usb &&\n'
-             '\t\t\tof_property_read_bool(ram_usb, "ziyi,ram-usb-device-only");\n'
+             '\t\tbool keep_inherited = ziyi_ram_usb_mode() || (ram_usb &&\n'
+             '\t\t\tof_property_read_bool(ram_usb, "ziyi,ram-usb-device-only"));\n'
              '\t\tof_node_put(ram_usb);\n'
              '\t\tif (keep_inherited) {\n'
              '\t\t\t/* Supply resolution above and normal driver/thermal controls remain. */\n'
@@ -34,6 +34,6 @@ def apply(root, source_fixes):
     path.write_bytes(updated)
     source_fixes[NAME] = {'before': hashlib.sha256(original).hexdigest(),
                           'after': hashlib.sha256(updated).hexdigest(),
-                          'requiresDtbBoolean': 'ziyi,ram-usb-device-only',
+                          'selector': 'ziyi_ram_usb=1 OR DTB ziyi,ram-usb-device-only',
                           'supplyResolutionPreserved': True,
                           'onlyUnusedLateCleanupSkipped': True}

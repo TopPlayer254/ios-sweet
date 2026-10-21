@@ -21,7 +21,7 @@ def apply(root, source_fixes):
     end = text.index('\n}\n', start) + 3
     body = text[start:end]
     changes = [
-        ('\tu32 val;\n', '\tu32 val;\n\tbool ziyi_ram_device_only = of_property_read_bool(node, "' + PROPERTY + '");\n'),
+        ('\tu32 val;\n', '\textern bool ziyi_ram_usb_mode(void);\n\tu32 val;\n\tbool ziyi_ram_device_only = ziyi_ram_usb_mode() || of_property_read_bool(node, "' + PROPERTY + '");\n'),
         ('\tdwc3_msm_parse_core_params(mdwc, dwc3_node);\n',
          '\tdwc3_msm_parse_core_params(mdwc, dwc3_node);\n'
          '\t/* RAM receiver: never select host or depend on Android cable policy. */\n'
@@ -49,6 +49,6 @@ def apply(root, source_fixes):
     path.write_bytes(updated)
     source_fixes[NAME] = {'before': hashlib.sha256(original).hexdigest(),
                           'after': hashlib.sha256(updated).hexdigest(),
-                          'requiresDtbBoolean': PROPERTY,
+                          'selector': 'ziyi_ram_usb=1 OR DTB ' + PROPERTY,
                           'peripheralOnly': True,
                           'resourceChecksPreserved': True}
