@@ -42,6 +42,13 @@ def session(fn):
 
 def full(c, p):
     c.hello(p.pid)
+    with tempfile.TemporaryDirectory() as d:
+        tree = Path(d)/'firmware.dtb'
+        assert c.firmware_tree(tree)['bytes'] == 72
+        assert tree.read_bytes()[:8] == bytes.fromhex('d00dfeed00000048')
+    for offset, count in [(0, 0), (72, 1), (2**32-1, 65536), (0, 65537)]:
+        assert c.request(mod.FDT, struct.pack('<II', offset, count), True)[0] == 3
+    passed.append('read-only firmware tree export and bounds')
     assert c.request(mod.ECHO, bytes(range(256)) * 256) == bytes(range(256)) * 256
     with tempfile.TemporaryDirectory() as d:
         path = Path(d) / "root"

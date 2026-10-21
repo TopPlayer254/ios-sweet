@@ -21,7 +21,7 @@
 
 #define MAX_PACKET 65536U
 #define MAGIC "ZYRMUSB1"
-enum { OP_HELLO=1, OP_ECHO=2, OP_BEGIN=3, OP_DATA=4, OP_END=5, OP_INFO=6 };
+enum { OP_HELLO=1, OP_ECHO=2, OP_BEGIN=3, OP_DATA=4, OP_END=5, OP_INFO=6, OP_FDT=7 };
 enum { OK=0, BAD_FRAME=1, BAD_SESSION=2, BAD_ARGUMENT=3, BAD_STATE=4,
        BAD_HASH=5, NO_MEMORY=6 };
 struct asset { uint8_t *p, expected[32]; uint64_t size, used; int sealed; };
@@ -29,6 +29,8 @@ static struct asset assets[3];
 static const uint64_t limits[3]={3ULL<<30,128ULL<<20,2ULL<<20};
 static uint8_t packet[MAX_PACKET], response[MAX_PACKET+64];
 static int outfd;
+static const uint8_t *firmware_fdt;
+static size_t firmware_bytes;
 static uint32_t le32(const void *p) { const uint8_t *q=p; return (uint32_t)q[0]|(uint32_t)q[1]<<8|(uint32_t)q[2]<<16|(uint32_t)q[3]<<24; }
 static uint64_t le64(const void *p) { const uint8_t *q=p; return le32(q)|(uint64_t)le32(q+4)<<32; }
 static void put32(void *p,uint32_t v) { uint8_t *q=p; for(int i=0;i<4;i++)q[i]=v>>(8*i); }
@@ -55,9 +57,14 @@ static int serve(int fd) {
   if(!hello&&op!=OP_HELLO)status=BAD_SESSION;
   else if(op==OP_HELLO){
    if(hello||n!=16)status=BAD_SESSION;
-   else { hello=1; memcpy(extra,packet,16);put32(extra+16,getpid());put32(extra+20,1);
+   else { hello=1; memcpy(extra,packet,16);put32(extra+16,getpid());put32(extra+20,2);
     put64(extra+24,limits[0]);put64(extra+32,limits[1]);put64(extra+40,limits[2]);extra_n=48; }
   }else if(op==OP_ECHO){ if(reply(op,seq,OK,packet,n))break;continue;
+  }else if(op==OP_FDT){
+   uint32_t offset=n==8?le32(packet):0,count=n==8?le32(packet+4):0;
+   if(!firmware_fdt)status=BAD_STATE;
+   else if(n!=8||!count||count>MAX_PACKET||offset>firmware_bytes||count>firmware_bytes-offset)status=BAD_ARGUMENT;
+   else {if(reply(op,seq,OK,firmware_fdt+offset,count))break;continue;}
   }else if(op==OP_BEGIN){
    uint32_t id=n>=4?le32(packet):3; uint64_t size=n>=12?le64(packet+4):0;
    if(n!=44||id>=3||size==0||size>limits[id])status=BAD_ARGUMENT;
@@ -96,12 +103,24 @@ static int serve(int fd) {
 static void halt(const char *s) { dprintf(2,"ZIYI RAM USB STOP: %s errno=%d\n",s,errno); for(;;)pause(); }
 static void dir(const char *p) { if(mkdir(p,0755)&&errno!=EEXIST)halt(p); }
 static void value(const char *p,const char *s) { int f=open(p,O_WRONLY|O_CLOEXEC);if(f<0||fullwrite(f,s,strlen(s)))halt(p);close(f); }
+static void capture_fdt(void) {
+ uint8_t h[40];int fd=open("/sys/firmware/fdt",O_RDONLY|O_CLOEXEC);
+ if(fd<0)return;
+ if(fullread(fd,h,sizeof(h))||memcmp(h,"\xd0\x0d\xfe\xed",4)){close(fd);return;}
+ uint32_t size=(uint32_t)h[4]<<24|(uint32_t)h[5]<<16|(uint32_t)h[6]<<8|h[7];
+ if(size<40||size>(2U<<20)){close(fd);return;}
+ void *p=mmap(NULL,size,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+ if(p==MAP_FAILED){close(fd);return;}
+ memcpy(p,h,40);
+ if(fullread(fd,(uint8_t *)p+40,size-40)||mprotect(p,size,PROT_READ)){munmap(p,size);close(fd);return;}
+ close(fd);firmware_fdt=p;firmware_bytes=size;
+}
 static void gadget(void) {
  const char *root="/sys/kernel/config/usb_gadget/ziyi";
  dir(root);if(chdir(root))halt("gadget cwd");
  value("idVendor","0x1d6b"); value("idProduct","0x0104");value("bcdUSB","0x0200");
  dir("strings/0x409");value("strings/0x409/serialnumber","ZIYI_RAM_USB");
- value("strings/0x409/manufacturer","Ziyi bring-up");value("strings/0x409/product","RAM USB loader v1");
+ value("strings/0x409/manufacturer","Ziyi bring-up");value("strings/0x409/product","RAM USB loader v2");
  dir("configs/c.1");dir("configs/c.1/strings/0x409");value("configs/c.1/strings/0x409/configuration","RAM only");
  value("configs/c.1/MaxPower","250");dir("functions/acm.usb0");
  if(symlink("../../functions/acm.usb0","configs/c.1/acm.usb0"))halt("acm link");
@@ -116,9 +135,10 @@ int main(void) {
  if(getpid()!=1)return 90;
  dir("/dev");if(mount("devtmpfs","/dev","devtmpfs",MS_NOSUID,"mode=0755"))halt("devtmpfs");
  int c=open("/dev/console",O_RDWR|O_NOCTTY);if(c>=0){dup2(c,0);dup2(c,1);dup2(c,2);if(c>2)close(c);}
- puts("ZIYI RAM USB PID1 v1: no storage, no shell, receive-only");fflush(stdout);
+ puts("ZIYI RAM USB PID1 v2: no storage, no shell, receive-only + firmware tree export");fflush(stdout);
  dir("/proc");dir("/sys");if(mount("proc","/proc","proc",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("proc");
  if(mount("sysfs","/sys","sysfs",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("sysfs");
+ capture_fdt();
  if(mount("configfs","/sys/kernel/config","configfs",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("configfs");
  gadget();
  /* Init creates no descendants and exposes no control socket or command RPC. */
@@ -130,5 +150,9 @@ int main(void) {
  }
 }
 #else
-int main(void) { outfd=STDOUT_FILENO;return serve(STDIN_FILENO); }
+int main(void) {
+ static const uint8_t fixture[72]={0xd0,0x0d,0xfe,0xed,0,0,0,72,0,0,0,56,0,0,0,72,0,0,0,40,0,0,0,17,0,0,0,16,0,0,0,0,0,0,0,0,0,0,0,16,
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,9};
+ firmware_fdt=fixture;firmware_bytes=sizeof(fixture);outfd=STDOUT_FILENO;return serve(STDIN_FILENO);
+}
 #endif

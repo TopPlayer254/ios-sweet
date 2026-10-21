@@ -10,7 +10,7 @@ import time
 import zlib
 
 MAGIC = b"ZYRMUSB1"
-HELLO, ECHO, BEGIN, DATA, END, INFO = range(1, 7)
+HELLO, ECHO, BEGIN, DATA, END, INFO, FDT = range(1, 8)
 MAX_PACKET = 65536
 
 
@@ -56,9 +56,25 @@ class Client:
         if len(result) != 48 or result[:16] != nonce:
             raise RuntimeError("nonce/hello mismatch")
         pid, version, *limits = struct.unpack("<IIQQQ", result[16:])
-        if pid != expected_pid or version != 1 or limits != [3 << 30, 128 << 20, 2 << 20]:
+        if pid != expected_pid or version != 2 or limits != [3 << 30, 128 << 20, 2 << 20]:
             raise RuntimeError("wrong PID1/protocol/limits")
         return {"pid": pid, "version": version, "limits": limits, "nonce": nonce.hex()}
+
+    def firmware_tree(self, path):
+        header = self.request(FDT, struct.pack('<II', 0, 40))
+        magic, size = struct.unpack_from('>II', header)
+        if len(header) != 40 or magic != 0xd00dfeed or not 40 <= size <= 2 << 20:
+            raise RuntimeError('invalid firmware FDT header')
+        raw = bytearray(header)
+        while len(raw) < size:
+            n = min(MAX_PACKET, size - len(raw))
+            b = self.request(FDT, struct.pack('<II', len(raw), n))
+            if len(b) != n:
+                raise RuntimeError('truncated firmware FDT')
+            raw.extend(b)
+        with Path(path).open('xb') as f:
+            f.write(raw)
+        return {'bytes': size, 'sha256': hashlib.sha256(raw).hexdigest(), 'source': '/sys/firmware/fdt, read-only'}
 
     def transfer(self, path, asset_id):
         path = Path(path)
