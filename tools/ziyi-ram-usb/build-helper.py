@@ -52,10 +52,10 @@ backup.verify(backup_dir)
 source_fixes={'drivers/usb/gadget/udc/core.c':{'before':hashlib.sha256(original_udc).hexdigest(),'after':hashlib.sha256(udc.read_bytes()).hexdigest()},
               'backupManifestSha256':backup.digest(backup_dir/'manifest.json')}
 # Preserve generic thermal monitoring. Only an absent vendor suspend hook has
-# no callback in this self-contained, module-free loader; leave its bool alone.
+# no callback in this self-contained, module-free loader; leave its int flag alone.
 thermal=root/'include/trace/hooks/thermal.h'
 with thermal.open('x') as f:
-    f.write('/* SPDX-License-Identifier: GPL-2.0-only */\n/* Ziyi RAM helper: absent optional vendor suspend hook; no subscribers. */\n#ifndef ZIYI_RAM_THERMAL_H\n#define ZIYI_RAM_THERMAL_H\n#include <linux/types.h>\nstruct thermal_zone_device;\nstatic inline void trace_android_vh_thermal_pm_notify_suspend(struct thermal_zone_device *tz, bool *irq_wakeable)\n{ (void)tz; (void)irq_wakeable; }\n#endif\n')
+    f.write('/* SPDX-License-Identifier: GPL-2.0-only */\n/* Ziyi RAM helper: absent optional vendor suspend hook; no subscribers. */\n#ifndef ZIYI_RAM_THERMAL_H\n#define ZIYI_RAM_THERMAL_H\n#include <linux/types.h>\nstruct thermal_zone_device;\nstatic inline void trace_android_vh_thermal_pm_notify_suspend(struct thermal_zone_device *tz, int *irq_wakeable)\n{ (void)tz; (void)irq_wakeable; }\n#endif\n')
 source_fixes['include/trace/hooks/thermal.h']={'new':hashlib.sha256(thermal.read_bytes()).hexdigest()}
 (out/'source-fixes.json').write_text(json.dumps(source_fixes,indent=2)+'\n')
 # Xiaomi's published source references an absent, optional hardware-ID Kconfig.
@@ -90,6 +90,9 @@ if any(int.from_bytes(elf[phoff+i*phsize:phoff+i*phsize+4], "little") in (2,3) f
 initlist = out / "initramfs.list"
 initlist.write_text(f"dir /dev 0755 0 0\nnod /dev/console 0600 0 0 c 5 1\nfile /ziyi-ram-init {out / 'ziyi-ram-init'} 0755 0 0\n")
 make = ["make", "-C", root, f"O={build}", "ARCH=arm64", "TECHPACK=n", "LLVM=1", "LLVM_IAS=1", "CC=clang-14", "LD=ld.lld-14", "AR=llvm-ar-14", "NM=llvm-nm-14", "OBJCOPY=llvm-objcopy-14", "OBJDUMP=llvm-objdump-14", "STRIP=llvm-strip-14", "CROSS_COMPILE=aarch64-linux-gnu-", "CLANG_TRIPLE=aarch64-linux-gnu-"]
+if shutil.which('ccache'):
+    make[make.index('CC=clang-14')]='CC=ccache clang-14'
+    make.append('HOSTCC=ccache gcc')
 run(make + ["gki_defconfig"])
 # Only board/USB/power dependencies may be promoted from vendor modules.
 # All other modules become disabled when MODULES=n; no Android module loader.

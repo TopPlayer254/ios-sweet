@@ -12,6 +12,10 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    env:
+      CCACHE_DIR: ${{ runner.temp }}/ziyi-ccache
+      CCACHE_MAXSIZE: 2G
+      CCACHE_COMPILERCHECK: content
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,7 +24,12 @@ jobs:
       - name: Install cross tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu libc6-dev-arm64-cross flex bison bc libssl-dev libelf-dev
+          sudo apt-get install -y clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu libc6-dev-arm64-cross flex bison bc libssl-dev libelf-dev ccache
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/ziyi-ccache
+          key: ziyi-ram-usb-24856283-clang14-${{ github.sha }}
+          restore-keys: ziyi-ram-usb-24856283-clang14-
       - name: Checkout pinned GPL ziyi source
         run: |
           git clone --depth 1 --single-branch --branch ziyi-s-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git "$RUNNER_TEMP/ziyi-linux"
@@ -47,3 +56,8 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ${{ runner.temp }}/ziyi-ccache
+          key: ziyi-ram-usb-24856283-clang14-${{ github.sha }}
