@@ -98,3 +98,6 @@ See [donor audit](Documentation/ziyi/DONOR-AUDIT-20261020.md) for the inspected
 parent/forks, source limitations, local evidence paths and subsequent plan.
 See [PID1 checkpoint](Documentation/ziyi/IOS-SWEET-20261020-S2-PID1.md)
 and [full S2 report](Documentation/ziyi/IOS-SWEET-20261020-S2.md).
+Latest instruction after Linux device2: finish the build and stop without
+running it. Earlier phone readiness is superseded; no further phone tests.
+

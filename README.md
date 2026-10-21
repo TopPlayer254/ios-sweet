@@ -63,3 +63,6 @@ Apple's open-source XNU 8796.141.3, and
 [blacktop/darwin-xnu-build](https://github.com/blacktop/darwin-xnu-build).
 The original donor guide/history remain available at that pinned upstream.
 No Apple root filesystem or device dumps are published here.
+> Latest instruction after Linux device2: finish the build and stop without
+> running it. Phone tests are paused; CI and local checks/packaging only.
+

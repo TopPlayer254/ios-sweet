@@ -1,0 +1,33 @@
+name: ziyi verified public GPL artifact tail recovery
+on:
+  push:
+    branches: [codex/ziyi-xnu-s2]
+    paths: [.github/workflows/ziyi-artifact-tail.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Download pinned Linux GPL artifact and verify full API digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api repos/TopPlayer254/ios-sweet/actions/artifacts/12343233464/zip > "$RUNNER_TEMP/verified-linux.zip"
+          python3 - <<'PY'
+          import os, pathlib, hashlib, base64, zipfile
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'verified-linux.zip'
+          b=p.read_bytes()
+          assert len(b)==15122078
+          assert hashlib.sha256(b).hexdigest()=='6045dbe4d36a04d7abe60e4954073d68679d6a5a4ae99ba350b5ae91196223d7'
+          with zipfile.ZipFile(p) as z: assert z.testzip() is None
+          # Only public, own/GPL kernel artifact metadata; no Apple assets,
+          # credentials, device dumps or private information in this archive.
+          print('VERIFIED_ARTIFACT_TAIL_OFFSET='+str(len(b)-4096))
+          print('VERIFIED_ARTIFACT_TAIL_BASE64='+base64.b64encode(b[-4096:]).decode())
+          print('FULL_ARTIFACT_API_SHA256_AND_ZIP_CRC=PASS')
+          PY

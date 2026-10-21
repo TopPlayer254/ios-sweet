@@ -49,3 +49,7 @@
 - Keep Apple assets, phone dumps, serials and credentials out of Git. Record
   exact commits, hashes, CI IDs and what is host-checked versus phone-tested.
 - Commit changes on the codex/ branch and maintain the active NOTES handoff.
+# Latest user instruction after Linux device2: finish the build, then STOP.
+# NO NEW PHONE RUNS. Earlier fastboot readiness/resumed RAM tests are superseded.
+# Complete CI and PC artifact/source/config/packaging audits only.
+
