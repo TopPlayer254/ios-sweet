@@ -36,7 +36,7 @@ spec=importlib.util.spec_from_file_location('backup',here/'verified_backup.py')
 backup=importlib.util.module_from_spec(spec);spec.loader.exec_module(backup)
 backup.ROOT=root
 backup_dir=root/'.ziyi-verified-prepatch'
-backup.create(backup_dir,['drivers/usb/gadget/udc/core.c','drivers/tty/serial/Makefile','drivers/tty/serial/Kconfig','fs/exec.c','fs/binfmt_elf.c','drivers/usb/dwc3/dwc3-msm-core.c','drivers/cpuidle/cpuidle-psci-domain.c','drivers/regulator/core.c'],[])
+backup.create(backup_dir,['drivers/usb/gadget/udc/core.c','drivers/tty/serial/Makefile','drivers/tty/serial/Kconfig','fs/exec.c','fs/binfmt_elf.c','drivers/usb/dwc3/dwc3-msm-core.c','drivers/cpuidle/cpuidle-psci-domain.c','drivers/regulator/core.c','drivers/cpuidle/cpuidle-psci.c'],[])
 backup.verify(backup_dir,current=True)
 udc=root/'drivers/usb/gadget/udc/core.c'
 original_udc=udc.read_bytes();text=original_udc.decode()
@@ -181,6 +181,7 @@ required_y = ["KEXEC", "BLK_DEV_INITRD", "INITRAMFS_FORCE", "DEVTMPFS", "PROC_FS
 required_n = ["MODULES", "BLOCK", "MTD", "SCSI", "MMC", "PSTORE", "DEVMEM", "DEVKMEM", "EFI", "KEXEC_FILE", "KVM", "VIRTUALIZATION", "REMOTEPROC", "WATCHDOG", "QCOM_QFPROM", "QCOM_QFPROM_SYS", "NVMEM_QCOM_QFPROM", "POWER_RESET_QCOM_DOWNLOAD_MODE", "USB_DUMMY_HCD", "USB_DWC3_HOST", "USB_DWC3_DUAL_ROLE"]
 required_y += ["GENERIC_IDLE_POLL_SETUP", "CPU_IDLE", "ARM_PSCI_CPUIDLE", "ARM_PSCI_CPUIDLE_DOMAIN"]
 assert "nohlt" in settings.get("CONFIG_CMDLINE", "").strip('"').split()
+assert "cpuidle.off=1" in settings.get("CONFIG_CMDLINE", "").strip('"').split()
 for key in required_y:
     if settings.get("CONFIG_"+key) != "y": raise RuntimeError(f"required builtin {key} missing")
 for key in required_n:
