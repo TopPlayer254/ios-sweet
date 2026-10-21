@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Use native firmware-coordinated ALWAYS_ON domains in the opt-in RAM helper."""
+import hashlib
+import subprocess
+
+PIN = '24856283d18328b8473cd10991c15749b88d7bf9'
+NAME = 'drivers/cpuidle/cpuidle-psci-domain.c'
+MARKER = 'ZIYI PSCI RAM: retain firmware coordination and ALWAYS_ON domains\n'
+
+
+def apply(root, source_fixes):
+    path = root / NAME
+    original = path.read_bytes()
+    assert original == subprocess.check_output(['git', '-C', str(root), 'show', PIN + ':' + NAME])
+    text = original.decode()
+    signature = 'static int psci_cpuidle_domain_probe(struct platform_device *pdev)\n{'
+    assert text.count(signature) == 1
+    start = text.index(signature); end = text.index('\n}\n', start) + 3
+    body = text[start:end]
+    changes = [
+        ('\tstruct device_node *node;\n', '\tstruct device_node *node, *ram_usb;\n'),
+        ('\tbool use_osi;\n', '\tbool use_osi, keep_ram_powered;\n'),
+        ('\tuse_osi = psci_pd_try_set_osi_mode();\n',
+         '\tram_usb = of_find_node_by_path("/soc/ssusb@a600000");\n'
+         '\tkeep_ram_powered = ram_usb &&\n'
+         '\t\tof_property_read_bool(ram_usb, "ziyi,ram-usb-device-only");\n'
+         '\tof_node_put(ram_usb);\n'
+         '\tif (keep_ram_powered) {\n'
+         '\t\t/* Native use_osi=false path registers genpd ALWAYS_ON. */\n'
+         '\t\tuse_osi = false;\n'
+         '\t\tdev_info(&pdev->dev, "' + MARKER.replace('\n', '\\n') + '");\n'
+         '\t} else {\n'
+         '\t\tuse_osi = psci_pd_try_set_osi_mode();\n'
+         '\t}\n')]
+    for before, after in changes:
+        assert body.count(before) == 1, before
+        body = body.replace(before, after, 1)
+    updated = (text[:start] + body + text[end:]).encode()
+    assert path.read_bytes() == original
+    path.write_bytes(updated)
+    source_fixes[NAME] = {'before': hashlib.sha256(original).hexdigest(),
+                          'after': hashlib.sha256(updated).hexdigest(),
+                          'requiresDtbBoolean': 'ziyi,ram-usb-device-only',
+                          'nativeFirmwareCoordinatedAlwaysOnPath': True}

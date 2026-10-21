@@ -14,7 +14,7 @@ static void ziyi_boot_usb_add(struct ziyi_boot_usb_log *log,const char *record) 
  const char *message=strchr(record,';');if(!message)return;message++;
  /* Exclude our own prior reports and noisy initcall names. */
  if(strstr(message,"ZIYI RAM USB ")==message||strstr(message,"calling ")||strstr(message,"initcall "))return;
- if(!strstr(message,"usb")&&!strstr(message,"USB")&&!strstr(message,"dwc3")&&!strstr(message,"phy"))return;
+ if(!strstr(message,"usb")&&!strstr(message,"USB")&&!strstr(message,"dwc3")&&!strstr(message,"phy")&&!strstr(message,"ZIYI PSCI RAM"))return;
  size_t n=strlen(message);if(n>=ZIYI_LOG_WIDTH)n=ZIYI_LOG_WIDTH-1;
  memcpy(log->line[log->next],message,n);log->line[log->next][n]=0;
  char *end=strchr(log->line[log->next],'\n');if(end)*end=0;

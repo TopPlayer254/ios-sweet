@@ -33,6 +33,9 @@ int main(void) {
  ziyi_boot_usb_add(&usb,"6,1,2,-;calling dwc3_init");ziyi_boot_usb_add(&usb,"6,1,2,-;initcall dwc3 returned 0");
  ziyi_boot_usb_add(&usb,"6,1,2,-;unrelated event");
  if(usb.kept||usb.seen)return 15;
+ ziyi_boot_usb_add(&usb,"6,1,2,-;psci: ZIYI PSCI RAM: retained\n");
+ if(usb.kept!=1||!equal(usb.line[0],"psci: ZIYI PSCI RAM: retained"))return 18;
+ memset(&usb,0,sizeof(usb));
  for(unsigned int i=0;i<ZIYI_LOG_SLOTS+3;i++){
   snprintf(buf,sizeof(buf),"6,1,2,-;dwc3 test %u\n",i);ziyi_boot_usb_add(&usb,buf);
  }

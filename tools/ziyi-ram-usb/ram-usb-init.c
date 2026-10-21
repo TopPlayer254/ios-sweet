@@ -164,7 +164,7 @@ static void gadget(void) {
  for(int t=0;t<120&&!udc[0];t++){ DIR *d=opendir("/sys/class/udc");struct dirent *e;
   if(d){while((e=readdir(d)))if(e->d_name[0]!='.') {if(udc[0])halt("multiple UDC");snprintf(udc,sizeof(udc),"%s",e->d_name);}closedir(d);}
  if(!udc[0]){
-  if(t%30==0){trace("waiting for physical UDC t=%d",t);snapshot("/sys/kernel/debug/devices_deferred");}
+  if(t%30==0){trace("waiting for physical UDC t=%d",t);boot_usb_history();}
   unsigned int left=sleep(1);
   if(t<4||t==7||t==15||t%30==29)trace("UDC timer tick=%d sleep_remaining=%u",t+1,left);
  }
@@ -188,9 +188,9 @@ int main(void) {
  dir("/proc");dir("/sys");if(mount("proc","/proc","proc",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("proc");
  if(mount("sysfs","/sys","sysfs",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("sysfs");
  trace("proc/sysfs mounted");
- dir("/sys/kernel/debug");
- if(mount("debugfs","/sys/kernel/debug","debugfs",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))trace("debugfs unavailable errno=%d",errno);
- snapshot("/proc/meminfo");snapshot("/sys/kernel/debug/devices_deferred");
+ boot_usb_history();
+ /* debugfs seq_file locking is not bounded by O_NONBLOCK; do not read it. */
+ snapshot("/proc/meminfo");
  capture_fdt();
  trace("firmware tree captured bytes=%zu",firmware_bytes);
  if(mount("configfs","/sys/kernel/config","configfs",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("configfs");
