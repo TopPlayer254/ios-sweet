@@ -58,6 +58,9 @@ CONFIG_USB_DWC3=y
 CONFIG_USB_DWC3_MSM=y
 CONFIG_USB_CONFIGFS=y
 CONFIG_USB_CONFIGFS_ACM=y
+# Require the physical DWC3 UDC; a GKI dummy_hcd cannot reach the USB cable.
+# CONFIG_USB_DUMMY_HCD is not set
+CONFIG_DEBUG_FS=y
 # CONFIG_USB_CONFIGFS_MASS_STORAGE is not set
 # CONFIG_DRM is not set
 # CONFIG_SOUND is not set

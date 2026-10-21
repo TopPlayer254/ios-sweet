@@ -17,6 +17,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/prctl.h>
+#include <sys/sysmacros.h>
+#include <stdarg.h>
 #include "sha256.h"
 
 #define MAX_PACKET 65536U
@@ -100,7 +102,21 @@ static int serve(int fd) {
 }
 
 #ifndef ZIYI_HOST_TEST
-static void halt(const char *s) { dprintf(2,"ZIYI RAM USB STOP: %s errno=%d\n",s,errno); for(;;)pause(); }
+static int klog=-1;
+static void trace(const char *fmt,...) {
+ char buf[512];va_list ap;va_start(ap,fmt);vsnprintf(buf,sizeof(buf),fmt,ap);va_end(ap);
+ if(klog>=0)dprintf(klog,"<6>ZIYI RAM USB %s\n",buf);
+}
+static void halt(const char *s) { int e=errno;trace("STOP: %s errno=%d",s,e);dprintf(2,"ZIYI RAM USB STOP: %s errno=%d\n",s,e);for(;;)pause(); }
+/* Fixed, readonly diagnostics only; never opens block or physical memory. */
+static void snapshot(const char *path) {
+ char buf[2049];int fd=open(path,O_RDONLY|O_CLOEXEC|O_NONBLOCK);
+ if(fd<0){trace("read %s errno=%d",path,errno);return;}
+ ssize_t n=read(fd,buf,sizeof(buf)-1);close(fd);
+ if(n<0){trace("read %s failed",path);return;}
+ buf[n]=0;trace("snapshot %s bytes=%zd",path,n);
+ for(char *s=buf,*e;s&&*s;s=e){e=strchr(s,'\n');if(e)*e++=0;trace("  %s",s);}
+}
 static void dir(const char *p) { if(mkdir(p,0755)&&errno!=EEXIST)halt(p); }
 static void value(const char *p,const char *s) { int f=open(p,O_WRONLY|O_CLOEXEC);if(f<0||fullwrite(f,s,strlen(s)))halt(p);close(f); }
 static void capture_fdt(void) {
@@ -127,26 +143,45 @@ static void gadget(void) {
  char udc[256]={0};
  for(int t=0;t<120&&!udc[0];t++){ DIR *d=opendir("/sys/class/udc");struct dirent *e;
   if(d){while((e=readdir(d)))if(e->d_name[0]!='.') {if(udc[0])halt("multiple UDC");snprintf(udc,sizeof(udc),"%s",e->d_name);}closedir(d);}
-  if(!udc[0])sleep(1);
+ if(!udc[0]){
+  if(t%30==0){trace("waiting for physical UDC t=%d",t);snapshot("/sys/kernel/debug/devices_deferred");}
+  sleep(1);
  }
- if(!udc[0])halt("no UDC after 120 seconds");value("UDC",udc);if(chdir("/"))halt("return cwd");
+ }
+ if(!udc[0])halt("no UDC after 120 seconds");
+ if(strstr(udc,"dummy"))halt("dummy UDC rejected");
+ trace("binding UDC %s",udc);value("UDC",udc);trace("UDC bound %s",udc);if(chdir("/"))halt("return cwd");
 }
 int main(void) {
  if(getpid()!=1)return 90;
+ /* The initramfs is RAM. Establish kmsg before any potentially blocking tty
+  * open, so progress does not depend on simplefb/tty0 being registered. */
+ if(mknod("/dev/kmsg",S_IFCHR|0600,makedev(1,11))&&errno!=EEXIST)return 91;
+ klog=open("/dev/kmsg",O_WRONLY|O_CLOEXEC|O_NONBLOCK);
+ trace("PID1 v2 ENTRY pid=%d",getpid());
  dir("/dev");if(mount("devtmpfs","/dev","devtmpfs",MS_NOSUID,"mode=0755"))halt("devtmpfs");
- int c=open("/dev/console",O_RDWR|O_NOCTTY);if(c>=0){dup2(c,0);dup2(c,1);dup2(c,2);if(c>2)close(c);}
+ trace("devtmpfs mounted");
+ int c=open("/dev/console",O_RDWR|O_NOCTTY|O_NONBLOCK);if(c>=0){dup2(c,0);dup2(c,1);dup2(c,2);if(c>2)close(c);}
+ trace("console open %s",c>=0?"OK":"unavailable; kmsg retained");
  puts("ZIYI RAM USB PID1 v2: no storage, no shell, receive-only + firmware tree export");fflush(stdout);
  dir("/proc");dir("/sys");if(mount("proc","/proc","proc",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("proc");
  if(mount("sysfs","/sys","sysfs",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("sysfs");
+ trace("proc/sysfs mounted");
+ dir("/sys/kernel/debug");
+ if(mount("debugfs","/sys/kernel/debug","debugfs",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))trace("debugfs unavailable errno=%d",errno);
+ snapshot("/proc/meminfo");snapshot("/sys/kernel/debug/devices_deferred");
  capture_fdt();
+ trace("firmware tree captured bytes=%zu",firmware_bytes);
  if(mount("configfs","/sys/kernel/config","configfs",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))halt("configfs");
+ trace("configfs mounted; creating ACM gadget");
  gadget();
  /* Init creates no descendants and exposes no control socket or command RPC. */
  if(prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0))halt("no_new_privs");
+ trace("receiver ready; waiting ttyGS0 host open");
  for(;;){int f=open("/dev/ttyGS0",O_RDWR|O_NOCTTY);if(f<0){sleep(1);continue;}
   struct termios t;if(tcgetattr(f,&t))halt("tty termios");cfmakeraw(&t);t.c_cflag|=CLOCAL|CREAD;
   t.c_cc[VMIN]=1;t.c_cc[VTIME]=0;if(tcsetattr(f,TCSANOW,&t))halt("tty raw");
-  outfd=f;serve(f);close(f);sleep(1);
+  trace("ttyGS0 connected");outfd=f;serve(f);close(f);trace("ttyGS0 disconnected; assets discarded");sleep(1);
  }
 }
 #else
