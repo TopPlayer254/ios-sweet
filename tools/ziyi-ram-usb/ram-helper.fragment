@@ -2,7 +2,7 @@
 CONFIG_MODULES=n
 # CDC ACM uses the DWC3 core DMA, without the optional vendor SPS/BAM path.
 # CONFIG_SPS is not set
-# CONFIG_ANDROID_DEBUG_KINFO is not set
+# CONFIG_DEBUG_KINFO is not set
 CONFIG_LOCALVERSION="-ziyi-ram-usb"
 CONFIG_LOCALVERSION_AUTO=n
 CONFIG_WERROR=n
