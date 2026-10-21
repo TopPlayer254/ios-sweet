@@ -36,7 +36,7 @@ spec=importlib.util.spec_from_file_location('backup',here/'verified_backup.py')
 backup=importlib.util.module_from_spec(spec);spec.loader.exec_module(backup)
 backup.ROOT=root
 backup_dir=root/'.ziyi-verified-prepatch'
-backup.create(backup_dir,['drivers/usb/gadget/udc/core.c','drivers/tty/serial/Makefile','drivers/tty/serial/Kconfig'],[])
+backup.create(backup_dir,['drivers/usb/gadget/udc/core.c','drivers/tty/serial/Makefile','drivers/tty/serial/Kconfig','fs/exec.c','fs/binfmt_elf.c'],[])
 backup.verify(backup_dir,current=True)
 udc=root/'drivers/usb/gadget/udc/core.c'
 original_udc=udc.read_bytes();text=original_udc.decode()
@@ -66,6 +66,10 @@ with early_target.open('xb') as f:f.write((here/'ziyi-earlycon.c').read_bytes())
 source_fixes['drivers/tty/serial/Makefile']={'before':hashlib.sha256(serial_before).hexdigest(),'after':hashlib.sha256(serial_make.read_bytes()).hexdigest()}
 source_fixes['drivers/tty/serial/ziyi-earlycon.c']={'new':hashlib.sha256(early_target.read_bytes()).hexdigest()}
 backup.verify(backup_dir)
+trace_spec=importlib.util.spec_from_file_location('exec_trace',here/'exec-trace.py')
+trace_module=importlib.util.module_from_spec(trace_spec);trace_spec.loader.exec_module(trace_module)
+trace_module.apply(root,source_fixes)
+backup.verify(backup_dir)
 # Preserve generic thermal monitoring. Only an absent vendor suspend hook has
 # no callback in this self-contained, module-free loader; leave its int flag alone.
 thermal=root/'include/trace/hooks/thermal.h'
@@ -93,7 +97,7 @@ if missing: raise RuntimeError("unresolved source Kconfigs: " + repr(missing))
 run(["gcc", "-O2", "-Wall", "-Wextra", "-Werror", "-DZIYI_HOST_TEST", here / "ram-usb-init.c", here / "sha256.c", "-o", out / "host-server"])
 with (out / "protocol-tests.json").open("w") as f:
     run([sys.executable, here / "test-protocol.py", out / "host-server"], stdout=f)
-run(["aarch64-linux-gnu-gcc", "-static", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-misleading-indentation", "-Wl,--build-id=sha1", here / "ram-usb-init.c", here / "sha256.c", "-o", out / "ziyi-ram-init"])
+run(["aarch64-linux-gnu-gcc", "-static", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-misleading-indentation", "-Wl,--build-id=sha1", "-Wl,-e,ziyi_linux_entry", here / "ram-entry.S", here / "ram-usb-init.c", here / "sha256.c", "-o", out / "ziyi-ram-init"])
 elf = (out / "ziyi-ram-init").read_bytes()
 if elf[:6] != b"\x7fELF\x02\x01" or int.from_bytes(elf[18:20], "little") != 183:
     raise RuntimeError("not ELF64 AArch64 little-endian")
@@ -102,8 +106,16 @@ phsize = int.from_bytes(elf[54:56], "little")
 phnum = int.from_bytes(elf[56:58], "little")
 if any(int.from_bytes(elf[phoff+i*phsize:phoff+i*phsize+4], "little") in (2,3) for i in range(phnum)):
     raise RuntimeError("unexpected PT_INTERP/PT_DYNAMIC")
+init_symbols=subprocess.check_output(['aarch64-linux-gnu-nm','--defined-only',out/'ziyi-ram-init'],text=True)
+def address(name):
+    found=re.findall(r'^([0-9a-f]+) [A-Za-z] '+re.escape(name)+r'$',init_symbols,re.M)
+    assert len(found)==1,name
+    return int(found[0],16)
+raw_entry=address('ziyi_linux_entry');libc_entry=address('_start')
+assert int.from_bytes(elf[24:32],'little')==raw_entry and raw_entry!=libc_entry
+entry_audit={'elfEntry':hex(raw_entry),'rawEntry':hex(raw_entry),'libcStart':hex(libc_entry),'initialStackUnchanged':True}
 initlist = out / "initramfs.list"
-initlist.write_text(f"dir /dev 0755 0 0\nnod /dev/console 0600 0 0 c 5 1\nfile /ziyi-ram-init {out / 'ziyi-ram-init'} 0755 0 0\n")
+initlist.write_text(f"dir /dev 0755 0 0\nnod /dev/console 0600 0 0 c 5 1\nnod /dev/kmsg 0600 0 0 c 1 11\nfile /ziyi-ram-init {out / 'ziyi-ram-init'} 0755 0 0\n")
 make = ["make", "-C", root, f"O={build}", "ARCH=arm64", "TECHPACK=n", "LLVM=1", "LLVM_IAS=1", "CC=clang-14", "LD=ld.lld-14", "AR=llvm-ar-14", "NM=llvm-nm-14", "OBJCOPY=llvm-objcopy-14", "OBJDUMP=llvm-objdump-14", "STRIP=llvm-strip-14", "CROSS_COMPILE=aarch64-linux-gnu-", "CLANG_TRIPLE=aarch64-linux-gnu-"]
 if shutil.which('ccache'):
     make[make.index('CC=clang-14')]='CC=ccache clang-14'
@@ -178,6 +190,7 @@ if not re.search(r"\bdwc3_msm_probe$", symbols, re.M): raise RuntimeError("MSM U
 shutil.copy2(image, out / "Image")
 run(["llvm-readelf-14", "-h", "-l", out / "ziyi-ram-init"], stdout=(out / "init-elf.txt").open("w"))
 report = {"result":"HOST_BUILD_PASS_NOT_PHONE_TESTED", "gpl_source": PIN,
+ "init_entry_audit":entry_audit,
  "gpl_source_fixes":source_fixes,"techpack":"disabled by make TECHPACK=n",
  "image_effective_bytes":effective_size,"image_text_offset":int.from_bytes(header[8:16],"little"),
  "image_flags":int.from_bytes(header[24:32],"little"),
