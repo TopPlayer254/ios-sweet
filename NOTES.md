@@ -1,5 +1,16 @@
 # Active ziyi handoff — 2026-10-21
 
+**Latest user instruction: finish the build, DO NOT RUN IT.** No phone boot,
+reboot/readiness request or device interaction until explicitly resumed.
+The next large milestone is real Apple launchd and complete root delivery.
+CI39516221989 built a3GiB HFSX headless launchd/dyld/cache probe root; native
+fsck/readonly reread and PC GCM/full-root/all48 files hashes PASS. Both own
+static probes match an independent Windows build. Boot-task fsck/mount are
+explicitly OWN no-op fixtures; the real launchd is Apple's original binary.
+The storage-disabled Linux USB loader is under build/audit; it currently has
+receive-only protocol, no kexec RPC. See
+Documentation/ziyi/IOS-SWEET-20261021-LARGE-RAM-USERSPACE.md.
+
 Hardware is Xiaomi 13 Lite / ziyi / SM7450. Userland target is iPhone X
 D22AP / iPhone10,3, iOS 16.7.16 (20H392). The next visible goal is a real
 lock screen with advancing clocks, with separate PosterBoard process proof.

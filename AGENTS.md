@@ -22,6 +22,13 @@
   on the phone before entry. X12 PASSED HFS md0 mount, own PID1, two file
   reads/symlink lookup and5s heartbeat (6/10 at300/320s), no visible panic.
   X preentry CRC25075121,11segment/ADT/new args SHA match. Apple UI is unproven.
+- Latest instruction2026-10-21: finish the build only; DO NOT RUN IT.
+  Complete CI/artifact/config/root audits and packaging; no phone boot,
+  reboot, readiness query or device interaction until explicitly resumed.
+  Read Documentation/ziyi/IOS-SWEET-20261021-LARGE-RAM-USERSPACE.md.
+  A3GiB headless real Apple launchd/dyld/cache root has passed macOS fsck/
+  reread and PC GCM/full-root/48file hashes. Own no-op boot-task fixtures
+  and one own child job are included; no phone Apple execution or GUI yet.
 - Current experiments remain RAM-only. The user's 2026-10-20 conditional
   storage authorization applies only near userspace, after complete verified
   backups of both GPT copies and all affected partitions including userdata,

@@ -213,6 +213,23 @@ Upstream mkiosroot.sh делает большой HFS root для userdata; он
 не читались и не записывались. Условия полного backup/restore перед storage
 пока не выполнены.
 
+## Крупный следующий этап: root для настоящего launchd
+
+CI39516221989 SUCCESS:3GiB bare HFSX с реальными Apple launchd/dyld и всеми43
+cache files построен, native fsck и readonly hashes/ownership reread PASS.
+На ПК AES-GCM/decode, SHA256 всего3GiB образа и независимое чтение всех48
+files из HFS PASS; оба своих Mach-O byte-identical к Windows сборке.
+Последнее указание пользователя — закончить билд без запуска на телефоне.
+Root SHA3182c24764d970c2bfe7bec5c6f73f07b79aae602047ab9aae29f79756532006.
+Собственные no-op boot-task fixtures и один собственный launchd child входят
+в probe; stock services/GUI не включены. Apple код в CI не исполнялся.
+Cache CI39511379890 завершился: raw2738257920/gzip971428136bytes с полным
+round-trip. Для полной доставки реализован bounded receive-only USB RAM init
+и PC client, проверены malformed traffic и реальный16MiB transfer в CI.
+Отдельное Linux-ядро без storage ещё собирается/аудируется. На телефоне пока
+остаётся доказанным только HFS с нашим PID1, не Apple launchd.
+Подробно: [большой RAM userspace этап](IOS-SWEET-20261021-LARGE-RAM-USERSPACE.md).
+
 ## Расстояние до крупных рубежей
 
 Darwin + собственный PID1 достигнуты и повторены на полном source-CI kernel;
