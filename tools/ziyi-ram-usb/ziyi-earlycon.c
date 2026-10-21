@@ -51,7 +51,7 @@ static void write_fb(struct console *con, const char *s, unsigned int n)
         for (y = 0; y < CELL_H; y++) {
             u32 *dst = (u32 *)(p + y * FB_STRIDE) + column * CELL_W;
             for (x = 0; x < count; x++) {
-                u8 glyph = font_vga_8x16.data[(unsigned char)s[x] * 16 + y / 2];
+                u8 glyph = ((const u8 *)font_vga_8x16.data)[(unsigned char)s[x] * 16 + y / 2];
                 for (bit = 0; bit < CELL_W; bit++)
                     *dst++ = glyph & (0x80 >> (bit / 2)) ? 0x00ffffff : 0;
             }
