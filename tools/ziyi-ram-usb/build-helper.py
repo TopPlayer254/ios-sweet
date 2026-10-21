@@ -36,7 +36,7 @@ spec=importlib.util.spec_from_file_location('backup',here/'verified_backup.py')
 backup=importlib.util.module_from_spec(spec);spec.loader.exec_module(backup)
 backup.ROOT=root
 backup_dir=root/'.ziyi-verified-prepatch'
-backup.create(backup_dir,['drivers/usb/gadget/udc/core.c','drivers/tty/serial/Makefile','drivers/tty/serial/Kconfig','fs/exec.c','fs/binfmt_elf.c'],[])
+backup.create(backup_dir,['drivers/usb/gadget/udc/core.c','drivers/tty/serial/Makefile','drivers/tty/serial/Kconfig','fs/exec.c','fs/binfmt_elf.c','drivers/usb/dwc3/dwc3-msm-core.c'],[])
 backup.verify(backup_dir,current=True)
 udc=root/'drivers/usb/gadget/udc/core.c'
 original_udc=udc.read_bytes();text=original_udc.decode()
@@ -69,6 +69,10 @@ backup.verify(backup_dir)
 trace_spec=importlib.util.spec_from_file_location('exec_trace',here/'exec-trace.py')
 trace_module=importlib.util.module_from_spec(trace_spec);trace_spec.loader.exec_module(trace_module)
 trace_module.apply(root,source_fixes)
+backup.verify(backup_dir)
+usb_spec=importlib.util.spec_from_file_location('usb_device_profile',here/'usb-device-profile.py')
+usb_module=importlib.util.module_from_spec(usb_spec);usb_spec.loader.exec_module(usb_module)
+usb_module.apply(root,source_fixes)
 backup.verify(backup_dir)
 # Preserve generic thermal monitoring. Only an absent vendor suspend hook has
 # no callback in this self-contained, module-free loader; leave its int flag alone.

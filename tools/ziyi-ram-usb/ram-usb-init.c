@@ -139,7 +139,9 @@ static void gadget(void) {
  value("strings/0x409/manufacturer","Ziyi bring-up");value("strings/0x409/product","RAM USB loader v2");
  dir("configs/c.1");dir("configs/c.1/strings/0x409");value("configs/c.1/strings/0x409/configuration","RAM only");
  value("configs/c.1/MaxPower","250");dir("functions/acm.usb0");
- if(symlink("../../functions/acm.usb0","configs/c.1/acm.usb0"))halt("acm link");
+ /* configfs resolves the target from cwd using kern_path, not link parent. */
+ if(symlink("/sys/kernel/config/usb_gadget/ziyi/functions/acm.usb0","configs/c.1/acm.usb0"))halt("acm link");
+ trace("ACM function linked");
  char udc[256]={0};
  for(int t=0;t<120&&!udc[0];t++){ DIR *d=opendir("/sys/class/udc");struct dirent *e;
   if(d){while((e=readdir(d)))if(e->d_name[0]!='.') {if(udc[0])halt("multiple UDC");snprintf(udc,sizeof(udc),"%s",e->d_name);}closedir(d);}

@@ -78,5 +78,6 @@ CONFIG_FRAMEBUFFER_CONSOLE=y
 CONFIG_FONT_8x16=y
 CONFIG_ZIYI_RAM_EARLYCON=y
 # Preserve clocks/power for the inherited display; don't execute Android init.
-CONFIG_CMDLINE="earlycon=ziyi_fb keep_bootcon console=tty0 fbcon=nodefer initcall_debug ignore_loglevel printk.devkmsg=on rdinit=/ziyi-ram-init maxcpus=1 clk_ignore_unused pd_ignore_unused regulator_ignore_unused panic=0 loglevel=7"
+# Bring-up: let drivers validate actual resources without Android supplier links.
+CONFIG_CMDLINE="earlycon=ziyi_fb keep_bootcon console=tty0 fbcon=nodefer initcall_debug ignore_loglevel printk.devkmsg=on rdinit=/ziyi-ram-init maxcpus=1 clk_ignore_unused pd_ignore_unused regulator_ignore_unused fw_devlink=off panic=0 loglevel=7"
 CONFIG_CMDLINE_FORCE=y
