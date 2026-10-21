@@ -35,6 +35,8 @@ int main(void) {
  if(usb.kept||usb.seen)return 15;
  ziyi_boot_usb_add(&usb,"6,1,2,-;psci: ZIYI PSCI RAM: retained\n");
  if(usb.kept!=1||!equal(usb.line[0],"psci: ZIYI PSCI RAM: retained"))return 18;
+ ziyi_boot_usb_add(&usb,"6,1,2,-;ZIYI RAM REGULATOR: retained\n");
+ if(usb.kept!=2||!equal(usb.line[1],"ZIYI RAM REGULATOR: retained"))return 19;
  memset(&usb,0,sizeof(usb));
  for(unsigned int i=0;i<ZIYI_LOG_SLOTS+3;i++){
   snprintf(buf,sizeof(buf),"6,1,2,-;dwc3 test %u\n",i);ziyi_boot_usb_add(&usb,buf);
