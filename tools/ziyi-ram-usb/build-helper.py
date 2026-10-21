@@ -127,7 +127,26 @@ for key in required_y:
 for key in required_n:
     if settings.get("CONFIG_"+key) in ("y", "m"): raise RuntimeError(f"forbidden {key} enabled")
 shutil.copy2(build / ".config", out / "helper.config")
-run(make + [f"-j{min(os.cpu_count() or 2, 8)}", "Image"])
+try:
+    run(make + [f"-j{min(os.cpu_count() or 2, 8)}", "Image"])
+except subprocess.CalledProcessError:
+    # Preserve the actual unresolved/weak references and linker script. Never
+    # turn a failed link into a candidate or suppress relocation range checks.
+    obj=build/'vmlinux.o'
+    if obj.exists():
+        undefined=subprocess.check_output(['llvm-nm-14','--undefined-only',str(obj)],text=True)
+        print('LINK_DIAGNOSTIC undefined and weak references:\n'+undefined,flush=True)
+        with (out/'link-undefined.txt').open('w') as f:f.write(undefined)
+        with (out/'link-relocations.txt').open('w') as f:
+            names={line.split()[-1] for line in undefined.splitlines() if line.split()}
+            proc=subprocess.Popen(['llvm-readelf-14','--relocations','--wide',str(obj)],stdout=subprocess.PIPE,text=True)
+            for line in proc.stdout:
+                if any(name in line.split() for name in names):f.write(line)
+            assert proc.wait()==0
+        shutil.copy2(build/'arch/arm64/kernel/vmlinux.lds',out/'link-vmlinux.lds')
+        # One verbose repeat uses existing objects and records the exact command.
+        subprocess.run(make+['V=1','vmlinux'],check=False)
+    raise
 image = build / "arch/arm64/boot/Image"
 with image.open("rb") as f: header = f.read(64)
 effective_size=int.from_bytes(header[16:24],"little")

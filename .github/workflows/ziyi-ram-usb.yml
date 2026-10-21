@@ -52,6 +52,8 @@ jobs:
             ${{ runner.temp }}/ram-usb/init-elf.txt
             ${{ runner.temp }}/ram-usb/selected.fragment
             ${{ runner.temp }}/ram-usb/source-fixes.json
+            ${{ runner.temp }}/ram-usb/link-*.txt
+            ${{ runner.temp }}/ram-usb/link-vmlinux.lds
             ${{ runner.temp }}/ziyi-linux/.ziyi-verified-prepatch/
             ${{ runner.temp }}/ram-usb-build.log
           if-no-files-found: error
