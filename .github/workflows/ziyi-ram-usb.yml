@@ -1,3 +1,4 @@
+# PID1 progress uses /dev/kmsg; reject virtual UDCs before physical delivery.
 name: ziyi storage-disabled RAM USB helper
 on:
   workflow_dispatch:
