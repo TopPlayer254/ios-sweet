@@ -1,0 +1,18 @@
+{
+  "bsd/dev/sweet_ufs.c": {
+    "before": "6b538c11f6949b9fe0c61b0267fd75ad578a314154d2da14c4b332d8cb80fc37",
+    "after": "6f63b1e966189367f1c4af7f3b463d70fb908477e1b4d24775d52b863109160c"
+  },
+  "bsd/kern/bsd_init.c": {
+    "before": "9d18e974fdc02e018b3749b3faefff9ff7049f0ffa01c60d59351c182ce0a3e3",
+    "after": "c638dcbc79eacb615ae810226d6d4fb1a38a0847f3ddb8c3ee8dabd444a4be3f"
+  },
+  "bsd/dev/ziyi_u1_core.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "9ca5fdafa00a9098c735d8f202923dec63a8e9bdb6394e1ebe871cd70bf61249"
+  },
+  "bsd/dev/ziyi_u1_sha.inc": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "4dccadc752745d402b7c224a26b0bf06259a27de32c7a595eac7d3d9037a6578"
+  }
+}

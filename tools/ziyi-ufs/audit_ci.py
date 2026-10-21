@@ -1,0 +1,18 @@
+"""Verify the U1 sources actually compiled by the full XNU CI build."""
+from pathlib import Path
+import hashlib,json,os
+root=Path.cwd()
+expected=json.loads((root/'tools/ziyi-ufs/manifest.json').read_text())
+checks=[]
+for name,item in expected.items():
+    data=(root/'dxb/xnu'/name).read_bytes()
+    actual=hashlib.sha256(data).hexdigest()
+    assert actual==item['after'],(name,actual,item)
+    dest=root/'u1-evidence/sources'/name
+    dest.parent.mkdir(parents=True,exist_ok=True)
+    with dest.open('xb') as f:f.write(data)
+    checks.append(dict(path=name,sha256=actual,bytes=len(data)))
+report=dict(result='U1_CI_SOURCE_AUDIT_PASS',commit=os.environ['GITHUB_SHA'],files=checks,
+            phoneTested=False,mediaWritesImplemented=False)
+(root/'u1-evidence/audit.json').write_text(json.dumps(report,indent=2)+'\n')
+print(json.dumps(report))

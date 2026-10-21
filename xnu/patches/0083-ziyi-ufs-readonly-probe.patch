@@ -1,0 +1,406 @@
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -1,11 +1,192 @@
+-/* ziyi early profile: hardware provider deliberately absent.
+- * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
++/* SPDX-License-Identifier: BSD-2-Clause-Patent
++ * Ziyi U1: opt-in native UFS read-only probe. md0 remains the root device.
++ * No media write CDB, devfs disk, HFS-on-UFS mount, PHY reset or storage log.
+  */
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+-#include <stdint.h>
+-/* dev_t is signed 32-bit in the pinned XNU bsd/sys/_types.h. */
+-int sweet_ufs_rootdev(int32_t *dev) { (void)dev; return 6; /* ENXIO */ }
+-void sweet_log_append(const char *text,int bytes) { (void)text; (void)bytes; }
+-uint32_t sweet_log_copy(uint64_t *pos,char *out,uint32_t max) { (void)pos; (void)out; (void)max; return 0; }
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <sys/errno.h>
++#include <kern/clock.h>
++#include <arm/caches_internal.h>
++#include <vm/pmap.h>
++#include <vm/vm_kern.h>
++#include <pexpert/pexpert.h>
++#include "ziyi_u1_core.h"
++#include "ziyi_u1_sha.inc"
++extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
++extern ppnum_t pmap_find_phys(pmap_t,addr64_t);
++void ziyi_ufs_probe(void);
++int sweet_ufs_rootdev(int32_t *dev) { (void)dev;return ENXIO; }
++void sweet_log_append(const char *text,int bytes) { (void)text;(void)bytes; }
++uint32_t sweet_log_copy(uint64_t *pos,char *out,uint32_t max) { (void)pos;(void)out;(void)max;return 0; }
+ uint64_t sweet_log_position(void) { return 0; }
++
++/* Addresses and SID from the saved ziyi firmware DT, not a donor profile. */
++#define U1_HCI 0x01d84000ull
++#define U1_SMMU 0x15000000ull
++#define U1_SID 0x20u
++static struct {
++    vm_offset_t hci,smmu,dma;
++    uint64_t pa,blocks,deadline;
++    uint32_t bs,smr[128],s2cr[128],cr0,id0;
++    unsigned lun,tag,commands;
++    int poison,owned;
++    uint8_t headers[2][U1_BLOCK_MAX],tables[2][U1_TABLE_MAX],sample[U1_BLOCK_MAX];
++} u1;
++static uint32_t hr(unsigned off) { return *(volatile uint32_t *)(u1.hci+off); }
++static void hw(unsigned off,uint32_t v) { *(volatile uint32_t *)(u1.hci+off)=v;__builtin_arm_dsb(0xf); }
++static uint32_t sr(unsigned off) { return *(volatile uint32_t *)(u1.smmu+off); }
++static void sync_dma(void) { flush_dcache64((addr64_t)u1.pa,U1_DMA_BYTES,TRUE);__builtin_arm_dsb(0xf); }
++static uint64_t after_ms(unsigned ms) {
++    uint64_t t;nanoseconds_to_absolutetime((uint64_t)ms*1000000,&t);return mach_absolute_time()+t;
++}
++static int wait_reg(unsigned off,uint32_t mask,uint32_t want,unsigned ms) {
++    uint64_t end=after_ms(ms);
++    for(unsigned i=0;i<ms*1000+1;i++) {
++        if((hr(off)&mask)==want) return 1;
++        if(mach_absolute_time()>=end) break;
++        delay(1);
++    }
++    return 0;
++}
++static void digest(const char *what,const void *p,size_t n) {
++    uint8_t h[32];char hex[65];static const char digits[]="0123456789abcdef";
++    u1_sha256(p,n,h);
++    for(unsigned i=0;i<32;i++) { hex[2*i]=digits[h[i]>>4];hex[2*i+1]=digits[h[i]&15]; }
++    hex[64]=0;printf("ZIYI U1 SHA %s bytes=%lu %s\n",what,(unsigned long)n,hex);
++}
++static int bypass(void) {
++    uint32_t cr=sr(0),id=sr(0x20);unsigned n=id&255;
++    if(!n||n>128) return 0;
++    for(unsigned i=0;i<n;i++) { u1.smr[i]=sr(0x800+4*i);u1.s2cr[i]=sr(0xc00+4*i); }
++    if(cr!=sr(0)||id!=sr(0x20)) return 0;
++    u1.cr0=cr;u1.id0=id;
++    return u1_smmu_bypass(cr,id,u1.smr,u1.s2cr,n,U1_SID);
++}
++/* A timeout permanently poisons this probe. Its allocation is NEVER freed,
++ * including if abort/queue stop cannot be confirmed; late DMA has owned RAM. */
++static void stop_queue(void) {
++    if(!u1.owned) return;
++    if(hr(0x58)&1) hw(0x5c,~1u);
++    hw(0x60,0);
++    int stopped=wait_reg(0x60,1,0,10),empty=wait_reg(0x58,~0u,0,10);
++    printf("ZIYI U1 queue stopped=%d empty=%d retained DMA=%llx\n",stopped,empty,u1.pa);
++}
++static int command(unsigned op,uint64_t lba,uint32_t count) {
++    struct u1_cmd c;
++    if(u1.poison||++u1.commands>256||mach_absolute_time()>=u1.deadline||
++       !u1_command(&c,op,u1.lun,lba,count,u1.bs,u1.blocks)) return 0;
++    if(!bypass()||hr(0x58)||hr(0x78)||!(hr(0x60)&1)||
++       hr(0x50)!=(uint32_t)u1.pa||hr(0x54)!=(uint32_t)(u1.pa>>32)) {
++        u1.poison=1;printf("ZIYI U1 STOP ownership/identity changed\n");return 0;
++    }
++    bzero((void *)u1.dma,U1_DMA_BYTES);
++    uint32_t *utrd=(uint32_t *)u1.dma;
++    uint8_t *ucd=(uint8_t *)(u1.dma+0x1000),*resp=ucd+512;
++    uint32_t *prdt=(uint32_t *)(ucd+1024);
++    unsigned tag=(++u1.tag)&255;
++    ucd[0]=1;ucd[1]=c.bytes?0x40:0;ucd[2]=c.lun;ucd[3]=(uint8_t)tag;
++    u1_putbe32(ucd+12,c.bytes);bcopy(c.cdb,ucd+16,16);
++    utrd[0]=(1u<<28)|(1u<<24)|(c.bytes?(2u<<25):0);
++    utrd[2]=15;utrd[4]=(uint32_t)(u1.pa+0x1000);utrd[5]=(uint32_t)((u1.pa+0x1000)>>32);
++    utrd[6]=(128u<<16)|128u;
++    if(c.bytes) {
++        utrd[7]=(256u<<16)|1u;prdt[0]=(uint32_t)(u1.pa+U1_DATA_OFF);
++        prdt[1]=(uint32_t)((u1.pa+U1_DATA_OFF)>>32);prdt[3]=c.bytes-1;
++    }
++    sync_dma();hw(0x58,1);
++    if(!wait_reg(0x58,1,0,1000)) {
++        u1.poison=1;printf("ZIYI U1 TIMEOUT op=%x lun=%u\n",op,u1.lun);stop_queue();return 0;
++    }
++    sync_dma();
++    if((utrd[2]&255)||resp[0]!=0x21||resp[2]!=c.lun||resp[3]!=tag||resp[6]||
++       resp[7]||(resp[1]&0x60)||u1_be32(resp+12)) {
++        printf("ZIYI U1 SCSI op=%x lun=%u ocs=%x rsp=%x status=%x\n",op,u1.lun,utrd[2]&255,resp[0],resp[7]);
++        /* SCSI check condition can be retried (TUR), malformed completions cannot. */
++        if((utrd[2]&255)||resp[0]!=0x21||resp[2]!=c.lun||resp[3]!=tag) u1.poison=1;
++        return 0;
++    }
++    return 1;
++}
++static int read_twice(uint64_t lba,uint8_t *out) {
++    if(!command(0x28,lba,1)) return 0;
++    bcopy((void *)(u1.dma+U1_DATA_OFF),out,u1.bs);
++    if(!command(0x28,lba,1)) return 0;
++    if(!u1_equal(out,(void *)(u1.dma+U1_DATA_OFF),u1.bs)) {
++        u1.poison=1;printf("ZIYI U1 STOP repeated read mismatch\n");return 0;
++    }
++    return 1;
++}
++static int table_read(const struct u1_gpt *g,uint8_t *out) {
++    uint32_t bytes=g->count*128;
++    for(uint32_t off=0;off<bytes;off+=u1.bs) {
++        if(!read_twice(g->entries_lba+off/u1.bs,u1.sample)) return 0;
++        bcopy(u1.sample,out+off,MIN(u1.bs,bytes-off));
++    }
++    return 1;
++}
++static int probe_lun(void) {
++    int ready=0;
++    for(unsigned i=0;i<3&&!u1.poison;i++) if(command(0,0,0)) { ready=1;break; }
++    if(!ready||!command(0x25,0,0)) return 0;
++    uint8_t *p=(uint8_t *)(u1.dma+U1_DATA_OFF);size_t n=8;
++    if(u1_be32(p)==UINT32_MAX) { if(!command(0x9e,0,0)) return 0;n=32; }
++    if(!u1_capacity(p,n,&u1.blocks,&u1.bs)) return 0;
++    printf("ZIYI U1 capacity lun=%u blocks=%llu block=%u\n",u1.lun,u1.blocks,u1.bs);
++    struct u1_gpt g[2];struct u1_partition part;
++    if(!read_twice(1,u1.headers[0])||!read_twice(u1.blocks-1,u1.headers[1])||
++       !u1_header(u1.headers[0],u1.bs,1,u1.blocks,&g[0])||
++       !u1_header(u1.headers[1],u1.bs,u1.blocks-1,u1.blocks,&g[1])) return 0;
++    if(!table_read(&g[0],u1.tables[0])||!table_read(&g[1],u1.tables[1])||
++       !u1_tables(&g[0],&g[1],u1.tables[0],u1.tables[1],&part)) return 0;
++    printf("ZIYI U1 GPT BOTH CRC PASS lun=%u userdata first=%llu last=%llu bytes=%llu\n",
++           u1.lun,part.first,part.last,(part.last-part.first+1)*u1.bs);
++    digest("primary-header",u1.headers[0],u1.bs);digest("backup-header",u1.headers[1],u1.bs);
++    digest("GPT-entries",u1.tables[0],g[0].count*128);
++    if(!read_twice(part.first,u1.sample)) return 0;
++    digest("userdata-first-block",u1.sample,u1.bs);
++    if(!read_twice(part.last,u1.sample)) return 0;
++    digest("userdata-last-block",u1.sample,u1.bs);
++    return 1;
++}
++void ziyi_ufs_probe(void) {
++    static int once;uint32_t enabled=0;
++    if(!PE_parse_boot_argn("ziyi_ufs_probe",&enabled,sizeof(enabled))||enabled!=1||once++) return;
++    printf("ZIYI U1 BEGIN: native read-only, root remains md0\n");
++    u1.hci=ml_io_map(U1_HCI,0x4000);
++    if(!u1.hci) return;
++    uint32_t cap=hr(0),hcs=hr(0x30),hce=hr(0x34),ver=hr(8);
++    printf("ZIYI U1 HCI ver=%x cap=%x hce=%x hcs=%x dbr=%x tm=%x\n",ver,cap,hce,hcs,hr(0x58),hr(0x78));
++    if(!(hce&1)||(hcs&3)!=3||hr(0x58)||hr(0x78)||!ver||ver==~0u) {
++        printf("ZIYI U1 STOP host not ready/idle\n");return;
++    }
++    u1.smmu=ml_io_map(U1_SMMU,0x4000);
++    if(!u1.smmu) return;
++    int identity=bypass();
++    printf("ZIYI U1 SMMU cr0=%x id0=%x sid=20 explicit-bypass=%d\n",u1.cr0,u1.id0,identity);
++    if(!identity) { printf("ZIYI U1 STOP DMA mapping unproved; no queue writes\n");return; }
++    if(kmem_alloc_contig(kernel_map,&u1.dma,U1_DMA_BYTES,PAGE_MASK,0,0,
++                        KMA_DATA|KMA_ZERO|KMA_PERMANENT,VM_KERN_MEMORY_IOKIT)!=KERN_SUCCESS) return;
++    u1.pa=ptoa_64(pmap_find_phys(kernel_pmap,(addr64_t)u1.dma));
++    if(!u1.pa||u1.pa%PAGE_SIZE||u1.pa>UINT64_MAX-U1_DMA_BYTES) return;
++    for(unsigned off=0;off<U1_DMA_BYTES;off+=PAGE_SIZE)
++        if(ptoa_64(pmap_find_phys(kernel_pmap,(addr64_t)u1.dma+off))!=u1.pa+off) return;
++    static const unsigned widths[]={32,36,40,42,44,48};unsigned oas=sr(0x28)&15;
++    if(oas>=sizeof(widths)/sizeof(widths[0])||(u1.pa+U1_DMA_BYTES-1)>>widths[oas]) return;
++    if(((u1.pa+U1_DMA_BYTES-1)>>32)&&!(cap&(1u<<24))) return;
++    if(!bypass()||hr(0x58)||hr(0x78)) return;
++    hw(0x60,0);
++    if(!wait_reg(0x60,1,0,10)) return;
++    hw(0x24,0);sync_dma();
++    hw(0x50,(uint32_t)u1.pa);hw(0x54,(uint32_t)(u1.pa>>32));
++    if(hr(0x50)!=(uint32_t)u1.pa||hr(0x54)!=(uint32_t)(u1.pa>>32)) return;
++    u1.owned=1;hw(0x60,1);u1.deadline=after_ms(30000);
++    int success=0;
++    for(u1.lun=0;u1.lun<8&&!u1.poison;u1.lun++) {
++        u1.blocks=0;u1.bs=0;
++        if(probe_lun()) { success=1;break; }
++    }
++    stop_queue();
++    printf("ZIYI U1 END success=%d poisoned=%d commands=%u; no media writes\n",success,u1.poison,u1.commands);
++}
+ #endif
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -1044,6 +1044,11 @@
+ 	siginit(kernproc);
+ 
+ 	bsd_init_kprintf("calling bsd_utaskbootstrap\n");
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++    /* U1 is opt-in, retains md0, and never exposes a writable disk. */
++    extern void ziyi_ufs_probe(void);
++    ziyi_ufs_probe();
++#endif
+ 	bsd_utaskbootstrap();
+ 
+ 	pal_kernel_announce();
+--- /dev/null
++++ b/bsd/dev/ziyi_u1_core.h
+@@ -0,0 +1,136 @@
++/* SPDX-License-Identifier: BSD-2-Clause-Patent
++ * Bounded, allocation-free read-only UFS probe policy. No hardware access here.
++ */
++#ifndef ZIYI_U1_CORE_H
++#define ZIYI_U1_CORE_H
++#include <stdint.h>
++#include <stddef.h>
++#define U1_TABLE_MAX 16384u
++#define U1_BLOCK_MAX 4096u
++#define U1_DMA_BYTES 0x8000u
++#define U1_DATA_OFF 0x4000u
++struct u1_cmd { uint8_t cdb[16]; uint8_t lun; uint32_t bytes; };
++struct u1_gpt {
++    uint64_t current,other,first,last,entries_lba;
++    uint32_t count,table_crc,header_crc;
++    uint8_t guid[16];
++};
++struct u1_partition { uint64_t first,last; uint8_t guid[16]; };
++static inline uint32_t u1_le32(const uint8_t *p) {
++    return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
++}
++static inline uint64_t u1_le64(const uint8_t *p) { return u1_le32(p)|(uint64_t)u1_le32(p+4)<<32; }
++static inline uint32_t u1_be32(const uint8_t *p) {
++    return (uint32_t)p[3]|(uint32_t)p[2]<<8|(uint32_t)p[1]<<16|(uint32_t)p[0]<<24;
++}
++static inline uint64_t u1_be64(const uint8_t *p) { return (uint64_t)u1_be32(p)<<32|u1_be32(p+4); }
++static inline void u1_putbe32(uint8_t *p,uint32_t x) {
++    p[0]=(uint8_t)(x>>24);p[1]=(uint8_t)(x>>16);p[2]=(uint8_t)(x>>8);p[3]=(uint8_t)x;
++}
++static inline int u1_equal(const void *aa,const void *bb,size_t n) {
++    const uint8_t *a=aa,*b=bb; for(size_t i=0;i<n;i++) if(a[i]!=b[i]) return 0; return 1;
++}
++static inline int u1_nonzero(const uint8_t *p,size_t n) {
++    for(size_t i=0;i<n;i++) if(p[i]) return 1; return 0;
++}
++static inline uint32_t u1_crc(const uint8_t *p,size_t n,size_t zero_start,size_t zero_end) {
++    uint32_t c=~0u;
++    for(size_t i=0;i<n;i++) {
++        c^=(i>=zero_start&&i<zero_end)?0:p[i];
++        for(unsigned j=0;j<8;j++) c=(c>>1)^(0xedb88320u & (0u-(c&1)));
++    }
++    return ~c;
++}
++/* Only these four generated CDBs can enter the hardware backend. */
++static inline int u1_command(struct u1_cmd *out,unsigned op,unsigned lun,
++                             uint64_t lba,uint32_t count,uint32_t bs,uint64_t blocks) {
++    struct u1_cmd c={{0},0,0};
++    if(lun>7) return 0;
++    c.lun=(uint8_t)lun;c.cdb[0]=(uint8_t)op;
++    if(op==0 && !lba && !count) { }
++    else if(op==0x25 && !lba && !count) c.bytes=8;
++    else if(op==0x9e && !lba && !count) { c.cdb[1]=0x10;c.cdb[13]=32;c.bytes=32; }
++    else if(op==0x28) {
++        if((bs!=512&&bs!=4096)||!count||count>U1_BLOCK_MAX/bs||!blocks||
++           lba>=blocks||count>blocks-lba||lba>UINT32_MAX||
++           (uint64_t)count-1>UINT32_MAX-lba) return 0;
++        u1_putbe32(c.cdb+2,(uint32_t)lba);
++        c.cdb[7]=(uint8_t)(count>>8);c.cdb[8]=(uint8_t)count;c.bytes=count*bs;
++    } else return 0;
++    *out=c;return 1;
++}
++static inline int u1_capacity(const uint8_t *p,size_t n,uint64_t *blocks,uint32_t *bs) {
++    if(n!=8&&n!=32) return 0;
++    uint64_t last=n==8?u1_be32(p):u1_be64(p);
++    uint32_t size=u1_be32(p+(n==8?4:8));
++    /* READ(10) implementation deliberately rejects larger media. */
++    if(last==UINT64_MAX||last>=UINT32_MAX||last<8||(size!=512&&size!=4096)) return 0;
++    *blocks=last+1;*bs=size;return 1;
++}
++/* Conservative SMMUv2 proof: one explicit bypass match, no global override,
++ * no extended SID mode. Never infer bypass from an unmatched stream. */
++static inline int u1_smmu_bypass(uint32_t cr0,uint32_t id0,const uint32_t *smr,
++                                const uint32_t *s2cr,unsigned n,unsigned sid) {
++    if(cr0&((1u<<0)|(1u<<3)|(1u<<12)|(1u<<13))) return 0;
++    if(!(id0&(1u<<27))||!n||n>128||(id0&255)!=n||sid>0x7fff) return 0;
++    unsigned matches=0;
++    for(unsigned i=0;i<n;i++) {
++        if(!(smr[i]&(1u<<31))) continue;
++        unsigned mask=(smr[i]>>16)&0x7fff,id=smr[i]&0x7fff;
++        if(((sid^id)&~mask)!=0) continue;
++        if(((s2cr[i]>>16)&3)!=1) return 0;
++        matches++;
++    }
++    return matches==1;
++}
++static inline int u1_header(const uint8_t *p,uint32_t bs,uint64_t at,uint64_t blocks,
++                            struct u1_gpt *g) {
++    if((bs!=512&&bs!=4096)||blocks<8||at>=blocks||!u1_equal(p,"EFI PART",8)) return 0;
++    uint32_t hs=u1_le32(p+12),n=u1_le32(p+80),esz=u1_le32(p+84);
++    if(u1_le32(p+8)!=0x10000||hs!=92||u1_le32(p+20)||!n||n>128||esz!=128) return 0;
++    if(u1_crc(p,hs,16,20)!=u1_le32(p+16)) return 0;
++    struct u1_gpt x;
++    x.current=u1_le64(p+24);x.other=u1_le64(p+32);x.first=u1_le64(p+40);
++    x.last=u1_le64(p+48);x.entries_lba=u1_le64(p+72);x.count=n;
++    x.table_crc=u1_le32(p+88);x.header_crc=u1_le32(p+16);
++    for(unsigned i=0;i<16;i++) x.guid[i]=p[56+i];
++    uint64_t table_blocks=((uint64_t)n*128+bs-1)/bs;
++    if(x.current!=at||x.first>x.last||x.first<3||x.last>=blocks-1||
++       !u1_nonzero(x.guid,16)||x.entries_lba>=blocks||table_blocks>blocks-x.entries_lba) return 0;
++    if(at==1) {
++        if(x.other!=blocks-1||x.entries_lba<2||x.entries_lba+table_blocks>x.first) return 0;
++    } else if(at==blocks-1) {
++        if(x.other!=1||x.entries_lba<=x.last||x.entries_lba+table_blocks>at) return 0;
++    } else return 0;
++    *g=x;return 1;
++}
++static inline int u1_tables(const struct u1_gpt *a,const struct u1_gpt *b,
++                            const uint8_t *ta,const uint8_t *tb,struct u1_partition *part) {
++    if(a->current!=1||a->other!=b->current||b->other!=1||a->first!=b->first||
++       a->last!=b->last||a->count!=b->count||!a->count||a->count>128||
++       a->table_crc!=b->table_crc||!u1_equal(a->guid,b->guid,16)) return 0;
++    size_t bytes=(size_t)a->count*128;
++    if(!u1_equal(ta,tb,bytes)||u1_crc(ta,bytes,bytes,bytes)!=a->table_crc) return 0;
++    unsigned found=0;
++    for(unsigned i=0;i<a->count;i++) {
++        const uint8_t *e=ta+i*128;
++        if(!u1_nonzero(e,16)) continue;
++        uint64_t f=u1_le64(e+32),l=u1_le64(e+40);
++        if(!u1_nonzero(e+16,16)||f>l||f<a->first||l>a->last) return 0;
++        for(unsigned j=0;j<i;j++) {
++            const uint8_t *o=ta+j*128;
++            if(!u1_nonzero(o,16)) continue;
++            if(u1_equal(e+16,o+16,16)||!(l<u1_le64(o+32)||f>u1_le64(o+40))) return 0;
++        }
++        static const char name[]="userdata";
++        int match=1;
++        for(unsigned j=0;j<sizeof(name);j++) if(e[56+j*2]!=(uint8_t)name[j]||e[57+j*2]) match=0;
++        if(match) {
++            if(++found!=1) return 0;
++            part->first=f;part->last=l;
++            for(unsigned j=0;j<16;j++) part->guid[j]=e[16+j];
++        }
++    }
++    return found==1;
++}
++#endif
+--- /dev/null
++++ b/bsd/dev/ziyi_u1_sha.inc
+@@ -0,0 +1,48 @@
++/** SHA-256, FIPS 180-4 algorithm; no firmware callbacks. BSD-2-Clause-Patent. */
++/* Portable adaptation of the previously hardware-tested M2 SHA-256. */
++/* Included after fixed-width integer definitions. */
++typedef uint32_t UINT32;
++typedef uint64_t UINT64;
++typedef uint8_t UINT8;
++typedef size_t UINTN;
++#define CONST const
++#define VOID void
++
++static const UINT32 K[64] = {
++  0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
++  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
++  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
++  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
++  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
++  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
++  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
++  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
++};
++static UINT32 R (UINT32 X, unsigned N) { return (X >> N) | (X << (32-N)); }
++static VOID Block (UINT32 H[8], CONST UINT8 B[64]) {
++  UINT32 W[64], A,C,D,E,F,G,J,L,T1,T2;
++  unsigned I;
++  for (I=0; I<16; I++) W[I]=((UINT32)B[I*4]<<24)|((UINT32)B[I*4+1]<<16)|((UINT32)B[I*4+2]<<8)|B[I*4+3];
++  for (I=16; I<64; I++) W[I]=W[I-16]+(R(W[I-15],7)^R(W[I-15],18)^(W[I-15]>>3))+W[I-7]+(R(W[I-2],17)^R(W[I-2],19)^(W[I-2]>>10));
++  A=H[0]; C=H[1]; D=H[2]; E=H[3]; F=H[4]; G=H[5]; J=H[6]; L=H[7];
++  for (I=0; I<64; I++) {
++    T1=L+(R(F,6)^R(F,11)^R(F,25))+((F&G)^(~F&J))+K[I]+W[I];
++    T2=(R(A,2)^R(A,13)^R(A,22))+((A&C)^(A&D)^(C&D));
++    L=J; J=G; G=F; F=E+T1; E=D; D=C; C=A; A=T1+T2;
++  }
++  H[0]+=A; H[1]+=C; H[2]+=D; H[3]+=E; H[4]+=F; H[5]+=G; H[6]+=J; H[7]+=L;
++}
++static VOID u1_sha256 (CONST VOID *Data, UINTN Bytes, UINT8 Digest[32]) {
++  UINT32 H[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
++  CONST UINT8 *P=Data;
++  UINT8 Tail[128];
++  UINTN I, Full=Bytes & ~(UINTN)63, Remaining=Bytes-Full, TailBytes=Remaining<56?64:128;
++  UINT64 Bits=(UINT64)Bytes*8;
++  for (I=0; I<Full; I+=64) Block(H,P+I);
++  for (I=0; I<TailBytes; I++) Tail[I]=0;
++  for (I=0; I<Remaining; I++) Tail[I]=P[Full+I];
++  Tail[Remaining]=0x80;
++  for (I=0; I<8; I++) Tail[TailBytes-1-I]=(UINT8)(Bits>>(I*8));
++  Block(H,Tail); if (TailBytes==128) Block(H,Tail+64);
++  for (I=0; I<32; I++) Digest[I]=(UINT8)(H[I/4]>>(24-8*(I%4)));
++}
