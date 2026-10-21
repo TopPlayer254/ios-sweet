@@ -6,7 +6,7 @@ import subprocess
 PIN = '24856283d18328b8473cd10991c15749b88d7bf9'
 NAME = 'drivers/usb/dwc3/dwc3-msm-core.c'
 PROPERTY = 'ziyi,ram-usb-device-only'
-MARKERS = ('ZIYI RAM USB device-only profile requires peripheral dr_mode\n',
+MARKERS = ('ZIYI RAM USB device-only profile rejects host or unknown dr_mode\n',
            'ZIYI RAM USB device-only profile: native peripheral start\n')
 
 
@@ -25,9 +25,14 @@ def apply(root, source_fixes):
         ('\tdwc3_msm_parse_core_params(mdwc, dwc3_node);\n',
          '\tdwc3_msm_parse_core_params(mdwc, dwc3_node);\n'
          '\t/* RAM receiver: never select host or depend on Android cable policy. */\n'
-         '\tif (ziyi_ram_device_only && mdwc->dr_mode != USB_DR_MODE_PERIPHERAL) {\n'
-         '\t\tdev_err(dev, "' + MARKERS[0].replace('\n', '\\n') + '");\n'
-         '\t\tret = -EINVAL;\n\t\tgoto err;\n\t}\n'),
+         '\tif (ziyi_ram_device_only) {\n'
+         '\t\tif (!IS_ENABLED(CONFIG_USB_DWC3_GADGET) ||\n'
+         '\t\t    (mdwc->dr_mode != USB_DR_MODE_PERIPHERAL &&\n'
+         '\t\t     mdwc->dr_mode != USB_DR_MODE_OTG)) {\n'
+         '\t\t\tdev_err(dev, "' + MARKERS[0].replace('\n', '\\n') + '");\n'
+         '\t\t\tret = -EINVAL;\n\t\t\tgoto err;\n\t\t}\n'
+         '\t\t/* ABL overlays peripheral to OTG; both glue and core stay device-only. */\n'
+         '\t\tmdwc->dr_mode = USB_DR_MODE_PERIPHERAL;\n\t}\n'),
         ('\tif (of_property_read_bool(node, "usb-role-switch")) {\n',
          '\tif (!ziyi_ram_device_only && of_property_read_bool(node, "usb-role-switch")) {\n'),
         ('\tif (of_property_read_bool(node, "extcon")) {\n',
