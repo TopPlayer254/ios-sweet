@@ -64,10 +64,11 @@ CONFIG_USB_CONFIGFS_ACM=y
 # Require the physical DWC3 UDC; a GKI dummy_hcd cannot reach the USB cable.
 # CONFIG_USB_DUMMY_HCD is not set
 CONFIG_DEBUG_FS=y
-# Keep early RAM bring-up out of PSCI CPU suspend and WFI. The pinned arm64
-# kernel selects GENERIC_IDLE_POLL_SETUP; nohlt forces the native polling loop.
-# CONFIG_CPU_IDLE is not set
-# CONFIG_ARM_PSCI_CPUIDLE is not set
+# Register PSCI cluster power domains: RPMh RSC depends on cluster-pd.
+# Keep actual idle entry out of the RAM test with nohlt's native polling loop.
+CONFIG_CPU_IDLE=y
+CONFIG_ARM_PSCI_CPUIDLE=y
+CONFIG_ARM_PSCI_CPUIDLE_DOMAIN=y
 # CONFIG_USB_CONFIGFS_MASS_STORAGE is not set
 # CONFIG_DRM is not set
 # CONFIG_SOUND is not set
