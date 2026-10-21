@@ -41,6 +41,9 @@ jobs:
             ${{ runner.temp }}/ram-usb/build-audit.json
             ${{ runner.temp }}/ram-usb/init-elf.txt
             ${{ runner.temp }}/ram-usb/selected.fragment
+            ${{ runner.temp }}/ram-usb/source-fixes.json
+            ${{ runner.temp }}/ziyi-linux/.ziyi-verified-prepatch/
             ${{ runner.temp }}/ram-usb-build.log
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14

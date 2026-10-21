@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build a receive-only RAM USB kernel candidate; never packages/boots a phone."""
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -28,6 +29,35 @@ if actual != PIN:
     raise RuntimeError("GPL source pin mismatch")
 if subprocess.check_output(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"]):
     raise RuntimeError("dirty GPL source")
+# The public release accidentally defines two identical UDC helpers twice.
+# Back up the exact affected source with the workspace's verified-backup tool,
+# including an independent restore copy, before deleting only the duplicates.
+spec=importlib.util.spec_from_file_location('backup',here/'verified_backup.py')
+backup=importlib.util.module_from_spec(spec);spec.loader.exec_module(backup)
+backup.ROOT=root
+backup_dir=root/'.ziyi-verified-prepatch'
+backup.create(backup_dir,['drivers/usb/gadget/udc/core.c'],[])
+backup.verify(backup_dir,current=True)
+udc=root/'drivers/usb/gadget/udc/core.c'
+original_udc=udc.read_bytes();text=original_udc.decode()
+for action in ['enable','disable']:
+    pattern=rf'static inline void usb_gadget_{action}_async_callbacks\(struct usb_udc \*udc\)\n\{{.*?\n\}}'
+    matches=list(re.finditer(pattern,text,re.S))
+    if len(matches)!=2 or re.sub(r'\s+','',matches[0][0])!=re.sub(r'\s+','',matches[1][0]):
+        raise RuntimeError('UDC duplicate-fix source guard failed')
+    text=text[:matches[0].start()]+text[matches[0].end():]
+assert udc.read_bytes()==original_udc
+udc.write_text(text)
+backup.verify(backup_dir)
+source_fixes={'drivers/usb/gadget/udc/core.c':{'before':hashlib.sha256(original_udc).hexdigest(),'after':hashlib.sha256(udc.read_bytes()).hexdigest()},
+              'backupManifestSha256':backup.digest(backup_dir/'manifest.json')}
+# Preserve generic thermal monitoring. Only an absent vendor suspend hook has
+# no callback in this self-contained, module-free loader; leave its bool alone.
+thermal=root/'include/trace/hooks/thermal.h'
+with thermal.open('x') as f:
+    f.write('/* SPDX-License-Identifier: GPL-2.0-only */\n/* Ziyi RAM helper: absent optional vendor suspend hook; no subscribers. */\n#ifndef ZIYI_RAM_THERMAL_H\n#define ZIYI_RAM_THERMAL_H\n#include <linux/types.h>\nstruct thermal_zone_device;\nstatic inline void trace_android_vh_thermal_pm_notify_suspend(struct thermal_zone_device *tz, bool *irq_wakeable)\n{ (void)tz; (void)irq_wakeable; }\n#endif\n')
+source_fixes['include/trace/hooks/thermal.h']={'new':hashlib.sha256(thermal.read_bytes()).hexdigest()}
+(out/'source-fixes.json').write_text(json.dumps(source_fixes,indent=2)+'\n')
 # Xiaomi's published source references an absent, optional hardware-ID Kconfig.
 # Add only a NEW disabled stub; never patch unrelated sources or mask failures.
 for name, symbol in [('hwid','MI_HARDWARE_ID'),('plaid','XIAOMI_GPU_PLAID')]:
@@ -59,7 +89,7 @@ if any(int.from_bytes(elf[phoff+i*phsize:phoff+i*phsize+4], "little") in (2,3) f
     raise RuntimeError("unexpected PT_INTERP/PT_DYNAMIC")
 initlist = out / "initramfs.list"
 initlist.write_text(f"dir /dev 0755 0 0\nnod /dev/console 0600 0 0 c 5 1\nfile /ziyi-ram-init {out / 'ziyi-ram-init'} 0755 0 0\n")
-make = ["make", "-C", root, f"O={build}", "ARCH=arm64", "LLVM=1", "LLVM_IAS=1", "CC=clang-14", "LD=ld.lld-14", "AR=llvm-ar-14", "NM=llvm-nm-14", "OBJCOPY=llvm-objcopy-14", "OBJDUMP=llvm-objdump-14", "STRIP=llvm-strip-14", "CROSS_COMPILE=aarch64-linux-gnu-", "CLANG_TRIPLE=aarch64-linux-gnu-"]
+make = ["make", "-C", root, f"O={build}", "ARCH=arm64", "TECHPACK=n", "LLVM=1", "LLVM_IAS=1", "CC=clang-14", "LD=ld.lld-14", "AR=llvm-ar-14", "NM=llvm-nm-14", "OBJCOPY=llvm-objcopy-14", "OBJDUMP=llvm-objdump-14", "STRIP=llvm-strip-14", "CROSS_COMPILE=aarch64-linux-gnu-", "CLANG_TRIPLE=aarch64-linux-gnu-"]
 run(make + ["gki_defconfig"])
 # Only board/USB/power dependencies may be promoted from vendor modules.
 # All other modules become disabled when MODULES=n; no Android module loader.
@@ -109,6 +139,7 @@ if not re.search(r"\bdwc3_msm_probe$", symbols, re.M): raise RuntimeError("MSM U
 shutil.copy2(image, out / "Image")
 run(["llvm-readelf-14", "-h", "-l", out / "ziyi-ram-init"], stdout=(out / "init-elf.txt").open("w"))
 report = {"result":"HOST_BUILD_PASS_NOT_PHONE_TESTED", "gpl_source": PIN,
+ "gpl_source_fixes":source_fixes,"techpack":"disabled by make TECHPACK=n",
  "image_effective_bytes":effective_size,"image_text_offset":int.from_bytes(header[8:16],"little"),
  "image_flags":int.from_bytes(header[24:32],"little"),
  "optional_stubs":{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for n in ['hwid','plaid'] for p in [(root/f'drivers/misc/{n}/Kconfig'),(root/f'drivers/misc/{n}/Makefile')]},

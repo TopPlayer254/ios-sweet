@@ -74,7 +74,9 @@ class Client:
                 self.request(DATA, struct.pack("<IQ", asset_id, sent) + chunk)
                 digest.update(chunk)
                 sent += len(chunk)
-        if sent != before.st_size or digest.digest() != expected or path.stat() != before:
+        after = path.stat()
+        stable = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        if sent != before.st_size or digest.digest() != expected or not stable:
             raise RuntimeError("source changed during transfer")
         result = self.request(END, struct.pack("<I", asset_id))
         if result != expected:
