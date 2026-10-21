@@ -1,9 +1,17 @@
 # Active ziyi handoff — 2026-10-21
 
-**Latest user instruction: continue toward the real lock screen with clocks;
-phone ready.** Audited RAM-only tests are explicitly resumed after the earlier
-build-only pause. Verify artifacts/config/placement and the expected device
-before boot; storage backup/restore gates remain unsatisfied.
+**FINAL2026-10-21: HOST_BUILD_COMPLETE_NOT_RUN.** CI39595655078 and local
+artifact/source/config/builtin-init/boot packaging audits PASS. Final image:
+`Artifacts/ziyi/ios-sweet/20261021-linux-usb-boot-v3/ziyi-ram-usb-build-only.img`,
+12550144bytes, SHA256
+`a4bbbdc1f438276af464fefcac7bffaf08af5ca75ff43d886fca29057850abba`.
+Build finished; STOPPED per latest user instruction, no new phone operations.
+Read Documentation/ziyi/IOS-SWEET-20261021-BUILD-ONLY-COMPLETE.md.
+
+
+**Current instruction: build complete, STOP without phone operations.**
+The earlier phone-ready reply is superseded. Storage backup/restore gates
+remain unsatisfied.
 The next large milestone is real Apple launchd and complete root delivery.
 CI39516221989 built a3GiB HFSX headless launchd/dyld/cache probe root; native
 fsck/readonly reread and PC GCM/full-root/all48 files hashes PASS. Both own

@@ -1,5 +1,14 @@
 # iOS / XNU bring-up for Xiaomi 13 Lite (ziyi)
 
+**FINAL2026-10-21: HOST_BUILD_COMPLETE_NOT_RUN.** CI39595655078 and local
+artifact/source/config/builtin-init/boot packaging audits PASS. Final image:
+`Artifacts/ziyi/ios-sweet/20261021-linux-usb-boot-v3/ziyi-ram-usb-build-only.img`,
+12550144bytes, SHA256
+`a4bbbdc1f438276af464fefcac7bffaf08af5ca75ff43d886fca29057850abba`.
+Build finished; STOPPED per latest user instruction, no new phone operations.
+Read Documentation/ziyi/IOS-SWEET-20261021-BUILD-ONLY-COMPLETE.md.
+
+
 Target: ziyi / SM7450, iPhone X (`iPhone10,3`, D22AP) iOS 16.7.16 userland.
 Current goal: a real Apple lock screen with advancing clocks; prove
 PosterBoard execution/rendering separately from SpringBoard's lock screen.
@@ -38,8 +47,8 @@ As of 2026-10-21:
   symlink traversal and5s heartbeat (6/10 messages at300/320s), no visible panic.
   X preentry CRC25075121; kernel/root/ADT/layout bytes are unchanged.
 
-The latest instruction **resumes audited RAM-only tests toward a real lock
-screen with clocks**; the phone is ready. Storage-write gates remain unmet.
+Earlier audited RAM-only tests are now paused by the latest build-only stop.
+Storage-write gates remain unmet.
 CI39516221989 built
 a3GiB headless Apple launchd/dyld root with all43 runtime cache files. Native
 fsck/readback and independent PC GCM/full-root/48file hashes passed. It uses
@@ -47,7 +56,7 @@ explicit own no-op fsck/mount fixtures and one own child job; no stock GUI.
 The receive-only Linux USB loader is a separate candidate under build/audit.
 See [the large RAM userspace stage](Documentation/ziyi/IOS-SWEET-20261021-LARGE-RAM-USERSPACE.md).
 
-Current phone experiments remain RAM-only. Storage writes are conditionally
+Phone experiments are paused; any future authorized experiment remains RAM-only. Storage writes are conditionally
 authorized only immediately before userspace, after complete verified GPT
 and affected-partition backups (including userdata) and an established
 restore procedure. Those gates have not been met. The S2 kernel removes

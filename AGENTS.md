@@ -1,5 +1,14 @@
 # ziyi port constraints
 
+**FINAL2026-10-21: HOST_BUILD_COMPLETE_NOT_RUN.** CI39595655078 and local
+artifact/source/config/builtin-init/boot packaging audits PASS. Final image:
+`Artifacts/ziyi/ios-sweet/20261021-linux-usb-boot-v3/ziyi-ram-usb-build-only.img`,
+12550144bytes, SHA256
+`a4bbbdc1f438276af464fefcac7bffaf08af5ca75ff43d886fca29057850abba`.
+Build finished; STOPPED per latest user instruction, no new phone operations.
+Read Documentation/ziyi/IOS-SWEET-20261021-BUILD-ONLY-COMPLETE.md.
+
+
 - Target ziyi/SM7450, iPhone X D22AP/iPhone10,3 userland, iOS 16.7.16.
   Read README.md, NOTES.md and Documentation/ziyi/DONOR-AUDIT-20261020.md.
 - Current goal is a real Apple lock screen with advancing clocks. Record
@@ -22,16 +31,15 @@
   on the phone before entry. X12 PASSED HFS md0 mount, own PID1, two file
   reads/symlink lookup and5s heartbeat (6/10 at300/320s), no visible panic.
   X preentry CRC25075121,11segment/ADT/new args SHA match. Apple UI is unproven.
-- Latest instruction2026-10-21: continue toward the real lock screen with
-  clocks; the phone is ready. Audited RAM-only tests are explicitly resumed,
-  superseding the earlier build-only pause. Finish source/config/artifact/
-  placement checks before boot and verify the expected ziyi fastboot device.
-  Storage-write backup/restore conditions remain unsatisfied.
+- Latest instruction2026-10-21: finish the build and STOP WITHOUT RUNNING.
+  The host build/audits/packaging are complete. No phone operations or
+  fastboot readiness requests until explicit user resumption. Storage-write
+  backup/restore conditions remain unsatisfied.
   Read Documentation/ziyi/IOS-SWEET-20261021-LARGE-RAM-USERSPACE.md.
   A3GiB headless real Apple launchd/dyld/cache root has passed macOS fsck/
   reread and PC GCM/full-root/48file hashes. Own no-op boot-task fixtures
   and one own child job are included; no phone Apple execution or GUI yet.
-- Current experiments remain RAM-only. The user's 2026-10-20 conditional
+- Experiments are paused; future authorized experiments remain RAM-only. The user's 2026-10-20 conditional
   storage authorization applies only near userspace, after complete verified
   backups of both GPT copies and all affected partitions including userdata,
   exact identity/sizes, independent on-device hashes and an established
