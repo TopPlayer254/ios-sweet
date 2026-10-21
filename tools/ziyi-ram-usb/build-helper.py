@@ -123,7 +123,7 @@ run(make + ["olddefconfig"])
 config = (build / ".config").read_text()
 settings = dict(re.findall(r"^(CONFIG_\w+)=(.*)$", config, re.M))
 required_y = ["KEXEC", "BLK_DEV_INITRD", "INITRAMFS_FORCE", "DEVTMPFS", "PROC_FS", "SYSFS", "CONFIGFS_FS", "USB_DWC3", "USB_DWC3_MSM", "USB_GADGET", "USB_CONFIGFS", "USB_CONFIGFS_ACM", "CMDLINE_FORCE"]
-required_n = ["MODULES", "BLOCK", "MTD", "SCSI", "MMC", "PSTORE", "DEVMEM", "DEVKMEM", "EFI", "KEXEC_FILE", "REMOTEPROC", "WATCHDOG", "QCOM_QFPROM", "QCOM_QFPROM_SYS", "NVMEM_QCOM_QFPROM", "POWER_RESET_QCOM_DOWNLOAD_MODE"]
+required_n = ["MODULES", "BLOCK", "MTD", "SCSI", "MMC", "PSTORE", "DEVMEM", "DEVKMEM", "EFI", "KEXEC_FILE", "KVM", "VIRTUALIZATION", "REMOTEPROC", "WATCHDOG", "QCOM_QFPROM", "QCOM_QFPROM_SYS", "NVMEM_QCOM_QFPROM", "POWER_RESET_QCOM_DOWNLOAD_MODE"]
 for key in required_y:
     if settings.get("CONFIG_"+key) != "y": raise RuntimeError(f"required builtin {key} missing")
 for key in required_n:

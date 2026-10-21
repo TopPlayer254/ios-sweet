@@ -1,5 +1,8 @@
 # RAM USB loader candidate. Final .config and linked-symbol gates are mandatory.
 CONFIG_MODULES=n
+# Native kexec is not a VM. Exclude GKI KVM and its unresolved VFIO weak calls.
+# CONFIG_VIRTUALIZATION is not set
+# CONFIG_KVM is not set
 # CDC ACM uses the DWC3 core DMA, without the optional vendor SPS/BAM path.
 # CONFIG_SPS is not set
 # CONFIG_DEBUG_KINFO is not set
