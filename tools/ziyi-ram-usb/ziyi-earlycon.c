@@ -7,6 +7,7 @@
 #include <linux/font.h>
 #include <linux/init.h>
 #include <linux/io.h>
+#include <linux/printk.h>
 #include <linux/serial_core.h>
 #include <asm/early_ioremap.h>
 
@@ -20,12 +21,15 @@
 #define ROWS (FB_HEIGHT / CELL_H)
 static unsigned int column, row;
 static void *mapped_fb;
-static const struct console *boot_console;
+static struct console *boot_console;
+static bool early_mapping_live = true;
 
 static __ref void *map_row(unsigned int y)
 {
     if (mapped_fb)
         return mapped_fb + y * CELL_H * FB_STRIDE;
+    if (!early_mapping_live)
+        return NULL;
     return early_memremap_prot(FB_BASE + y * CELL_H * FB_STRIDE,
         CELL_H * FB_STRIDE, pgprot_val(pgprot_writecombine(PAGE_KERNEL)));
 }
@@ -77,9 +81,28 @@ static int __init remap_fb(void)
     if (!boot_console || !(boot_console->flags & CON_ENABLED))
         return 0;
     mapped_fb = memremap(FB_BASE, FB_BYTES, MEMREMAP_WC);
+    pr_info("ZIYI RAM FB permanent WC mapping: %s\n", mapped_fb ? "READY" : "FAILED");
     return mapped_fb ? 0 : -ENOMEM;
 }
 early_initcall(remap_fb);
+
+/* Never call __init early_memremap code after free_initmem(), even if the
+ * persistent map failed. A plain memreserve does not exclude RAM from the
+ * linear map; the boot DTB must also declare our framebuffer no-map.
+ */
+static int __init finish_early_mapping(void)
+{
+    if (mapped_fb) {
+        pr_info("ZIYI RAM FB persistent console ready before initmem release\n");
+    } else {
+        pr_err("ZIYI RAM FB STOP: no persistent map; disabling boot console safely\n");
+        early_mapping_live = false;
+        if (boot_console)
+            unregister_console(boot_console);
+    }
+    return 0;
+}
+late_initcall_sync(finish_early_mapping);
 
 static int __init setup_fb(struct earlycon_device *device, const char *options)
 {
