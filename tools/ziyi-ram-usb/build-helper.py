@@ -93,6 +93,8 @@ make = ["make", "-C", root, f"O={build}", "ARCH=arm64", "TECHPACK=n", "LLVM=1", 
 if shutil.which('ccache'):
     make[make.index('CC=clang-14')]='CC=ccache clang-14'
     make.append('HOSTCC=ccache gcc')
+os.environ['ZIYI_LINK_DIAGNOSTICS']=str(out)
+make[make.index('LD=ld.lld-14')]=f'LD={sys.executable} {here / "link-audit.py"}'
 run(make + ["gki_defconfig"])
 # Only board/USB/power dependencies may be promoted from vendor modules.
 # All other modules become disabled when MODULES=n; no Android module loader.
