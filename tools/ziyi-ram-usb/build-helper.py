@@ -36,7 +36,7 @@ spec=importlib.util.spec_from_file_location('backup',here/'verified_backup.py')
 backup=importlib.util.module_from_spec(spec);spec.loader.exec_module(backup)
 backup.ROOT=root
 backup_dir=root/'.ziyi-verified-prepatch'
-backup.create(backup_dir,['drivers/usb/gadget/udc/core.c'],[])
+backup.create(backup_dir,['drivers/usb/gadget/udc/core.c','drivers/tty/serial/Makefile'],[])
 backup.verify(backup_dir,current=True)
 udc=root/'drivers/usb/gadget/udc/core.c'
 original_udc=udc.read_bytes();text=original_udc.decode()
@@ -51,6 +51,16 @@ udc.write_text(text)
 backup.verify(backup_dir)
 source_fixes={'drivers/usb/gadget/udc/core.c':{'before':hashlib.sha256(original_udc).hexdigest(),'after':hashlib.sha256(udc.read_bytes()).hexdigest()},
               'backupManifestSha256':backup.digest(backup_dir/'manifest.json')}
+serial_make=root/'drivers/tty/serial/Makefile';serial_before=serial_make.read_bytes()
+backup.verify(backup_dir) # verify both independent restore copies after core edit
+assert serial_before==subprocess.check_output(['git','-C',str(root),'show',PIN+':drivers/tty/serial/Makefile'])
+assert serial_make.read_bytes()==serial_before
+serial_make.write_bytes(serial_before+b'\n# Fixed ziyi RAM-only early framebuffer diagnostics.\nobj-y += ziyi-earlycon.o\n')
+early_target=root/'drivers/tty/serial/ziyi-earlycon.c'
+with early_target.open('xb') as f:f.write((here/'ziyi-earlycon.c').read_bytes())
+source_fixes['drivers/tty/serial/Makefile']={'before':hashlib.sha256(serial_before).hexdigest(),'after':hashlib.sha256(serial_make.read_bytes()).hexdigest()}
+source_fixes['drivers/tty/serial/ziyi-earlycon.c']={'new':hashlib.sha256(early_target.read_bytes()).hexdigest()}
+backup.verify(backup_dir)
 # Preserve generic thermal monitoring. Only an absent vendor suspend hook has
 # no callback in this self-contained, module-free loader; leave its int flag alone.
 thermal=root/'include/trace/hooks/thermal.h'
