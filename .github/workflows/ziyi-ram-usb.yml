@@ -24,7 +24,7 @@ jobs:
       - name: Install cross tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu libc6-dev-arm64-cross flex bison bc libssl-dev libelf-dev ccache
+          sudo apt-get install -y clang-14 lld-14 llvm-14 gcc-aarch64-linux-gnu libc6-dev-arm64-cross flex bison bc libssl-dev libelf-dev ccache qemu-user
       - uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/ziyi-ccache
@@ -49,6 +49,8 @@ jobs:
             ${{ runner.temp }}/ram-usb/ziyi-ram-init
             ${{ runner.temp }}/ram-usb/helper.config
             ${{ runner.temp }}/ram-usb/protocol-tests.json
+            ${{ runner.temp }}/ram-usb/protocol-arm64-tests.json
+            ${{ runner.temp }}/ram-usb/minic-selftest.json
             ${{ runner.temp }}/ram-usb/build-audit.json
             ${{ runner.temp }}/ram-usb/init-elf.txt
             ${{ runner.temp }}/ram-usb/selected.fragment

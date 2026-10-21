@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
- * Own pre-libc entry marker. Uses only normal Linux syscalls, never MMIO.
- * Preserve the initial stack and rtld_fini x0 expected by glibc _start.
+ * Own pre-runtime entry marker. Uses only normal Linux syscalls, never MMIO.
+ * Preserve the initial stack and x0 before entering our own _start.
  */
 .section .text
 .global ziyi_linux_entry
@@ -30,6 +30,6 @@ ziyi_linux_entry:
 .size ziyi_linux_entry, .-ziyi_linux_entry
 .section .rodata
 kmsg_path: .asciz "/dev/kmsg"
-raw_marker: .ascii "<6>ZIYI RAM USB RAW EL0 ENTRY before libc\n"
+raw_marker: .ascii "<6>ZIYI RAM USB RAW EL0 ENTRY before runtime\n"
 .equ raw_marker_bytes, .-raw_marker
 .section .note.GNU-stack,"",%progbits

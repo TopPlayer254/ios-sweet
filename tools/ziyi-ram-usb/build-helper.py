@@ -97,23 +97,38 @@ if missing: raise RuntimeError("unresolved source Kconfigs: " + repr(missing))
 run(["gcc", "-O2", "-Wall", "-Wextra", "-Werror", "-DZIYI_HOST_TEST", here / "ram-usb-init.c", here / "sha256.c", "-o", out / "host-server"])
 with (out / "protocol-tests.json").open("w") as f:
     run([sys.executable, here / "test-protocol.py", out / "host-server"], stdout=f)
-run(["aarch64-linux-gnu-gcc", "-static", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-misleading-indentation", "-Wl,--build-id=sha1", "-Wl,-e,ziyi_linux_entry", here / "ram-entry.S", here / "ram-usb-init.c", here / "sha256.c", "-o", out / "ziyi-ram-init"])
+cross=["aarch64-linux-gnu-gcc", "-static", "-nostdlib", "-no-pie", "-fno-pie", "-ffreestanding", "-fno-builtin",
+       "-fno-stack-protector", "-fno-tree-loop-distribute-patterns", "-mno-outline-atomics", "-mgeneral-regs-only",
+       "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-misleading-indentation", "-Wl,--build-id=sha1",
+       "-Wl,-e,ziyi_linux_entry", here/"ram-entry.S", here/"ram-crt.S", here/"ram-minic.c"]
+run(cross+[here/"minic-selftest.c","-o",out/"minic-selftest"])
+selftest=run(["qemu-aarch64", "-cpu", "max", out/"minic-selftest"],capture_output=True,text=True)
+assert 'OWN_MINIC_SELFTEST_PASS' in selftest.stdout
+(out/'minic-selftest.json').write_text(json.dumps({'result':'OWN_MINIC_ARM64_QEMU_PASS','stdout':selftest.stdout,'phoneTest':False},indent=2)+'\n')
+run(cross+["-DZIYI_HOST_TEST",here/"ram-usb-init.c",here/"sha256.c","-o",out/"arm64-host-server"])
+wrapper=out/'qemu-server';wrapper.write_text('#!/bin/sh\nexec qemu-aarch64 -cpu max "'+str(out/'arm64-host-server')+'"\n');wrapper.chmod(0o755)
+with (out/'protocol-arm64-tests.json').open('w') as f:
+    run([sys.executable,here/'test-protocol.py',wrapper],stdout=f)
+run(cross+[here/"ram-usb-init.c",here/"sha256.c","-o",out/"ziyi-ram-init"])
 elf = (out / "ziyi-ram-init").read_bytes()
 if elf[:6] != b"\x7fELF\x02\x01" or int.from_bytes(elf[18:20], "little") != 183:
     raise RuntimeError("not ELF64 AArch64 little-endian")
 phoff = int.from_bytes(elf[32:40], "little")
 phsize = int.from_bytes(elf[54:56], "little")
 phnum = int.from_bytes(elf[56:58], "little")
-if any(int.from_bytes(elf[phoff+i*phsize:phoff+i*phsize+4], "little") in (2,3) for i in range(phnum)):
-    raise RuntimeError("unexpected PT_INTERP/PT_DYNAMIC")
+if any(int.from_bytes(elf[phoff+i*phsize:phoff+i*phsize+4], "little") in (2,3,7) for i in range(phnum)):
+    raise RuntimeError("unexpected PT_INTERP/PT_DYNAMIC/PT_TLS")
+assert not subprocess.check_output(['aarch64-linux-gnu-nm','--undefined-only',out/'ziyi-ram-init'],text=True).strip()
 init_symbols=subprocess.check_output(['aarch64-linux-gnu-nm','--defined-only',out/'ziyi-ram-init'],text=True)
 def address(name):
     found=re.findall(r'^([0-9a-f]+) [A-Za-z] '+re.escape(name)+r'$',init_symbols,re.M)
     assert len(found)==1,name
     return int(found[0],16)
-raw_entry=address('ziyi_linux_entry');libc_entry=address('_start')
-assert int.from_bytes(elf[24:32],'little')==raw_entry and raw_entry!=libc_entry
-entry_audit={'elfEntry':hex(raw_entry),'rawEntry':hex(raw_entry),'libcStart':hex(libc_entry),'initialStackUnchanged':True}
+raw_entry=address('ziyi_linux_entry');runtime_entry=address('_start')
+assert int.from_bytes(elf[24:32],'little')==raw_entry and raw_entry!=runtime_entry
+assert '__libc_start_main' not in init_symbols and '__tls_get_addr' not in init_symbols
+entry_audit={'elfEntry':hex(raw_entry),'rawEntry':hex(raw_entry),'runtimeStart':hex(runtime_entry),
+             'runtime':'OWN_FREESTANDING_SYSCALLS','initialStackUnchanged':True,'noTlsOrUndefinedSymbols':True}
 initlist = out / "initramfs.list"
 initlist.write_text(f"dir /dev 0755 0 0\nnod /dev/console 0600 0 0 c 5 1\nnod /dev/kmsg 0600 0 0 c 1 11\nfile /ziyi-ram-init {out / 'ziyi-ram-init'} 0755 0 0\n")
 make = ["make", "-C", root, f"O={build}", "ARCH=arm64", "TECHPACK=n", "LLVM=1", "LLVM_IAS=1", "CC=clang-14", "LD=ld.lld-14", "AR=llvm-ar-14", "NM=llvm-nm-14", "OBJCOPY=llvm-objcopy-14", "OBJDUMP=llvm-objdump-14", "STRIP=llvm-strip-14", "CROSS_COMPILE=aarch64-linux-gnu-", "CLANG_TRIPLE=aarch64-linux-gnu-"]
@@ -199,7 +214,7 @@ report = {"result":"HOST_BUILD_PASS_NOT_PHONE_TESTED", "gpl_source": PIN,
  "config_n":required_n, "source_hashes":{}, "artifact_hashes":{}}
 for f in sorted(here.iterdir()):
     if f.is_file(): report["source_hashes"][f.name]=hashlib.sha256(f.read_bytes()).hexdigest()
-for name in ["Image","ziyi-ram-init","helper.config","protocol-tests.json","initramfs.list"]:
+for name in ["Image","ziyi-ram-init","helper.config","protocol-tests.json","protocol-arm64-tests.json","minic-selftest.json","initramfs.list"]:
     f=out/name
     with f.open("rb") as h: digest=hashlib.file_digest(h,"sha256").hexdigest()
     report["artifact_hashes"][name]={"bytes":f.stat().st_size,"sha256":digest}
