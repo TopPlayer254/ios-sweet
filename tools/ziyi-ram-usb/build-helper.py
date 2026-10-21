@@ -55,7 +55,7 @@ source_fixes={'drivers/usb/gadget/udc/core.c':{'before':hashlib.sha256(original_
 # no callback in this self-contained, module-free loader; leave its int flag alone.
 thermal=root/'include/trace/hooks/thermal.h'
 with thermal.open('x') as f:
-    f.write('/* SPDX-License-Identifier: GPL-2.0-only */\n/* Ziyi RAM helper: absent optional vendor suspend hook; no subscribers. */\n#ifndef ZIYI_RAM_THERMAL_H\n#define ZIYI_RAM_THERMAL_H\n#include <linux/types.h>\nstruct thermal_zone_device;\nstatic inline void trace_android_vh_thermal_pm_notify_suspend(struct thermal_zone_device *tz, int *irq_wakeable)\n{ (void)tz; (void)irq_wakeable; }\n#endif\n')
+    f.write('/* SPDX-License-Identifier: GPL-2.0-only */\n/* Ziyi RAM helper: absent optional vendor suspend hook; no subscribers. */\n#ifndef ZIYI_RAM_THERMAL_H\n#define ZIYI_RAM_THERMAL_H\n#include <linux/types.h>\nstruct thermal_zone_device;\nstatic inline void trace_android_vh_thermal_pm_notify_suspend(struct thermal_zone_device *tz, int *irq_wakeable)\n{ (void)tz; (void)irq_wakeable; }\nstatic inline void trace_android_vh_enable_thermal_genl_check(int event, int tz_id, int *enabled)\n{ (void)event; (void)tz_id; (void)enabled; }\n#endif\n')
 source_fixes['include/trace/hooks/thermal.h']={'new':hashlib.sha256(thermal.read_bytes()).hexdigest()}
 (out/'source-fixes.json').write_text(json.dumps(source_fixes,indent=2)+'\n')
 # Xiaomi's published source references an absent, optional hardware-ID Kconfig.

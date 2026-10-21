@@ -38,7 +38,9 @@ As of 2026-10-21:
   symlink traversal and5s heartbeat (6/10 messages at300/320s), no visible panic.
   X preentry CRC25075121; kernel/root/ADT/layout bytes are unchanged.
 
-The latest instruction is **build only, do not run it**. CI39516221989 built
+The latest instruction **resumes audited RAM-only tests toward a real lock
+screen with clocks**; the phone is ready. Storage-write gates remain unmet.
+CI39516221989 built
 a3GiB headless Apple launchd/dyld root with all43 runtime cache files. Native
 fsck/readback and independent PC GCM/full-root/48file hashes passed. It uses
 explicit own no-op fsck/mount fixtures and one own child job; no stock GUI.

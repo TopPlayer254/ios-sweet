@@ -22,9 +22,11 @@
   on the phone before entry. X12 PASSED HFS md0 mount, own PID1, two file
   reads/symlink lookup and5s heartbeat (6/10 at300/320s), no visible panic.
   X preentry CRC25075121,11segment/ADT/new args SHA match. Apple UI is unproven.
-- Latest instruction2026-10-21: finish the build only; DO NOT RUN IT.
-  Complete CI/artifact/config/root audits and packaging; no phone boot,
-  reboot, readiness query or device interaction until explicitly resumed.
+- Latest instruction2026-10-21: continue toward the real lock screen with
+  clocks; the phone is ready. Audited RAM-only tests are explicitly resumed,
+  superseding the earlier build-only pause. Finish source/config/artifact/
+  placement checks before boot and verify the expected ziyi fastboot device.
+  Storage-write backup/restore conditions remain unsatisfied.
   Read Documentation/ziyi/IOS-SWEET-20261021-LARGE-RAM-USERSPACE.md.
   A3GiB headless real Apple launchd/dyld/cache root has passed macOS fsck/
   reread and PC GCM/full-root/48file hashes. Own no-op boot-task fixtures

@@ -1,7 +1,9 @@
 # Active ziyi handoff — 2026-10-21
 
-**Latest user instruction: finish the build, DO NOT RUN IT.** No phone boot,
-reboot/readiness request or device interaction until explicitly resumed.
+**Latest user instruction: continue toward the real lock screen with clocks;
+phone ready.** Audited RAM-only tests are explicitly resumed after the earlier
+build-only pause. Verify artifacts/config/placement and the expected device
+before boot; storage backup/restore gates remain unsatisfied.
 The next large milestone is real Apple launchd and complete root delivery.
 CI39516221989 built a3GiB HFSX headless launchd/dyld/cache probe root; native
 fsck/readonly reread and PC GCM/full-root/all48 files hashes PASS. Both own
