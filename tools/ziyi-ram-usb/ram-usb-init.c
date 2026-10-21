@@ -102,6 +102,7 @@ static int serve(int fd) {
 }
 
 #ifndef ZIYI_HOST_TEST
+#include "boot-usb-log.h"
 static int klog=-1;
 static void trace(const char *fmt,...) {
  char buf[512];va_list ap;va_start(ap,fmt);vsnprintf(buf,sizeof(buf),fmt,ap);va_end(ap);
@@ -116,6 +117,22 @@ static void snapshot(const char *path) {
  if(n<0){trace("read %s failed",path);return;}
  buf[n]=0;trace("snapshot %s bytes=%zd",path,n);
  for(char *s=buf,*e;s&&*s;s=e){e=strchr(s,'\n');if(e)*e++=0;trace("  %s",s);}
+}
+static void boot_usb_history(void) {
+ struct ziyi_boot_usb_log saved={0};char record[4096];int stopped=0;
+ int fd=open("/dev/kmsg",O_RDONLY|O_CLOEXEC|O_NONBLOCK);
+ if(fd<0){trace("USB boot history open errno=%d",errno);return;}
+ /* Read first, close, then print: never read back our own new diagnostics. */
+ for(unsigned int i=0;i<4096;i++){
+  ssize_t n=read(fd,record,sizeof(record)-1);
+  if(n<0){if(errno==EPIPE||errno==EINTR)continue;stopped=errno;break;}
+  if(!n)break;
+  record[n]=0;ziyi_boot_usb_add(&saved,record);
+ }
+ close(fd);trace("USB boot history seen=%u kept=%u stop_errno=%d",saved.seen,saved.kept,stopped);
+ unsigned int first=(saved.next+ZIYI_LOG_SLOTS-saved.kept)%ZIYI_LOG_SLOTS;
+ for(unsigned int i=0;i<saved.kept;i++)trace("BOOTUSB %s",saved.line[(first+i)%ZIYI_LOG_SLOTS]);
+ trace("USB boot history END");
 }
 static void dir(const char *p) { if(mkdir(p,0755)&&errno!=EEXIST)halt(p); }
 static void value(const char *p,const char *s) { int f=open(p,O_WRONLY|O_CLOEXEC);if(f<0||fullwrite(f,s,strlen(s)))halt(p);close(f); }
@@ -142,12 +159,14 @@ static void gadget(void) {
  /* configfs resolves the target from cwd using kern_path, not link parent. */
  if(symlink("/sys/kernel/config/usb_gadget/ziyi/functions/acm.usb0","configs/c.1/acm.usb0"))halt("acm link");
  trace("ACM function linked");
+ boot_usb_history();
  char udc[256]={0};
  for(int t=0;t<120&&!udc[0];t++){ DIR *d=opendir("/sys/class/udc");struct dirent *e;
   if(d){while((e=readdir(d)))if(e->d_name[0]!='.') {if(udc[0])halt("multiple UDC");snprintf(udc,sizeof(udc),"%s",e->d_name);}closedir(d);}
  if(!udc[0]){
   if(t%30==0){trace("waiting for physical UDC t=%d",t);snapshot("/sys/kernel/debug/devices_deferred");}
-  sleep(1);
+  unsigned int left=sleep(1);
+  if(t<4||t==7||t==15||t%30==29)trace("UDC timer tick=%d sleep_remaining=%u",t+1,left);
  }
  }
  if(!udc[0])halt("no UDC after 120 seconds");
