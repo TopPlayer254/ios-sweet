@@ -36,7 +36,7 @@ spec=importlib.util.spec_from_file_location('backup',here/'verified_backup.py')
 backup=importlib.util.module_from_spec(spec);spec.loader.exec_module(backup)
 backup.ROOT=root
 backup_dir=root/'.ziyi-verified-prepatch'
-backup.create(backup_dir,['drivers/usb/gadget/udc/core.c','drivers/tty/serial/Makefile'],[])
+backup.create(backup_dir,['drivers/usb/gadget/udc/core.c','drivers/tty/serial/Makefile','drivers/tty/serial/Kconfig'],[])
 backup.verify(backup_dir,current=True)
 udc=root/'drivers/usb/gadget/udc/core.c'
 original_udc=udc.read_bytes();text=original_udc.decode()
@@ -55,7 +55,12 @@ serial_make=root/'drivers/tty/serial/Makefile';serial_before=serial_make.read_by
 backup.verify(backup_dir) # verify both independent restore copies after core edit
 assert serial_before==subprocess.check_output(['git','-C',str(root),'show',PIN+':drivers/tty/serial/Makefile'])
 assert serial_make.read_bytes()==serial_before
-serial_make.write_bytes(serial_before+b'\n# Fixed ziyi RAM-only early framebuffer diagnostics.\nobj-y += ziyi-earlycon.o\n')
+serial_make.write_bytes(serial_before+b'\n# Fixed ziyi RAM-only early framebuffer diagnostics.\nobj-$(CONFIG_ZIYI_RAM_EARLYCON) += ziyi-earlycon.o\n')
+serial_config=root/'drivers/tty/serial/Kconfig';config_before=serial_config.read_bytes()
+assert config_before==subprocess.check_output(['git','-C',str(root),'show',PIN+':drivers/tty/serial/Kconfig'])
+assert serial_config.read_bytes()==config_before
+serial_config.write_bytes(config_before+b'\nconfig ZIYI_RAM_EARLYCON\n\tbool "Ziyi fixed RAM framebuffer early console"\n\tdepends on ARM64 && SERIAL_EARLYCON\n\tselect ARCH_USE_MEMREMAP_PROT\n\tselect FONT_8x16\n')
+source_fixes['drivers/tty/serial/Kconfig']={'before':hashlib.sha256(config_before).hexdigest(),'after':hashlib.sha256(serial_config.read_bytes()).hexdigest()}
 early_target=root/'drivers/tty/serial/ziyi-earlycon.c'
 with early_target.open('xb') as f:f.write((here/'ziyi-earlycon.c').read_bytes())
 source_fixes['drivers/tty/serial/Makefile']={'before':hashlib.sha256(serial_before).hexdigest(),'after':hashlib.sha256(serial_make.read_bytes()).hexdigest()}
@@ -132,7 +137,7 @@ run([root / "scripts/kconfig/merge_config.sh", "-m", "-O", build, build / ".conf
 run(make + ["olddefconfig"])
 config = (build / ".config").read_text()
 settings = dict(re.findall(r"^(CONFIG_\w+)=(.*)$", config, re.M))
-required_y = ["KEXEC", "BLK_DEV_INITRD", "INITRAMFS_FORCE", "DEVTMPFS", "PROC_FS", "SYSFS", "CONFIGFS_FS", "USB_DWC3", "USB_DWC3_MSM", "USB_GADGET", "USB_CONFIGFS", "USB_CONFIGFS_ACM", "CMDLINE_FORCE"]
+required_y = ["KEXEC", "BLK_DEV_INITRD", "INITRAMFS_FORCE", "DEVTMPFS", "PROC_FS", "SYSFS", "CONFIGFS_FS", "USB_DWC3", "USB_DWC3_MSM", "USB_GADGET", "USB_CONFIGFS", "USB_CONFIGFS_ACM", "CMDLINE_FORCE", "ZIYI_RAM_EARLYCON", "ARCH_USE_MEMREMAP_PROT", "FONT_8x16"]
 required_n = ["MODULES", "BLOCK", "MTD", "SCSI", "MMC", "PSTORE", "DEVMEM", "DEVKMEM", "EFI", "KEXEC_FILE", "KVM", "VIRTUALIZATION", "REMOTEPROC", "WATCHDOG", "QCOM_QFPROM", "QCOM_QFPROM_SYS", "NVMEM_QCOM_QFPROM", "POWER_RESET_QCOM_DOWNLOAD_MODE"]
 for key in required_y:
     if settings.get("CONFIG_"+key) != "y": raise RuntimeError(f"required builtin {key} missing")
