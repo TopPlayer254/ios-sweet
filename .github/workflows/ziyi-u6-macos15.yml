@@ -1,0 +1,180 @@
+name: ziyi-xnu-u6-legacy-iig
+
+on:
+  workflow_dispatch:
+    inputs:
+      macos_version:
+        description: macOS release whose xnu to build (13.5 = xnu-8796, iOS 16 era)
+        default: "13.5"
+      kernel_config:
+        description: RELEASE / DEVELOPMENT / DEBUG
+        default: DEVELOPMENT
+      machine_config:
+        description: xnu MACHINE_CONFIG
+        default: SWEET
+      keep_going:
+        description: make -k (collect all compile errors in one run)
+        default: "true"
+  push:
+    branches: [codex/ziyi-xnu-s2]
+    paths:
+      - "tools/legacy-iig.py"
+      - ".github/workflows/ziyi-u6-macos15.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: xnu-u6-macos15-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DXB_REPO: https://github.com/blacktop/darwin-xnu-build
+  DXB_SHA: 663906528d1cd5ea8fde7de6f16de73db9511549
+  MACOS_VERSION: ${{ inputs.macos_version || '13.5' }}
+  KERNEL_CONFIG: ${{ inputs.kernel_config || 'DEVELOPMENT' }}
+  MACHINE_CONFIG: ${{ inputs.machine_config || 'SWEET' }}
+
+jobs:
+  build:
+    # Reuse byte-identical generated RPC bindings from successful U4; verify
+    # all 1164 captured source/header inputs. Never use the newer IIG ABI.
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: U1 core sanitizer tests
+        run: |
+          mkdir -p u1-evidence
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u1.c -o u1-evidence/test-u1
+          ./u1-evidence/test-u1 | tee u1-evidence/core-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u3.c -o u1-evidence/test-u3
+          ./u1-evidence/test-u3 | tee u1-evidence/u3-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u4_transport.c -o u1-evidence/test-u4-transport
+          ./u1-evidence/test-u4-transport | tee u1-evidence/u4-transport-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u4.c -o u1-evidence/test-u4
+          ./u1-evidence/test-u4 | tee u1-evidence/u4-hash-tests.txt
+
+      - name: U6 measured firmware profile and wake policy
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u6.c -o u1-evidence/test-u6
+          ./u1-evidence/test-u6 | tee u1-evidence/u6-tests.txt
+
+      - name: Fetch build script
+        run: |
+          git init -q dxb
+          git -C dxb fetch -q --depth 1 "$DXB_REPO" "$DXB_SHA"
+          git -C dxb checkout -q FETCH_HEAD
+          # 12.5-14.3 use the top-level patches dir; ours go next to blacktop's
+          cp xnu/patches/*.patch xnu/patches/*.sh dxb/patches/
+          # libfirehose_kernel is built arm64e-only; the SWEET kernel is plain arm64
+          sed -i '' 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="x86_64 arm64e arm64" VALID_ARCHS="x86_64 arm64e arm64"/' dxb/build.sh
+          grep -c 'VALID_ARCHS="x86_64 arm64e arm64"' dxb/build.sh
+          ls dxb/patches
+
+      - name: Deps
+        run: |
+          brew install jq gum bash cmake ninja
+          # build.sh only checks that xcodes exists (Xcode is preinstalled); no bottle on macOS 14
+          printf '#!/bin/sh\nexit 0\n' | sudo tee /usr/local/bin/xcodes >/dev/null
+          sudo chmod +x /usr/local/bin/xcodes
+          sw_vers
+          ls -d /Applications/Xcode*.app
+          XC=$(ls -d /Applications/Xcode_*.app | sort -V | head -1)
+          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+          xcrun --find iig
+
+      - name: Fetch exact successful U4 generated-source archive
+        uses: actions/download-artifact@v4
+        with:
+          name: xnu-buildtree
+          run-id: 39820863072
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: legacy-input
+
+      - name: Prepare pinned legacy IIG bindings
+        run: |
+          python3 tools/legacy-iig.py --prepare legacy-input/buildtree.tgz "$RUNNER_TEMP/legacy-iig"
+          chmod +x tools/legacy-iig.py
+          echo "ZIYI_LEGACY_IIG_CACHE=$RUNNER_TEMP/legacy-iig" >> "$GITHUB_ENV"
+          echo "ZIYI_LEGACY_IIG_BUILD=$GITHUB_WORKSPACE/dxb/build" >> "$GITHUB_ENV"
+          echo "IIG=$GITHUB_WORKSPACE/tools/legacy-iig.py" >> "$GITHUB_ENV"
+
+      - name: Build
+        working-directory: dxb
+        env:
+          # keep going after errors so one run reports every compile failure
+          MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
+        run: bash build.sh
+
+      - name: Audit every legacy IIG invocation
+        run: |
+          python3 tools/legacy-iig.py --audit "$ZIYI_LEGACY_IIG_CACHE" | tee u1-evidence/legacy-iig-audit.txt
+          cp "$ZIYI_LEGACY_IIG_CACHE/manifest.json" u1-evidence/legacy-iig-manifest.json
+          cp -R "$ZIYI_LEGACY_IIG_CACHE/calls" u1-evidence/legacy-iig-calls
+
+      - name: Verify U1 compiled sources
+        run: |
+          python3 tools/ziyi-ufs/audit_ci.py
+          nm dxb/fakeroot/System/Library/Kernels/kernel.development.sweet > u1-evidence/kernel-symbols.txt
+          grep '_ziyi_ufs_probe' u1-evidence/kernel-symbols.txt
+          strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U1 ' > u1-evidence/kernel-markers.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ziyi-u1-evidence
+          path: u1-evidence/
+
+      - name: Package build tree for local compiles
+        if: always()
+        run: |
+          # Generated headers, config option headers, mig output and the patched
+          # source: enough to re-run any single compile command from the log locally.
+          SDK=$(xcrun --sdk macosx --show-sdk-path)
+          mkdir -p sdk-kernel-platform
+          cp -R "$SDK/System/Library/Frameworks/Kernel.framework/Versions/A/PrivateHeaders/platform" sdk-kernel-platform/ || true
+          tar czf buildtree.tgz \
+            --exclude='*.o' --exclude='*.cpo' --exclude='*.a' --exclude='*.dSYM' --exclude='*.unstripped' \
+            --exclude='kernel.development.*' --exclude='.git' \
+            -C dxb build/xnu.obj fakeroot/usr/local/include xnu \
+            -C .. sdk-kernel-platform
+          ls -la buildtree.tgz
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-buildtree
+          path: buildtree.tgz
+          retention-days: 7
+
+      - name: Inspect closed KDK support libs
+        if: always()
+        run: |
+          mkdir -p out/kdk-libs
+          for lib in /Library/Developer/KDKs/*/System/Library/KernelSupport/lib*.a; do
+            b=$(basename "$lib" .a)
+            ar t "$lib" > "out/kdk-libs/$b.members.txt" 2>&1 || true
+            nm -m "$lib" > "out/kdk-libs/$b.nm.txt" 2>&1 || true
+            lipo -info "$lib" >> out/kdk-libs/arch.txt 2>&1 || true
+          done
+          ls -la out/kdk-libs
+
+      - name: Collect
+        if: always()
+        run: |
+          mkdir -p out
+          cp -R dxb/fakeroot/System/Library/Kernels/. out/ 2>/dev/null || true
+          ls -la out
+          (cd out && shasum -a 256 kernel.* > SHA256SUMS) || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-kernel
+          path: out/
+          if-no-files-found: warn
