@@ -32,6 +32,7 @@ jobs:
           python3 tools/build-ziyi-ui-root.py --selftest
           sudo -E "$(command -v python3)" tools/build-ziyi-ui-root.py "$RUNNER_TEMP/ziyi-ui-root" "$GITHUB_WORKSPACE/hackios-recipe/ios165/select-system.py"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ziyi-ui-root-encrypted
           path: |
@@ -39,6 +40,7 @@ jobs:
             ${{ runner.temp }}/ziyi-ui-root/report.json
             ${{ runner.temp }}/ziyi-ui-root/inventory.json
             ${{ runner.temp }}/ziyi-ui-root/fsck.txt
+            ${{ runner.temp }}/ziyi-ui-root/inventory-diff.json
           compression-level: 0
           if-no-files-found: error
           retention-days: 3

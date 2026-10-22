@@ -181,7 +181,12 @@ def inventory(root):
     for p,name,s in walk(root):
         row=dict(path=name,mode=stat.S_IMODE(s.st_mode),uid=s.st_uid,gid=s.st_gid)
         if stat.S_ISLNK(s.st_mode):row.update(type='link',target=os.readlink(p))
-        elif stat.S_ISREG(s.st_mode):row.update(type='file',bytes=s.st_size,sha256=digest(p))
+        elif stat.S_ISREG(s.st_mode):
+            row.update(type='file',bytes=s.st_size)
+            # HFS updates its journal while detaching a writable volume. Raw
+            # export hashes it AFTER detach; it is not Apple userspace content.
+            if name=='.journal':row.update(filesystemManaged=True)
+            else:row.update(sha256=digest(p))
         elif stat.S_ISDIR(s.st_mode):row.update(type='directory')
         else:raise ValueError('Unexpected output node')
         rows.append(row)
@@ -226,6 +231,9 @@ def main():
                 rootBytes=ROOT_BYTES,selectionCommit='906425b75e02b4f99eb5d7bb1ef7c9583472d772',
                 addressBasedInjections=False,workflowCommit=os.environ.get('GITHUB_SHA'))
     try:
+        (mount/'.metadata_never_index').touch(exist_ok=False)
+        (mount/'.fseventsd').mkdir(exist_ok=True)
+        (mount/'.fseventsd/no_log').touch(exist_ok=True)
         jobs=[('OS',base.OS_NAME,1191497236,0,4730814044,4730814044,0x66ccd39f,base.OS_SHA),
               ('SystemOS',base.cache.NAME,0,8,base.cache.COMPRESSED,base.cache.SIZE,base.cache.CRC,base.cache.SHA384),
               ('AppOS','087-86715-047.dmg',5922311347,8,2381197,10485760,0xed284220,'853c4f945ea09b1614bedeaffc777aefdf2c5bcb15f1a66986e965207757246c2d3f8712a5a5c491cfc49a5a45e81502')]
@@ -265,7 +273,14 @@ def main():
         report.update(requiredFilesPresent=True,cacheFiles=cache_count,files=len(before),nativeInventory=True)
     finally:run(['hdiutil','detach',mount])
     run(['hdiutil','attach','-readonly','-nobrowse','-owners','on','-mountpoint',mount,image])
-    try:assert inventory(mount)==before
+    try:
+        after=inventory(mount)
+        if after!=before:
+            old={r['path']:r for r in before};new={r['path']:r for r in after}
+            diff=[dict(path=p,before=old.get(p),after=new.get(p)) for p in sorted(old.keys()|new.keys()) if old.get(p)!=new.get(p)]
+            (out/'inventory-diff.json').write_text(json.dumps(diff,indent=2)+'\n')
+            print('INVENTORY_DIFF',json.dumps(diff[:10]),flush=True)
+            raise ValueError('Native readonly inventory differs; detailed receipt retained')
     finally:run(['hdiutil','detach',mount])
     attach=run(['hdiutil','attach','-readonly','-nomount','-plist',image],capture_output=True)
     devices=[e['dev-entry'] for e in plistlib.loads(attach.stdout)['system-entities'] if 'dev-entry' in e]
