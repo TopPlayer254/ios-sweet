@@ -1,3 +1,17 @@
+**Ziyi UI asset candidate, 2026-10-22 (build only, not phone tested).**
+A separate macOS workflow builds a NEW journaled 8GiB HFSX image from verified
+iPhone X 16.7.16/20H392 OS/SystemOS/AppOS members. The pinned Hack-iOS
+906425b7 selection yields the same43353 OS files as our PC audit, plus36
+OS var seed files. It uses SWEET's matching20H392 root tweaks, cryptex/cache
+hardlinks and one own launchd-child diagnostic; no16.5 address injections.
+Source/path guards and selection match pass on PC; native owners/fsck/reread
+must pass in CI. No Apple executable runs on the runner. Only RSA/AES-GCM
+protected gzip bytes and generated reports are uploaded; private key stays
+local. This is preparation for real UI, not proof of launchd or graphics.
+U4 kernel CI39820863072/668cfaeb succeeded; full artifact audits passed and
+its entry-disabled RAM preflight is running. No native UFS read or media
+write has been proven yet; all phone write gates remain.
+
 **Ziyi U3 actual / U4 candidate, 2026-10-22.**
 U3 CI39815749559/6d531831 SUCCESS. Phone P CRC2b77911f and X preentry
 CRC9c7d4266: 11 segments/ADT/args match. Darwin HFS md0 and own PID1 work.

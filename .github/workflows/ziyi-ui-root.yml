@@ -1,0 +1,44 @@
+name: ziyi encrypted 20H392 UI root candidate
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ziyi-xnu-s2]
+    paths:
+      - .github/workflows/ziyi-ui-root.yml
+      - tools/build-ziyi-ui-root.py
+permissions:
+  contents: read
+concurrency:
+  group: ziyi-ui-root-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install cryptography
+      - name: Fetch pinned selection recipe (no injections)
+        run: |
+          git init -q hackios-recipe
+          git -C hackios-recipe fetch -q --depth 1 https://github.com/oosexgang/hackios-xnu-userland.git 906425b75e02b4f99eb5d7bb1ef7c9583472d772
+          git -C hackios-recipe checkout -q FETCH_HEAD -- ios165/select-system.py
+          df -h
+      - name: Build and validate fresh HFSX image; encrypt Apple bytes
+        run: |
+          python3 tools/build-ziyi-ui-root.py --selftest
+          sudo -E "$(command -v python3)" tools/build-ziyi-ui-root.py "$RUNNER_TEMP/ziyi-ui-root" "$GITHUB_WORKSPACE/hackios-recipe/ios165/select-system.py"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ziyi-ui-root-encrypted
+          path: |
+            ${{ runner.temp }}/ziyi-ui-root/ziyi-ui-root.enc
+            ${{ runner.temp }}/ziyi-ui-root/report.json
+            ${{ runner.temp }}/ziyi-ui-root/inventory.json
+            ${{ runner.temp }}/ziyi-ui-root/fsck.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 3
