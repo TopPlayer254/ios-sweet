@@ -12,7 +12,7 @@ for name,item in expected.items():
     dest.parent.mkdir(parents=True,exist_ok=True)
     with dest.open('xb') as f:f.write(data)
     checks.append(dict(path=name,sha256=actual,bytes=len(data)))
-report=dict(result='U1_CI_SOURCE_AUDIT_PASS',commit=os.environ['GITHUB_SHA'],files=checks,
-            phoneTested=False,mediaWritesImplemented=False)
+report=dict(result='U7_CI_SOURCE_AUDIT_PASS',commit=os.environ['GITHUB_SHA'],files=checks,
+            phoneTested=False,mediaWritesImplemented=True,writeGate="exact GPT and full root SHA plus opt-in; prefix only, FUA/readback")
 (root/'u1-evidence/audit.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report))

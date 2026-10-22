@@ -1,11 +1,11 @@
 --- a/bsd/dev/sweet_ufs.c
 +++ b/bsd/dev/sweet_ufs.c
-@@ -1,11 +1,394 @@
+@@ -1,11 +1,456 @@
 -/* ziyi early profile: hardware provider deliberately absent.
 - * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
 +/* SPDX-License-Identifier: BSD-2-Clause-Patent
-+ * Ziyi U3: bounded native reads and a read-only HFS root device.
-+ * No media write CDB, SMMU/PHY reset or persistent log. Root is opt-in.
++ * Ziyi U7: image-prefix disk, exact GPT/root hash gates, opt-in FUA writes.
++ * No SMMU/PHY reset or persistent logger. No writes before both hash gates.
   */
  #if defined(ARM64_BOARD_CONFIG_SWEET)
 -#include <stdint.h>
@@ -32,6 +32,7 @@
 +#include "ziyi_u3_policy.h"
 +#include "ziyi_u1_sha.inc"
 +#include "ziyi_u4_verify.h"
++#include "ziyi_u7_write_policy.h"
 +extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
 +extern ppnum_t pmap_find_phys(pmap_t,addr64_t);
 +void ziyi_ufs_probe(void);
@@ -56,6 +57,8 @@
 +    dev_t disk;
 +    int ready,major,verified,wake;
 +    int poison,owned;
++    struct u7_volume volume;
++    uint8_t write_block[U1_BLOCK_MAX];
 +    uint8_t headers[2][U1_BLOCK_MAX],tables[2][U1_TABLE_MAX],sample[U1_BLOCK_MAX];
 +} u1;
 +static uint32_t hr(unsigned off) { return *(volatile uint32_t *)(u1.hci+off); }
@@ -148,10 +151,11 @@
 +    int stopped=wait_reg(0x60,1,0,10),empty=wait_reg(0x58,~0u,0,10);
 +    printf("ZIYI U1 queue stopped=%d empty=%d retained DMA=%llx\n",stopped,empty,u1.pa);
 +}
-+static int command(unsigned op,uint64_t lba,uint32_t count) {
++static int transfer(unsigned op,uint64_t lba,uint32_t count,const uint8_t *data) {
 +    struct u1_cmd c;
 +    if(u1.poison||++u1.commands>u1.limit||mach_absolute_time()>=u1.deadline||
-+       !u6_command(&c,op,u1.lun,lba,count,u1.bs,u1.blocks)) return 0;
++       (op==0x2a ? (!data||!u7_write_command(&c,&u1.volume,lba,count)) :
++        (data||!u6_command(&c,op,u1.lun,lba,count,u1.bs,u1.blocks)))) return 0;
 +    if(!bypass()||hr(0x58)||hr(0x78)||!(hr(0x60)&1)||
 +       hr(0x50)!=(uint32_t)u1.pa||hr(0x54)!=(uint32_t)(u1.pa>>32)) {
 +        u1.poison=1;printf("ZIYI U1 STOP ownership/identity changed\n");return 0;
@@ -161,15 +165,16 @@
 +    uint8_t *ucd=(uint8_t *)(u1.dma+0x1000),*resp=ucd+512;
 +    uint32_t *prdt=(uint32_t *)(ucd+1024);
 +    unsigned tag=(++u1.tag)&255;
-+    ucd[0]=1;ucd[1]=c.bytes?0x40:0;ucd[2]=c.lun;ucd[3]=(uint8_t)tag;
++    ucd[0]=1;ucd[1]=c.bytes?(op==0x2a?0x20:0x40):0;ucd[2]=c.lun;ucd[3]=(uint8_t)tag;
 +    u1_putbe32(ucd+12,c.bytes);bcopy(c.cdb,ucd+16,16);
-+    utrd[0]=(1u<<28)|(1u<<24)|(c.bytes?(2u<<25):0);
++    utrd[0]=(1u<<28)|(1u<<24)|(c.bytes?((op==0x2a?1u:2u)<<25):0);
 +    utrd[2]=15;utrd[4]=(uint32_t)(u1.pa+0x1000);utrd[5]=(uint32_t)((u1.pa+0x1000)>>32);
 +    utrd[6]=(128u<<16)|128u;
 +    if(c.bytes) {
 +        utrd[7]=(256u<<16)|1u;prdt[0]=(uint32_t)(u1.pa+U1_DATA_OFF);
 +        prdt[1]=(uint32_t)((u1.pa+U1_DATA_OFF)>>32);prdt[3]=c.bytes-1;
 +    }
++    if(op==0x2a)bcopy(data,(void *)(u1.dma+U1_DATA_OFF),c.bytes);
 +    sync_dma();hw(0x58,1);
 +    if(!wait_reg(0x58,1,0,op==0x1b?5000:1000)) {
 +        u1.poison=1;printf("ZIYI U1 TIMEOUT op=%x lun=%u\n",op,u1.lun);stop_queue();return 0;
@@ -181,6 +186,18 @@
 +        /* SCSI check condition can be retried (TUR), malformed completions cannot. */
 +        if((utrd[2]&255)||resp[0]!=0x21||resp[2]!=c.lun||resp[3]!=tag) u1.poison=1;
 +        return 0;
++    }
++    return 1;
++}
++static int command(unsigned op,uint64_t lba,uint32_t count) {
++    return transfer(op,lba,count,NULL);
++}
++static int write_verified(uint64_t lba,const uint8_t *data) {
++    /* data must survive transfer() clearing its DMA arena. Caller uses write_block. */
++    if(data!=u1.write_block||!transfer(0x2a,lba,1,data)||!command(0x28,lba,1)||
++       !u1_equal(data,(void *)(u1.dma+U1_DATA_OFF),u1.bs)) {
++        u1.poison=1;u1.volume.writable=0;stop_queue();
++        printf("ZIYI U7 STOP write/readback failure; retained DMA\n");return 0;
 +    }
 +    return 1;
 +}
@@ -223,7 +240,27 @@
 +    digest("userdata-first-block",u1.sample,u1.bs);
 +    if(!read_twice(part.last,u1.sample)) return 0;
 +    digest("userdata-last-block",u1.sample,u1.bs);
-+    u1.part=part;return 1;
++    u1.part=part;
++    uint32_t mib=0;char text[65]={0};uint8_t wanted[32],actual[32];
++    if(PE_parse_boot_argn("ziyi_ufs_verify_mib",&mib,sizeof(mib))&&
++       (mib==3072||mib==8192)) {
++        u1.volume=(struct u7_volume){part.first,part.last,(uint64_t)mib<<20,u1.bs,u1.lun,0,0,0};
++        if(!u7_volume_valid(&u1.volume))return 0;
++        /* Header blocks plus exact primary entries bind capacity, both GPT
++         * headers, disk/partition GUID, geometry and complete partition table. */
++        struct u4_hash state;u4_hash_init(&state);
++        int ok=u4_hash_blocks(&state,u1.headers[0],u1.bs)&&
++               u4_hash_blocks(&state,u1.headers[1],u1.bs);
++        uint32_t n=g[0].count*128;
++        for(uint32_t off=0;ok&&off<n;off+=4096)
++            ok=u4_hash_blocks(&state,u1.tables[0]+off,MIN(4096,n-off));
++        if(!ok||!u4_hash_final(&state,(uint64_t)u1.bs*2+n,actual))return 0;
++        if(PE_parse_boot_argn("ziyi_ufs_gpt_hash",text,sizeof(text))&&
++           u4_expected_hash(text,wanted)&&u1_equal(actual,wanted,32))u1.volume.gpt_verified=1;
++        printf("ZIYI U7 GPT identity match=%u prefixMiB=%u\n",u1.volume.gpt_verified,mib);
++        u1.part.last=part.first+u1.volume.image_bytes/u1.bs-1;
++    }
++    return 1;
 +}
 +void ziyi_ufs_probe(void) {
 +    static int once;uint32_t enabled=0,root=0;
@@ -284,31 +321,41 @@
 +static LCK_GRP_DECLARE(u3_group,"ziyi_ufs_readonly");
 +static LCK_MTX_DECLARE(u3_lock,&u3_group);
 +static int disk_open(__unused dev_t dev,int flags,__unused int type,__unused struct proc *p) {
-+    return !u1.ready||u1.poison?ENXIO:((flags&FWRITE)?EROFS:0);
++    return !u1.ready||u1.poison?ENXIO:((flags&FWRITE)&&!u1.volume.writable?EROFS:0);
 +}
 +static int disk_close(__unused dev_t dev,__unused int flags,__unused int type,__unused struct proc *p) {return 0;}
 +static void disk_strategy(buf_t bp) {
 +    int error=0;caddr_t va=NULL;uint32_t count=buf_count(bp);uint64_t off=0,bytes=0;
 +    buf_setresid(bp,count);
-+    if(!(buf_flags(bp)&B_READ)) {error=EROFS;goto done;}
 +    lck_mtx_lock(&u3_lock);
 +    if(!u1.ready||u1.poison) {error=ENXIO;goto unlock;}
++    int writing=!(buf_flags(bp)&B_READ);
++    if(writing&&!u1.volume.writable){error=EROFS;goto unlock;}
 +    if(!u3_partition_io(u1.part.first,u1.part.last,u1.bs,u1.secsize,
 +                        buf_blkno(bp),count,&off,&bytes)) {error=EINVAL;goto unlock;}
 +    if(!count) goto unlock;
 +    if(buf_map(bp,&va)) {error=EIO;goto unlock;}
-+    u1.commands=0;u1.limit=258;u1.deadline=after_ms(30000);
++    u1.commands=0;u1.limit=3*(count/u1.bs+2);u1.deadline=after_ms(30000);
 +    for(uint32_t copied=0;copied<count;) {
 +        uint64_t pos=off+copied;
 +        uint32_t skip=(uint32_t)(pos%u1.bs),take=MIN(count-copied,u1.bs-skip);
-+        if(!command(0x28,u1.part.first+pos/u1.bs,1)) {error=EIO;break;}
-+        bcopy((void *)(u1.dma+U1_DATA_OFF+skip),va+copied,take);
++        uint64_t lba=u1.part.first+pos/u1.bs;
++        if(writing) {
++            if(skip||take<u1.bs) {
++                if(!command(0x28,lba,1)){error=EIO;break;}
++                bcopy((void *)(u1.dma+U1_DATA_OFF),u1.write_block,u1.bs);
++            }
++            bcopy(va+copied,u1.write_block+skip,take);
++            if(!write_verified(lba,u1.write_block)){error=EIO;break;}
++        } else {
++            if(!command(0x28,lba,1)){error=EIO;break;}
++            bcopy((void *)(u1.dma+U1_DATA_OFF+skip),va+copied,take);
++        }
 +        copied+=take;buf_setresid(bp,count-copied);
 +    }
 +    buf_unmap(bp);
 +unlock:
 +    lck_mtx_unlock(&u3_lock);
-+done:
 +    if(error) buf_seterror(bp,error);
 +    buf_biodone(bp);
 +}
@@ -326,11 +373,16 @@
 +            break;
 +        case DKIOCGETPHYSICALBLOCKSIZE:*v=u1.bs;break;
 +        case DKIOCGETBLOCKCOUNT:*w=(u1.part.last-u1.part.first+1)*u1.bs/u1.secsize;break;
-+        case DKIOCISWRITABLE:*v=0;break;
++        case DKIOCISWRITABLE:*v=u1.volume.writable;break;
 +        case DKIOCGETMAXBLOCKCOUNTREAD:*w=U3_REQUEST_MAX/u1.secsize;break;
-+        case DKIOCGETMAXBLOCKCOUNTWRITE:*w=0;break;
++        case DKIOCGETMAXBLOCKCOUNTWRITE:*w=u1.volume.writable?U3_REQUEST_MAX/u1.secsize:0;break;
 +        case DKIOCGETMAXSEGMENTCOUNTREAD:*w=1;break;
-+        case DKIOCGETMAXSEGMENTCOUNTWRITE:*w=0;break;
++        case DKIOCGETMAXSEGMENTCOUNTWRITE:*w=u1.volume.writable?1:0;break;
++        case DKIOCSYNCHRONIZECACHE:
++            /* Every completed media write used FUA and an independent READ.
++             * The same mutex serializes this with every strategy operation. */
++            if(!u1.volume.writable)error=EROFS;
++            break;
 +        default:error=ENOTTY;break;
 +    }
 +out:lck_mtx_unlock(&u3_lock);return error;
@@ -343,7 +395,10 @@
 +static int disk_read(dev_t d,struct uio *u,__unused int f) {
 +    return !u1.ready?ENXIO:physio(disk_strategy,NULL,d,B_READ,minphys,u,(int)u1.secsize);
 +}
-+static int disk_write(__unused dev_t d,__unused struct uio *u,__unused int f) {return EROFS;}
++static int disk_write(dev_t d,struct uio *u,__unused int f) {
++    return !u1.ready||u1.poison?ENXIO:!u1.volume.writable?EROFS:
++        physio(disk_strategy,NULL,d,B_WRITE,minphys,u,(int)u1.secsize);
++}
 +static const struct bdevsw disk_bdevsw={
 +    .d_open=disk_open,.d_close=disk_close,.d_strategy=disk_strategy,.d_ioctl=disk_bioctl,
 +    .d_dump=eno_dump,.d_psize=disk_psize,.d_type=D_DISK
@@ -358,8 +413,8 @@
 +    int b=bdevsw_add(-1,&disk_bdevsw);if(b<0) return ENXIO;
 +    int c=cdevsw_add_with_bdev(-1,&disk_cdevsw,b);if(c<0) return ENXIO;
 +    u1.major=b;u1.disk=makedev(b,0);
-+    if(!devfs_make_node(u1.disk,DEVFS_BLOCK,UID_ROOT,GID_OPERATOR,0440,"ufsroot0")||
-+       !devfs_make_node(makedev(c,0),DEVFS_CHAR,UID_ROOT,GID_OPERATOR,0440,"rufsroot0")) return ENXIO;
++    if(!devfs_make_node(u1.disk,DEVFS_BLOCK,UID_ROOT,GID_OPERATOR,0640,"ufsroot0")||
++       !devfs_make_node(makedev(c,0),DEVFS_CHAR,UID_ROOT,GID_OPERATOR,0640,"rufsroot0")) return ENXIO;
 +    printf("ZIYI U3 readonly BSD disk ready major=%d lun=%u bytes=%llu\n",b,u1.lun,(u1.part.last-u1.part.first+1)*u1.bs);
 +    return 0;
 +}
@@ -368,10 +423,11 @@
 + * addresses. A digest mismatch cannot enter Apple userspace. */
 +static int verify_apple_root(void) {
 +    uint32_t mib=0;char hex[65]={0};uint8_t expected[32],actual[32];
-+    if(!PE_parse_boot_argn("ziyi_ufs_verify_mib",&mib,sizeof(mib))||mib!=3072||
++    if(!PE_parse_boot_argn("ziyi_ufs_verify_mib",&mib,sizeof(mib))||(mib!=3072&&mib!=8192)||
 +       !PE_parse_boot_argn("ziyi_ufs_hash",hex,sizeof(hex))||!u4_expected_hash(hex,expected)) return 0;
-+    const uint64_t bytes=3221225472ull;
-+    if(!u1.ready||u1.poison||(u1.part.last-u1.part.first+1)*u1.bs<bytes) return 0;
++    const uint64_t bytes=(uint64_t)mib<<20;
++    if(!u1.ready||u1.poison||!u1.volume.gpt_verified||u1.volume.image_bytes!=bytes||
++       (u1.part.last-u1.part.first+1)*u1.bs!=bytes) return 0;
 +    struct u4_hash state;u4_hash_init(&state);
 +    uint64_t global=after_ms(1800000);
 +    printf("ZIYI U4 full root readback BEGIN bytes=%llu readonly\n",bytes);
@@ -382,7 +438,7 @@
 +        }
 +        if(!command(0x28,u1.part.first+off/u1.bs,1)||
 +           !u4_hash_blocks(&state,(const uint8_t *)(u1.dma+U1_DATA_OFF),u1.bs)) return 0;
-+        if((off+u1.bs)%0x4000000==0) printf("ZIYI U4 root readback MiB=%llu/3072\n",(off+u1.bs)>>20);
++        if((off+u1.bs)%0x4000000==0) printf("ZIYI U7 root readback MiB=%llu/%u\n",(off+u1.bs)>>20,mib);
 +    }
 +    if(!u4_hash_final(&state,bytes,actual)) return 0;
 +    char value[65];static const char digits[]="0123456789abcdef";
@@ -399,6 +455,12 @@
 +        u1.verified=verify_apple_root();
 +        if(!u1.verified) {printf("ZIYI U4 STOP root readback failed; no Apple entry\n");stop_queue();u1.poison=1;return EIO;}
 +    }
++    u1.volume.root_verified=1;
++    uint32_t rw=0;
++    if(PE_parse_boot_argn("ziyi_ufs_rw",&rw,sizeof(rw))&&rw==1&&u1.volume.gpt_verified==1)
++        u1.volume.writable=1;
++    printf("ZIYI U7 ROOT READY bytes=%llu writable=%u; full SHA/GPT verified\n",
++           u1.volume.image_bytes,u1.volume.writable);
 +    *dev=u1.disk;return 0;
 +}
  #endif
@@ -773,5 +835,37 @@
 +        if(i%2) out[i/2]|=(uint8_t)v;else out[i/2]=(uint8_t)(v<<4);
 +    }
 +    return hex[64]==0;
++}
++#endif
+--- /dev/null
++++ b/bsd/dev/ziyi_u7_write_policy.h
+@@ -0,0 +1,29 @@
++/* U7 prepared source policy. Requires complete CI/binary/phone audit.
++ * Writes require BOTH complete initial root hash and GPT identity proof.
++ * Bounds expose only the 3GiB/8GiB image prefix, never all userdata.
++ */
++#ifndef ZIYI_U7_WRITE_POLICY_H
++#define ZIYI_U7_WRITE_POLICY_H
++#include "ziyi_u1_core.h"
++struct u7_volume {
++    uint64_t first,last,image_bytes;
++    uint32_t physical;
++    unsigned lun,root_verified,gpt_verified,writable;
++};
++static inline int u7_volume_valid(const struct u7_volume *v) {
++    if(v->lun>7||(v->physical!=512&&v->physical!=4096)||v->first>v->last||v->last==UINT64_MAX||
++       (v->image_bytes!=(3ull<<30)&&v->image_bytes!=(8ull<<30)))return 0;
++    return v->last-v->first+1>=v->image_bytes/v->physical;
++}
++static inline int u7_write_command(struct u1_cmd *out,const struct u7_volume *v,uint64_t lba,uint32_t blocks) {
++    if(!u7_volume_valid(v)||v->root_verified!=1||v->gpt_verified!=1||v->writable!=1||
++       !blocks||blocks>U1_BLOCK_MAX/v->physical||lba<v->first||lba>UINT32_MAX||
++       blocks-1>UINT32_MAX-lba)return 0;
++    uint64_t offset=lba-v->first,image_blocks=v->image_bytes/v->physical;
++    if(offset>=image_blocks||blocks>image_blocks-offset)return 0;
++    struct u1_cmd c={{0},(uint8_t)v->lun,blocks*v->physical};
++    c.cdb[0]=0x2a;c.cdb[1]=8; /* WRITE(10), Force Unit Access, no other flags. */
++    u1_putbe32(c.cdb+2,(uint32_t)lba);c.cdb[7]=(uint8_t)(blocks>>8);c.cdb[8]=(uint8_t)blocks;
++    *out=c;return 1;
 +}
 +#endif
