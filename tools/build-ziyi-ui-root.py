@@ -67,6 +67,16 @@ def regular_target(root,name):
     return p
 
 
+def supplemental_target(root,name):
+    # Existing OS aliases already route these paths. Preserve the complete
+    # Cryptex below preboot, but never merge supplemental files through links.
+    relative=Path(name)
+    if relative.is_absolute() or '..' in relative.parts:raise ValueError('Unsafe supplemental path')
+    for i in range(1,len(relative.parts)):
+        if (root/Path(*relative.parts[:i])).is_symlink():return None
+    return safe(root,name)
+
+
 def selftest():
     with tempfile.TemporaryDirectory() as temp:
         base=Path(temp);root=base/'image';root.mkdir();outside=base/'host';outside.mkdir()
@@ -86,6 +96,10 @@ def selftest():
         else:raise AssertionError('Exclusive create followed symlink')
         copy_entry(source,root,'owned/file')
         assert (root/'owned/file').read_bytes()==source.read_bytes() and marker.read_bytes()==b'unchanged'
+        (root/'alias').symlink_to('owned',target_is_directory=True)
+        assert supplemental_target(root,'alias/new') is None
+        assert supplemental_target(root,'escape/marker') is None
+        assert supplemental_target(root,'owned/new')==root/'owned/new'
     print('UI_ROOT_PATH_SELFTEST_PASS')
 
 
@@ -153,7 +167,8 @@ def cryptex(source,root,label):
         if not (stat.S_ISREG(s.st_mode) or stat.S_ISDIR(s.st_mode) or stat.S_ISLNK(s.st_mode)):continue
         copy_entry(p,root,prefix+'/'+name)
         if stat.S_ISDIR(s.st_mode):continue
-        alias=safe(root,name)
+        alias=supplemental_target(root,name)
+        if alias is None:continue
         if os.path.lexists(alias):continue
         parents(root,alias)
         stored=safe(root,prefix+'/'+name)
