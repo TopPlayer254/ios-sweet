@@ -188,6 +188,28 @@ def inventory(root):
     return sorted(rows,key=lambda r:r['path'])
 
 
+def validate_cache(root):
+    directory='System/Library/Caches/com.apple.dyld/'
+    base=regular_target(root,directory+'dyld_shared_cache_arm64').read_bytes()
+    assert hashlib.sha256(base).hexdigest()=='76874e8375252ee643011ff8063f0cce12355f05cf5f9897a34e5679667a65aa'
+    offset,count=struct.unpack_from('<2I',base,392);assert count==42 and offset+count*56<=len(base)
+    members=[('dyld_shared_cache_arm64',base[88:104])]
+    for i in range(count):
+        uuid,vm,suffix=struct.unpack_from('<16sQ32s',base,offset+i*56)
+        name='dyld_shared_cache_arm64'+suffix.split(b'\0')[0].decode()
+        assert re.fullmatch(r'dyld_shared_cache_arm64\.\d+(?:\.dyld(?:data|linkedit))?',name)
+        members.append((name,uuid))
+    assert len({n for n,_ in members})==43
+    size=0
+    for name,uuid in members:
+        path=regular_target(root,directory+name)
+        with path.open('rb') as f:header=f.read(104)
+        assert header[88:104]==uuid;size+=path.stat().st_size
+    assert size==2738257920
+    # .symbols is auxiliary metadata, not a runtime subcache member.
+    return len(members)
+
+
 def main():
     assert sys.platform=='darwin' and os.geteuid()==0 and len(sys.argv)==3
     from cryptography.hazmat.primitives import hashes,serialization
@@ -239,9 +261,8 @@ def main():
         before=inventory(mount)
         required=['sbin/launchd','usr/lib/dyld','usr/libexec/backboardd','System/Library/CoreServices/SpringBoard.app/SpringBoard','Applications/PosterBoard.app/PosterBoard','System/Library/Frameworks/QuartzCore.framework/default.metallib']
         assert all(safe(mount,p).is_file() for p in required)
-        cache_dir=safe(mount,'System/Library/Caches/com.apple.dyld')
-        assert len(list(cache_dir.glob('dyld_shared_cache_arm64*')))==43
-        report.update(requiredFilesPresent=True,cacheFiles=43,files=len(before),nativeInventory=True)
+        cache_count=validate_cache(mount)
+        report.update(requiredFilesPresent=True,cacheFiles=cache_count,files=len(before),nativeInventory=True)
     finally:run(['hdiutil','detach',mount])
     run(['hdiutil','attach','-readonly','-nobrowse','-owners','on','-mountpoint',mount,image])
     try:assert inventory(mount)==before
