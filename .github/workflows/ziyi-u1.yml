@@ -49,6 +49,10 @@ jobs:
           ./u1-evidence/test-u1 | tee u1-evidence/core-tests.txt
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u3.c -o u1-evidence/test-u3
           ./u1-evidence/test-u3 | tee u1-evidence/u3-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u4_transport.c -o u1-evidence/test-u4-transport
+          ./u1-evidence/test-u4-transport | tee u1-evidence/u4-transport-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u4.c -o u1-evidence/test-u4
+          ./u1-evidence/test-u4 | tee u1-evidence/u4-hash-tests.txt
 
       - name: Fetch build script
         run: |

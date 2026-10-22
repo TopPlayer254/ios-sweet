@@ -1,3 +1,22 @@
+**Ziyi U3 actual / U4 candidate, 2026-10-22.**
+U3 CI39815749559/6d531831 SUCCESS. Phone P CRC2b77911f and X preentry
+CRC9c7d4266: 11 segments/ADT/args match. Darwin HFS md0 and own PID1 work.
+Live SMMU proof PASSED, CR2=0; queue gate stopped before ANY queue writes
+or DMA on inherited slot0 header01000000/OCS0/UCDff12f100. No native SCSI,
+capacity/GPT read, media writes or real Apple execution yet.
+U4 accepts a validated legacy CT0 or CT1 descriptor and completed NOP,
+ignores only provably inert unused slots, and dumps rejected descriptors.
+Unknown/write UPIUs still reject before takeover; own commands remain CT1.
+U4 also gates future UFS root entry on a complete bounded 3GiB SHA readback;
+its streaming SHA passed the actual private image on PC (271 checks), not
+on the phone. All disk/media writes remain absent. Full CI and phone tests
+are required before trusting the U4 candidate. Apple launchd/UI are unproven.
+Root/userdata images, GPT/boot/recovery backups and restore evidence remain
+private. Existing HyperOS Recovery entry was verified without wiping;
+Android return after erasure has not been exercised. Userdata contents were
+waived; GPT/system backups and bounded-write/restore checks remain required.
+Current user explicitly resumed phone tests; old STOP entries are historical.
+
 # Ziyi U3 candidate — 2026-10-22
 
 U3 replaces the U1 explicit-bypass-only gate with a repeated, exact live

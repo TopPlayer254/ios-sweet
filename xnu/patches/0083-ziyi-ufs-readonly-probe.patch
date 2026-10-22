@@ -1,6 +1,6 @@
 --- a/bsd/dev/sweet_ufs.c
 +++ b/bsd/dev/sweet_ufs.c
-@@ -1,11 +1,331 @@
+@@ -1,11 +1,366 @@
 -/* ziyi early profile: hardware provider deliberately absent.
 - * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
 +/* SPDX-License-Identifier: BSD-2-Clause-Patent
@@ -31,6 +31,7 @@
 +#include "ziyi_u1_core.h"
 +#include "ziyi_u3_policy.h"
 +#include "ziyi_u1_sha.inc"
++#include "ziyi_u4_verify.h"
 +extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
 +extern ppnum_t pmap_find_phys(pmap_t,addr64_t);
 +void ziyi_ufs_probe(void);
@@ -53,7 +54,7 @@
 +    struct u3_smmu identity;
 +    uint32_t secsize;
 +    dev_t disk;
-+    int ready,major;
++    int ready,major,verified;
 +    int poison,owned;
 +    uint8_t headers[2][U1_BLOCK_MAX],tables[2][U1_TABLE_MAX],sample[U1_BLOCK_MAX];
 +} u1;
@@ -103,15 +104,18 @@
 +    for(unsigned i=0;i<slots;i++) {
 +        uint8_t d[32];
 +        for(unsigned j=0;j<32;j++) d[j]=*(volatile uint8_t *)(ring+i*32+j);
-+        if(!u1_nonzero(d,32)) continue;
++        for(unsigned j=0;j<32;j++) if(d[j]!=*(volatile uint8_t *)(ring+i*32+j)) return 0;
++        if(u4_inert_slot(d)) continue;
 +        uint64_t ucd;unsigned poff,n;
 +        if(!u3_old_utrd(d,&ucd,&poff,&n)) {
++            printf("ZIYI U4 TRD %x %x %x %x %x %x %x %x\n",u1_le32(d),u1_le32(d+4),u1_le32(d+8),u1_le32(d+12),u1_le32(d+16),u1_le32(d+20),u1_le32(d+24),u1_le32(d+28));
 +            printf("ZIYI U3 STOP inherited slot=%u hdr=%x ocs=%x ptr=%llx\n",i,u1_le32(d),u1_le32(d+8),u1_le64(d+16));return 0;
 +        }
 +        vm_offset_t va=ml_io_map(ucd,4096);if(!va) return 0;
 +        uint8_t u[4096];
 +        for(unsigned j=0;j<4096;j++) u[j]=*(volatile uint8_t *)(va+j);
-+        if(!u3_old_ucd(u,poff,n)) {printf("ZIYI U3 STOP inherited UCD slot=%u op=%x flags=%x\n",i,u[16],u[1]);return 0;}
++        if(!u3_old_ucd(u,poff,n)) {
++            printf("ZIYI U4 UPIU %x %x %x %x %x %x %x %x\n",u1_le32(u),u1_le32(u+4),u1_le32(u+8),u1_le32(u+12),u1_le32(u+16),u1_le32(u+20),u1_le32(u+24),u1_le32(u+28));printf("ZIYI U3 STOP inherited UCD slot=%u op=%x flags=%x\n",i,u[16],u[1]);return 0;}
 +        for(unsigned j=0;j<4096;j++) if(u[j]!=*(volatile uint8_t *)(va+j)) return 0;
 +        for(unsigned j=0;j<32;j++) if(d[j]!=*(volatile uint8_t *)(ring+i*32+j)) return 0;
 +        used++;
@@ -331,11 +335,42 @@
 +    printf("ZIYI U3 readonly BSD disk ready major=%d lun=%u bytes=%llu\n",b,u1.lun,(u1.part.last-u1.part.first+1)*u1.bs);
 +    return 0;
 +}
++/* Root entry is conditional on a bounded complete readback of the prepared
++ * headless image. Expected SHA comes from private audited boot args, not donor
++ * addresses. A digest mismatch cannot enter Apple userspace. */
++static int verify_apple_root(void) {
++    uint32_t mib=0;char hex[65]={0};uint8_t expected[32],actual[32];
++    if(!PE_parse_boot_argn("ziyi_ufs_verify_mib",&mib,sizeof(mib))||mib!=3072||
++       !PE_parse_boot_argn("ziyi_ufs_hash",hex,sizeof(hex))||!u4_expected_hash(hex,expected)) return 0;
++    const uint64_t bytes=3221225472ull;
++    if(!u1.ready||u1.poison||(u1.part.last-u1.part.first+1)*u1.bs<bytes) return 0;
++    struct u4_hash state;u4_hash_init(&state);
++    uint64_t global=after_ms(1800000);
++    printf("ZIYI U4 full root readback BEGIN bytes=%llu readonly\n",bytes);
++    for(uint64_t off=0;off<bytes;off+=u1.bs) {
++        if(mach_absolute_time()>=global) return 0;
++        if(off%((uint64_t)u1.bs*128)==0) {
++            u1.commands=0;u1.limit=128;u1.deadline=MIN(global,after_ms(30000));
++        }
++        if(!command(0x28,u1.part.first+off/u1.bs,1)||
++           !u4_hash_blocks(&state,(const uint8_t *)(u1.dma+U1_DATA_OFF),u1.bs)) return 0;
++        if((off+u1.bs)%0x4000000==0) printf("ZIYI U4 root readback MiB=%llu/3072\n",(off+u1.bs)>>20);
++    }
++    if(!u4_hash_final(&state,bytes,actual)) return 0;
++    char value[65];static const char digits[]="0123456789abcdef";
++    for(unsigned i=0;i<32;i++) {value[2*i]=digits[actual[i]>>4];value[2*i+1]=digits[actual[i]&15];}
++    value[64]=0;printf("ZIYI U4 full root SHA256 %s match=%d\n",value,u1_equal(actual,expected,32));
++    return u1_equal(actual,expected,32);
++}
 +int sweet_ufs_rootdev(int32_t *dev) {
 +    uint32_t enabled=0;
 +    if(!dev||!PE_parse_boot_argn("ziyi_ufs_root",&enabled,sizeof(enabled))||enabled!=1) return ENXIO;
 +    ziyi_ufs_probe();
 +    if(!u1.ready||u1.poison) return ENXIO;
++    if(!u1.verified) {
++        u1.verified=verify_apple_root();
++        if(!u1.verified) {printf("ZIYI U4 STOP root readback failed; no Apple entry\n");stop_queue();u1.poison=1;return EIO;}
++    }
 +    *dev=u1.disk;return 0;
 +}
  #endif
@@ -545,7 +580,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/ziyi_u3_policy.h
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,96 @@
 +/* SPDX-License-Identifier: BSD-2-Clause-Patent
 + * Pure U3 policy. No MMIO or writes; exact U2 hardware profile, fail closed.
 + */
@@ -589,19 +624,30 @@
 +    /* Runtime M0 DT: separate lower firmware RAM, outside XNU's arena. */
 +    return n && pa>=0xf1400000ull && pa<0x100000000ull && n<=0x100000000ull-pa;
 +}
++static inline int u4_inert_slot(const uint8_t *d) {
++    for(unsigned i=0;i<32;i++) if(i!=8&&d[i]) return 0;
++    return d[8]==0||d[8]==15;
++}
 +static inline int u3_old_utrd(const uint8_t *d,uint64_t *ucd,unsigned *prdt,unsigned *n) {
 +    uint32_t h=u1_le32(d),ocs=u1_le32(d+8),w6=u1_le32(d+24),w7=u1_le32(d+28);
 +    unsigned dir=(h>>25)&3u;
 +    uint64_t pa=u1_le64(d+16);
 +    unsigned roff=w6>>16,rlen=w6&65535u,poff=w7>>16,pnum=w7&65535u;
-+    if(((h>>28)&15u)!=1 || (dir!=0&&dir!=2) || (ocs&255u)!=0 ||
++    if(((h>>28)&15u)>1 || (dir!=0&&dir!=2) || (ocs&255u)!=0 ||
 +       (pa&127u)||!u3_firmware_span(pa,4096)||
 +       roff<8||rlen<8||roff>1024||rlen>1024-roff||
-+       pnum>32||poff<8||poff>1024||pnum*4>1024-poff||
++       pnum>32||poff>1024||(pnum&&(poff<8||pnum*4>1024-poff))||
 +       (pnum&&poff<roff+rlen)) return 0;
 +    *ucd=pa;*prdt=poff*4;*n=pnum;return 1;
 +}
 +static inline int u3_old_ucd(const uint8_t *u,unsigned poff,unsigned n) {
++    if(u[0]==0) {
++        /* Completed NOP OUT: no command or data payload. Firmware may retain
++         * the legacy SCSI CT encoding; this queue is read, never replayed. */
++        if(n||u[1]||u[2]) return 0;
++        for(unsigned i=4;i<32;i++) if(u[i]) return 0;
++        return 1;
++    }
 +    if(u[0]!=1 || (u[1]&0x20u) || (u[1]&0xc0u)==0xc0u || u[2]>7 ||
 +       poff>4096 || n>32 || n*16>4096-poff) return 0;
 +    unsigned op=u[16];
@@ -629,5 +675,42 @@
 +    uint64_t size=(last-first+1)*physical,pos=(uint64_t)block*logical;
 +    if(pos>size||count>size-pos) return 0;
 +    *off=pos;*bytes=size;return 1;
++}
++#endif
+--- /dev/null
++++ b/bsd/dev/ziyi_u4_verify.h
+@@ -0,0 +1,34 @@
++/* SPDX-License-Identifier: BSD-2-Clause-Patent
++ * Streaming SHA for block-aligned readback, sharing the already audited SHA
++ * compression function Block(). This is a gate for future Apple root entry.
++ */
++#ifndef ZIYI_U4_VERIFY_H
++#define ZIYI_U4_VERIFY_H
++struct u4_hash { uint32_t h[8];uint64_t bytes;int failed; };
++static inline void u4_hash_init(struct u4_hash *s) {
++    static const uint32_t iv[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
++        0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
++    for(unsigned i=0;i<8;i++) s->h[i]=iv[i];s->bytes=0;s->failed=0;
++}
++static inline int u4_hash_blocks(struct u4_hash *s,const uint8_t *p,size_t n) {
++    if(s->failed||!n||n>4096||n%64||s->bytes>UINT64_MAX/8-n) {s->failed=1;return 0;}
++    for(size_t i=0;i<n;i+=64) Block(s->h,p+i);
++    s->bytes+=n;return 1;
++}
++static inline int u4_hash_final(struct u4_hash *s,uint64_t expected,uint8_t out[32]) {
++    if(s->failed||s->bytes!=expected||expected%64) return 0;
++    uint8_t tail[64]={0x80};uint64_t bits=s->bytes*8;
++    for(unsigned i=0;i<8;i++) tail[63-i]=(uint8_t)(bits>>(8*i));
++    Block(s->h,tail);
++    for(unsigned i=0;i<32;i++) out[i]=(uint8_t)(s->h[i/4]>>(24-8*(i%4)));
++    s->failed=1;return 1;
++}
++static inline int u4_expected_hash(const char *hex,uint8_t out[32]) {
++    for(unsigned i=0;i<64;i++) {
++        unsigned c=(unsigned char)hex[i];unsigned v;
++        if(c>='0'&&c<='9') v=c-'0';else if(c>='a'&&c<='f') v=c-'a'+10;else return 0;
++        if(i%2) out[i/2]|=(uint8_t)v;else out[i/2]=(uint8_t)(v<<4);
++    }
++    return hex[64]==0;
 +}
 +#endif

@@ -1,7 +1,7 @@
 {
   "bsd/dev/sweet_ufs.c": {
     "before": "6b538c11f6949b9fe0c61b0267fd75ad578a314154d2da14c4b332d8cb80fc37",
-    "after": "f615ac739fca5a7777056dec365a32a8b57109a71dd8a3a6bf2c3b6876174d7e"
+    "after": "82b138a3631c4c1f492589be2328f07ddf6fb2f072daa7b55a8e051a1c6cc73c"
   },
   "bsd/kern/bsd_init.c": {
     "before": "9d18e974fdc02e018b3749b3faefff9ff7049f0ffa01c60d59351c182ce0a3e3",
@@ -17,6 +17,10 @@
   },
   "bsd/dev/ziyi_u3_policy.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "d2daeff097e201b6853f1c872f6e095d1ddfecac1335b7ebbf2dda328314061a"
+    "after": "9b0bf23293042d0e90644edbe5da2aff57e0ab159061889f68bd9adae71a4167"
+  },
+  "bsd/dev/ziyi_u4_verify.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "c2459d914cadd904c2689cd68c456a5dd2e4c80c0ab784c7ce547b6f957acdda"
   }
 }
