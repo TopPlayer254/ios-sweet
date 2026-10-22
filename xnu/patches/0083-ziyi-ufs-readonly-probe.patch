@@ -1,6 +1,6 @@
 --- a/bsd/dev/sweet_ufs.c
 +++ b/bsd/dev/sweet_ufs.c
-@@ -1,11 +1,366 @@
+@@ -1,11 +1,394 @@
 -/* ziyi early profile: hardware provider deliberately absent.
 - * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
 +/* SPDX-License-Identifier: BSD-2-Clause-Patent
@@ -54,7 +54,7 @@
 +    struct u3_smmu identity;
 +    uint32_t secsize;
 +    dev_t disk;
-+    int ready,major,verified;
++    int ready,major,verified,wake;
 +    int poison,owned;
 +    uint8_t headers[2][U1_BLOCK_MAX],tables[2][U1_TABLE_MAX],sample[U1_BLOCK_MAX];
 +} u1;
@@ -101,6 +101,22 @@
 +    unsigned slots=(hr(0)&31u)+1u,used=0;
 +    if((pa&1023u)||!u3_firmware_span(pa,slots*32u)||hr(0x58)||hr(0x78)) return 0;
 +    vm_offset_t ring=ml_io_map(pa,slots*32u);if(!ring) return 0;
++    /* Exact completed powerdown + poison padding profile observed in U5.
++     * Never read CAP-sized RAM as descriptors when it is actually UCD data. */
++    uint8_t prefix[256],*saved=u1.sample;
++    for(unsigned j=0;j<256;j++) prefix[j]=*(volatile uint8_t *)(ring+j);
++    uint64_t first=u1_le64(prefix+16);
++    if(!(first&127u)&&u3_firmware_span(first,4096)) {
++        vm_offset_t va=ml_io_map(first,4096);
++        if(!va)return 0;
++        for(unsigned j=0;j<4096;j++)saved[j]=*(volatile uint8_t *)(va+j);
++        if(u6_firmware_profile(prefix,saved,pa)) {
++            for(unsigned j=0;j<256;j++)if(prefix[j]!=*(volatile uint8_t *)(ring+j))return 0;
++            for(unsigned j=0;j<4096;j++)if(saved[j]!=*(volatile uint8_t *)(va+j))return 0;
++            if(hr(0x58)||hr(0x78)||pa!=(hr(0x50)|(uint64_t)hr(0x54)<<32))return 0;
++            u1.wake=1;printf("ZIYI U6 completed firmware powerdown profile PASS; no replay\n");return 1;
++        }
++    }
 +    for(unsigned i=0;i<slots;i++) {
 +        uint8_t d[32];
 +        for(unsigned j=0;j<32;j++) d[j]=*(volatile uint8_t *)(ring+i*32+j);
@@ -135,7 +151,7 @@
 +static int command(unsigned op,uint64_t lba,uint32_t count) {
 +    struct u1_cmd c;
 +    if(u1.poison||++u1.commands>u1.limit||mach_absolute_time()>=u1.deadline||
-+       !u1_command(&c,op,u1.lun,lba,count,u1.bs,u1.blocks)) return 0;
++       !u6_command(&c,op,u1.lun,lba,count,u1.bs,u1.blocks)) return 0;
 +    if(!bypass()||hr(0x58)||hr(0x78)||!(hr(0x60)&1)||
 +       hr(0x50)!=(uint32_t)u1.pa||hr(0x54)!=(uint32_t)(u1.pa>>32)) {
 +        u1.poison=1;printf("ZIYI U1 STOP ownership/identity changed\n");return 0;
@@ -155,7 +171,7 @@
 +        prdt[1]=(uint32_t)((u1.pa+U1_DATA_OFF)>>32);prdt[3]=c.bytes-1;
 +    }
 +    sync_dma();hw(0x58,1);
-+    if(!wait_reg(0x58,1,0,1000)) {
++    if(!wait_reg(0x58,1,0,op==0x1b?5000:1000)) {
 +        u1.poison=1;printf("ZIYI U1 TIMEOUT op=%x lun=%u\n",op,u1.lun);stop_queue();return 0;
 +    }
 +    sync_dma();
@@ -243,6 +259,18 @@
 +    hw(0x50,(uint32_t)u1.pa);hw(0x54,(uint32_t)(u1.pa>>32));
 +    if(hr(0x50)!=(uint32_t)u1.pa||hr(0x54)!=(uint32_t)(u1.pa>>32)) return;
 +    u1.owned=1;hw(0x60,1);u1.deadline=after_ms(30000);u1.limit=256;
++    if(u1.wake) {
++        u1.lun=0xd0;
++        /* Clear reset unit attention without executing any data-LUN command. */
++        if(!command(0,0,0)&&!u1.poison)command(3,0,0);
++        int awake=0;
++        for(unsigned attempt=0;attempt<3&&!u1.poison;attempt++) {
++            if(command(0x1b,0,0)){awake=1;break;}
++            if(!u1.poison)command(3,0,0);
++        }
++        printf("ZIYI U6 ACTIVE W-LUN success=%d poisoned=%d\n",awake,u1.poison);
++        if(!awake){stop_queue();u1.poison=1;return;}
++    }
 +    int success=0;
 +    for(u1.lun=0;u1.lun<8&&!u1.poison;u1.lun++) {
 +        u1.blocks=0;u1.bs=0;
@@ -580,7 +608,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/ziyi_u3_policy.h
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,129 @@
 +/* SPDX-License-Identifier: BSD-2-Clause-Patent
 + * Pure U3 policy. No MMIO or writes; exact U2 hardware profile, fail closed.
 + */
@@ -676,6 +704,39 @@
 +    if(pos>size||count>size-pos) return 0;
 +    *off=pos;*bytes=size;return 1;
 +}
++
++/* U5 CRC 3df2da6e: firmware owns ONE completed descriptor. CAP is the
++ * controller maximum, not an inventory of allocated firmware descriptors.
++ * This profile is only inspected, NEVER replayed. Old data PRDT is unused. */
++static inline int u6_firmware_profile(const uint8_t *ring,const uint8_t *u,uint64_t base) {
++    if((base&1023)||!u3_firmware_span(base,4352)||
++       u1_le32(ring)!=0x01000000||u1_le32(ring+4)||u1_le32(ring+8)||u1_le32(ring+12)||
++       u1_le64(ring+16)!=base+0x100||u1_le32(ring+24)!=0x00080010||u1_le32(ring+28)!=0x00180000) return 0;
++    for(unsigned i=32;i<256;i++)if(ring[i]!=0xaf)return 0;
++    for(unsigned i=0;i<32;i++) {
++        uint8_t expected=i==0?1:i==2?0xd0:i==3?u[3]:i==16?0x1b:i==20?0x30:0;
++        if(u[i]!=expected)return 0;
++    }
++    for(unsigned i=0;i<32;i++) {
++        uint8_t expected=i==0?0x21:i==2?0xd0:i==3?u[3]:0;
++        if(u[32+i]!=expected)return 0;
++    }
++    return 1;
++}
++/* Only the UFS device W-LUN gets a bounded non-media-writing power command.
++ * No START_STOP to a data LUN, no stop/eject/sleep/powerdown generated. */
++static inline int u6_command(struct u1_cmd *out,unsigned op,unsigned lun,uint64_t lba,
++                              uint32_t count,uint32_t bs,uint64_t blocks) {
++    if(lun!=0xd0)return u1_command(out,op,lun,lba,count,bs,blocks);
++    if(lba||count)return 0;
++    struct u1_cmd c={{0},0xd0,0};c.cdb[0]=(uint8_t)op;
++    if(op==0){}
++    else if(op==3){c.cdb[4]=18;c.bytes=18;}
++    else if(op==0x1b){c.cdb[4]=0x10;}
++    else return 0;
++    *out=c;return 1;
++}
++
 +#endif
 --- /dev/null
 +++ b/bsd/dev/ziyi_u4_verify.h

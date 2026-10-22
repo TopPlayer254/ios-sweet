@@ -54,6 +54,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u4.c -o u1-evidence/test-u4
           ./u1-evidence/test-u4 | tee u1-evidence/u4-hash-tests.txt
 
+      - name: U6 measured firmware profile and wake policy
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u6.c -o u1-evidence/test-u6
+          ./u1-evidence/test-u6 | tee u1-evidence/u6-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb
