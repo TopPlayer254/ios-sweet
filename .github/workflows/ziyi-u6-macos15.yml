@@ -102,7 +102,7 @@ jobs:
           chmod +x tools/legacy-iig.py
           echo "ZIYI_LEGACY_IIG_CACHE=$RUNNER_TEMP/legacy-iig" >> "$GITHUB_ENV"
           echo "ZIYI_LEGACY_IIG_BUILD=$GITHUB_WORKSPACE/dxb/build" >> "$GITHUB_ENV"
-          echo "IIG=$GITHUB_WORKSPACE/tools/legacy-iig.py" >> "$GITHUB_ENV"
+          echo "IIG=$(command -v python3) $GITHUB_WORKSPACE/tools/legacy-iig.py" >> "$GITHUB_ENV"
 
       - name: Build
         working-directory: dxb

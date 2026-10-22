@@ -10,7 +10,10 @@ TAR_SHA='1c7ee74a755a311c6e3b34bde7ba804e29b72295d2fd5c4d059df655290bd9ec'
 PREFIX='build/xnu.obj/DEVELOPMENT_ARM64_SWEET/iokit/DEVELOPMENT/DriverKit/'
 INPUTS=('xnu/iokit/','xnu/libkern/','xnu/osfmk/mach/','xnu/bsd/sys/')
 def sha(path):
-    with path.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+    h=hashlib.sha256()
+    with path.open('rb') as f:
+        for block in iter(lambda:f.read(1<<20),b''):h.update(block)
+    return h.hexdigest()
 def prepare(archive,out):
     assert sha(archive)==TAR_SHA and not out.exists();out.mkdir()
     inputs={};outputs={};seen=set();size=0
