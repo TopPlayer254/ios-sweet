@@ -1,6 +1,6 @@
 --- a/bsd/dev/sweet_ufs.c
 +++ b/bsd/dev/sweet_ufs.c
-@@ -1,11 +1,456 @@
+@@ -1,11 +1,463 @@
 -/* ziyi early profile: hardware provider deliberately absent.
 - * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
 +/* SPDX-License-Identifier: BSD-2-Clause-Patent
@@ -33,6 +33,7 @@
 +#include "ziyi_u1_sha.inc"
 +#include "ziyi_u4_verify.h"
 +#include "ziyi_u7_write_policy.h"
++#include "ziyi_u8_read_policy.h"
 +extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
 +extern ppnum_t pmap_find_phys(pmap_t,addr64_t);
 +void ziyi_ufs_probe(void);
@@ -155,7 +156,7 @@
 +    struct u1_cmd c;
 +    if(u1.poison||++u1.commands>u1.limit||mach_absolute_time()>=u1.deadline||
 +       (op==0x2a ? (!data||!u7_write_command(&c,&u1.volume,lba,count)) :
-+        (data||!u6_command(&c,op,u1.lun,lba,count,u1.bs,u1.blocks)))) return 0;
++        (data||!u8_command(&c,op,u1.lun,lba,count,u1.bs,u1.blocks)))) return 0;
 +    if(!bypass()||hr(0x58)||hr(0x78)||!(hr(0x60)&1)||
 +       hr(0x50)!=(uint32_t)u1.pa||hr(0x54)!=(uint32_t)(u1.pa>>32)) {
 +        u1.poison=1;printf("ZIYI U1 STOP ownership/identity changed\n");return 0;
@@ -348,7 +349,9 @@
 +            bcopy(va+copied,u1.write_block+skip,take);
 +            if(!write_verified(lba,u1.write_block)){error=EIO;break;}
 +        } else {
-+            if(!command(0x28,lba,1)){error=EIO;break;}
++            uint32_t blocks=1;
++            if(!skip&&count-copied>=u1.bs){blocks=MIN((count-copied)/u1.bs,U8_READ_MAX/u1.bs);take=blocks*u1.bs;}
++            if(!command(0x28,lba,blocks)){error=EIO;break;}
 +            bcopy((void *)(u1.dma+U1_DATA_OFF+skip),va+copied,take);
 +        }
 +        copied+=take;buf_setresid(bp,count-copied);
@@ -431,14 +434,18 @@
 +    struct u4_hash state;u4_hash_init(&state);
 +    uint64_t global=after_ms(1800000);
 +    printf("ZIYI U4 full root readback BEGIN bytes=%llu readonly\n",bytes);
-+    for(uint64_t off=0;off<bytes;off+=u1.bs) {
-+        if(mach_absolute_time()>=global) return 0;
-+        if(off%((uint64_t)u1.bs*128)==0) {
++    printf("ZIYI U8 readback batching max=%u existing owned DMA=%u\n",U8_READ_MAX,U1_DMA_BYTES);
++    for(uint64_t off=0;off<bytes;) {
++        if(mach_absolute_time()>=global)return 0;
++        if(off%((uint64_t)U8_READ_MAX*128)==0){
 +            u1.commands=0;u1.limit=128;u1.deadline=MIN(global,after_ms(30000));
 +        }
-+        if(!command(0x28,u1.part.first+off/u1.bs,1)||
-+           !u4_hash_blocks(&state,(const uint8_t *)(u1.dma+U1_DATA_OFF),u1.bs)) return 0;
-+        if((off+u1.bs)%0x4000000==0) printf("ZIYI U7 root readback MiB=%llu/%u\n",(off+u1.bs)>>20,mib);
++        uint32_t n=(uint32_t)MIN(bytes-off,U8_READ_MAX);
++        if(n%u1.bs||!command(0x28,u1.part.first+off/u1.bs,n/u1.bs))return 0;
++        for(uint32_t local=0;local<n;local+=u1.bs)
++            if(!u4_hash_blocks(&state,(const uint8_t *)(u1.dma+U1_DATA_OFF+local),u1.bs))return 0;
++        off+=n;
++        if(off%0x4000000==0)printf("ZIYI U8 root readback MiB=%llu/%u\n",off>>20,mib);
 +    }
 +    if(!u4_hash_final(&state,bytes,actual)) return 0;
 +    char value[65];static const char digits[]="0123456789abcdef";
@@ -866,6 +873,27 @@
 +    struct u1_cmd c={{0},(uint8_t)v->lun,blocks*v->physical};
 +    c.cdb[0]=0x2a;c.cdb[1]=8; /* WRITE(10), Force Unit Access, no other flags. */
 +    u1_putbe32(c.cdb+2,(uint32_t)lba);c.cdb[7]=(uint8_t)(blocks>>8);c.cdb[8]=(uint8_t)blocks;
++    *out=c;return 1;
++}
++#endif
+--- /dev/null
++++ b/bsd/dev/ziyi_u8_read_policy.h
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: BSD-2-Clause-Patent
++ * READ-only batching uses the existing owned 32KiB DMA arena's upper 16KiB.
++ * No new opcode or DMA span; media writes retain U7's independent 4KiB gate.
++ */
++#ifndef ZIYI_U8_READ_POLICY_H
++#define ZIYI_U8_READ_POLICY_H
++#include "ziyi_u3_policy.h"
++#define U8_READ_MAX (U1_DMA_BYTES-U1_DATA_OFF)
++static inline int u8_command(struct u1_cmd *out,unsigned op,unsigned lun,uint64_t lba,
++                            uint32_t count,uint32_t bs,uint64_t blocks) {
++    if(op!=0x28)return u6_command(out,op,lun,lba,count,bs,blocks);
++    if(lun>7||(bs!=512&&bs!=4096)||!count||count>U8_READ_MAX/bs||!blocks||
++       lba>=blocks||count>blocks-lba||lba>UINT32_MAX||count-1>UINT32_MAX-lba)return 0;
++    struct u1_cmd c={{0},(uint8_t)lun,count*bs};c.cdb[0]=0x28;
++    u1_putbe32(c.cdb+2,(uint32_t)lba);c.cdb[7]=(uint8_t)(count>>8);c.cdb[8]=(uint8_t)count;
 +    *out=c;return 1;
 +}
 +#endif

@@ -69,6 +69,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u7_write_policy.c -o u1-evidence/test-u7-write-policy
           ./u1-evidence/test-u7-write-policy | tee u1-evidence/u7-write-policy-tests.txt
 
+      - name: U8 read batch bounds and opcode isolation
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u8_read_policy.c -o u1-evidence/test-u8-read-policy
+          ./u1-evidence/test-u8-read-policy | tee u1-evidence/u8-read-policy-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb
@@ -127,6 +132,7 @@ jobs:
       - name: Verify U1 compiled sources
         run: |
           python3 tools/ziyi-ufs/audit_ci.py
+          strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U8 ' > u1-evidence/u8-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U7 ' > u1-evidence/u7-kernel-markers.txt
           nm dxb/fakeroot/System/Library/Kernels/kernel.development.sweet > u1-evidence/kernel-symbols.txt
           grep '_ziyi_ufs_probe' u1-evidence/kernel-symbols.txt
