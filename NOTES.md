@@ -1,3 +1,25 @@
+# Ziyi U3 candidate — 2026-10-22
+
+U3 replaces the U1 explicit-bypass-only gate with a repeated, exact live
+SMMUv2 profile check for the surveyed SM7450 SID 0x20 / CB0, including CR2,
+IAS and OAS. Unknown/changed context or inherited firmware write descriptors
+rejects before takeover. The owned 32 KiB DMA allocation is retained on failure.
+Only TUR, READ CAPACITY and bounded READ(10) CDBs can be generated.
+
+The same candidate adds dual-GPT/CRC/repeat reads and a read-only BSD disk
+for the userdata partition. `ziyi_ufs_probe=1 rd=md0` is the initial probe;
+`ziyi_ufs_root=1 rd=ufsroot0` is reserved for a separately validated HFS image.
+All write opens, strategies and character writes are rejected. No SMMU,
+PHY or media writes; no persistent logging. The shim storage fallback remains
+excluded. CI runs both policy suites under ASan/UBSan and hashes compiled sources.
+
+Host syntax/patch reconstruction and 951 new policy checks pass. This source
+has NOT yet passed full CI or a phone boot. Real Apple launchd/UI remain unproven.
+GPT/boot/recovery backups are local and private; they do not authorize flashing.
+Userdata contents were explicitly waived, while restore and bounded-write gates
+remain mandatory. Earlier build-only STOP entries below are historical and
+superseded by the user's current resumption.
+
 # Active ziyi handoff — 2026-10-21
 
 **FINAL2026-10-21: HOST_BUILD_COMPLETE_NOT_RUN.** CI39595655078 and local

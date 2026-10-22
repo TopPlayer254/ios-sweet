@@ -47,6 +47,8 @@ jobs:
           mkdir -p u1-evidence
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u1.c -o u1-evidence/test-u1
           ./u1-evidence/test-u1 | tee u1-evidence/core-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u3.c -o u1-evidence/test-u3
+          ./u1-evidence/test-u3 | tee u1-evidence/u3-tests.txt
 
       - name: Fetch build script
         run: |
