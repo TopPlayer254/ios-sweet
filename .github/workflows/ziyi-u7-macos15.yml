@@ -79,6 +79,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u9_install_policy.c -o u1-evidence/test-u9-install-policy
           ./u1-evidence/test-u9-install-policy | tee u1-evidence/u9-install-policy-tests.txt
 
+      - name: U11 bounded bottom console renderer
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u11_strip.c -o u1-evidence/test-u11-strip
+          ./u1-evidence/test-u11-strip | tee u1-evidence/u11-strip-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb
@@ -137,6 +142,7 @@ jobs:
       - name: Verify U1 compiled sources
         run: |
           python3 tools/ziyi-ufs/audit_ci.py
+          strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U11 ' > u1-evidence/u11-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U10 ' > u1-evidence/u10-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U9 ' > u1-evidence/u9-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U8 ' > u1-evidence/u8-kernel-markers.txt

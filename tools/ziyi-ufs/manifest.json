@@ -42,5 +42,25 @@
   "osfmk/vm/vm_compressor_backing_store.c": {
     "before": "228691b1d88503b65633f5a22f25b6e2f562c02f110037777313cf761202b4c6",
     "after": "a076603709ed535c52a219c5c20191493b764462cdfb8a1521f07ec2570f4254"
+  },
+  "pexpert/arm/pe_serial.c": {
+    "before": "305dc2dffaaa5732627d4c613996cb25b6bc1438d6243ad95a32536cd6166665",
+    "after": "f18e9151852f64a12876ecf82f3a22b08d5e3175169b627d3db53c740b5af382"
+  },
+  "osfmk/console/serial_console.c": {
+    "before": "f9be86900a464eb99097506276f66d3233ed4f6022a39c91ba095fc918549d39",
+    "after": "9cb9cb5c047610a9ef74d36e38a18c959fbf3ed0a3889d387790598396e5ad69"
+  },
+  "iokit/Kernel/arm/SweetFramebuffer.cpp": {
+    "before": "aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f",
+    "after": "f985cfd415cd28f9e5f117a17fa36558c3bfb3010c217f595a612ee42df2b049"
+  },
+  "pexpert/pexpert/arm64/ziyi_log_strip.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "3c01d4f58d3fea57028c227f8f38d53281df5b3717596ac7e8dbed4c2a05a900"
+  },
+  "pexpert/pexpert/arm64/Makefile": {
+    "before": "03465a5e61a07420f0d4631d25e1cd6626698200b6bc13a113aad7ae67907a6b",
+    "after": "5c20ee3db7ada7e3fe0a36bd95734241b99639b855f4f9e74b82fccb83879313"
   }
 }

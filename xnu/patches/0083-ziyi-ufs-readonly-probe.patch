@@ -1011,3 +1011,145 @@
  #define VM_SWAPFILE_DELAYED_TRIM_MAX    128
  
  #define VM_SWAP_SHOULD_DEFRAGMENT()     (((vm_swap_force_defrag == TRUE) || (c_swappedout_sparse_count > (vm_swapfile_total_segs_used / 4))) ? 1 : 0)
+--- a/pexpert/arm/pe_serial.c
++++ b/pexpert/arm/pe_serial.c
+@@ -713,11 +713,13 @@
+ 
+ extern unsigned char iso_font[256 * 16];
+ 
++#include <pexpert/arm64/ziyi_log_strip.h>
+ #define FBCON_SCALE     2
+ #define FBCON_FG        0xffffffffu
+ #define FBCON_BG        0xff000000u
+ 
+ static volatile uint32_t *fbcon_base;
++static int ziyi_strip_enabled;
+ static uint32_t fbcon_width, fbcon_height, fbcon_stride;
+ static uint32_t fbcon_cols, fbcon_rows, fbcon_col, fbcon_row;
+ 
+@@ -788,6 +790,16 @@
+ 	fbcon_col++;
+ }
+ 
++/* _cnputc routes normal console writes here; direct kprintf already uses
++ * this same serial renderer. No console selector is changed after lockdown. */
++int
++sweet_fbcon_strip_putchar(uint8_t c)
++{
++    if(!ziyi_strip_enabled || fbcon_base==NULL)return 0;
++    fbcon_transmit_data(c);
++    return 1;
++}
++
+ static unsigned int
+ fbcon_receive_ready(void)
+ {
+@@ -835,6 +847,10 @@
+ 		return;
+ 	}
+ 	sweet_early_mark(17, "fbcon config read; mapping");
++    uint32_t strip_rows=0;
++    PE_parse_boot_argn("ziyi_log_rows",&strip_rows,sizeof(strip_rows));
++    if(strip_rows && !zs_console_region(strip_rows,reg[0],reg[1],fbcon_width,fbcon_height,fbcon_stride))return;
++    ziyi_strip_enabled=(strip_rows==ZS_ROWS);
+ 	fbcon_base = (volatile uint32_t *)ml_io_map_wcomb(reg[0], reg[1]);
+ 	sweet_early_mark(18, "fbcon mapping returned");
+ 	if (fbcon_base != NULL) {
+--- a/osfmk/console/serial_console.c
++++ b/osfmk/console/serial_console.c
+@@ -242,9 +242,17 @@
+  * @param poll Whether or not this call should poll instead of going to sleep
+  *             waiting for an interrupt when the hardware device isn't ready
+  */
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++extern int sweet_fbcon_strip_putchar(uint8_t c);
++#endif
+ static inline void
+ _cnputc(char c, bool poll)
+ {
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++    /* Normal output stays within the validated bottom strip. A panic keeps
++     * its existing full-screen path so critical faults remain readable. */
++    if(!panic_active() && sweet_fbcon_strip_putchar((uint8_t)c))return;
++#endif
+ 	bool in_debugger = (kernel_debugger_entry_count > 0);
+ 	const uint32_t idx = get_cons_ops_index();
+ 
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -35,6 +35,7 @@
+  * the first swap on (it still reaches the persistent log; panics draw).
+  */
+ #include "SweetSurface.h"
++#include <pexpert/arm64/ziyi_log_strip.h>
+ 
+ extern "C" int sweet_console_muted;     /* osfmk/console/serial_console.c */
+ 
+@@ -113,6 +114,7 @@
+ 	bool          fConsolePaused;
+ 	uint8_t       fPending[SWEET_FB_SWAP_REC_SIZE];     /* latest swap, not yet shown */
+ 	bool          fDirty;
++	uint32_t      fLogStripPixels;
+ 	uint32_t      fFlushTicks;    /* vsync ticks between panel copies */
+ 	bool          fPowerOff;      /* RequestPowerChange(0) */
+ 	uint32_t      fFadeStep;      /* fade-out steps done while off */
+@@ -162,6 +164,10 @@
+ 	fWidth = (uint32_t)video.v_width;
+ 	fHeight = (uint32_t)video.v_height;
+ 	fRowBytes = (uint32_t)video.v_rowBytes;
++    uint32_t strip_rows=0;
++    PE_parse_boot_argn("ziyi_log_rows",&strip_rows,sizeof(strip_rows));
++    fLogStripPixels=zs_strip_pixels(strip_rows,fPhys,fWidth,fHeight,fRowBytes);
++    if(fLogStripPixels)IOLog("ZIYI U11 LOG strip rows=%u pixels=%u top=%u\n",strip_rows,fLogStripPixels,fHeight-fLogStripPixels);
+ 	if (fPhys == 0 || fWidth == 0 || fHeight == 0 || fRowBytes < fWidth * 4) {
+ 		IOLog("SWEET FB: no boot framebuffer\n");
+ 		return false;
+@@ -381,9 +387,10 @@
+ 		if (w > (int32_t)fWidth - dx) {
+ 			w = (int32_t)fWidth - dx;
+ 		}
+-		if (h > (int32_t)fHeight - dy) {
+-			h = (int32_t)fHeight - dy;
+-		}
++        /* Preserve the physical console band without changing the logical
++         * iPhone display or its surfaces. Text never covers the upper UI. */
++        int32_t panel_bottom=(int32_t)(fHeight-fLogStripPixels);
++        if(h>panel_bottom-dy)h=panel_bottom-dy;
+ 		uint64_t last = (uint64_t)s->offset + (uint64_t)(sy + h - 1) * s->bytesPerRow +
+ 		    (uint64_t)(sx + w) * 4;
+ 		if (w <= 0 || h <= 0 || s->elementWidth != 1 || s->elementHeight != 1 ||
+--- /dev/null
++++ b/pexpert/pexpert/arm64/ziyi_log_strip.h
+@@ -0,0 +1,20 @@
++/* Diagnostic console geometry only; full iOS display dimensions are unchanged. */
++#ifndef ZIYI_LOG_STRIP_H
++#define ZIYI_LOG_STRIP_H
++#include <stdint.h>
++#define ZS_ROWS 11u
++#define ZS_WIDTH 1080u
++#define ZS_HEIGHT 2400u
++#define ZS_STRIDE 4320u
++#define ZS_PIXELS (ZS_ROWS*32u)
++#define ZS_TOP (ZS_HEIGHT-ZS_PIXELS)
++#define ZS_PHYS 0xb8000000ull
++#define ZS_BASE (ZS_PHYS+(uint64_t)ZS_TOP*ZS_STRIDE)
++#define ZS_BYTES ((uint64_t)ZS_PIXELS*ZS_STRIDE)
++static inline uint32_t zs_strip_pixels(uint32_t rows,uint64_t phys,uint32_t w,uint32_t h,uint32_t stride) {
++ return rows==ZS_ROWS&&phys==ZS_PHYS&&w==ZS_WIDTH&&h==ZS_HEIGHT&&stride==ZS_STRIDE?ZS_PIXELS:0;
++}
++static inline int zs_console_region(uint32_t rows,uint64_t base,uint64_t size,uint32_t w,uint32_t h,uint32_t stride) {
++ return rows==ZS_ROWS&&base==ZS_BASE&&size==ZS_BYTES&&w==ZS_WIDTH&&h==ZS_PIXELS&&stride==ZS_STRIDE;
++}
++#endif
+--- a/pexpert/pexpert/arm64/Makefile
++++ b/pexpert/pexpert/arm64/Makefile
+@@ -18,7 +18,8 @@
+ 	H13.h \
+ 	VMAPPLE.h \
+ 	BCM2837.h \
+-	SWEET.h
++	SWEET.h \
++	ziyi_log_strip.h
+ 
+ 
+ # Headers installed into System.framework/PrivateHeaders (userspace internal SDK only).
