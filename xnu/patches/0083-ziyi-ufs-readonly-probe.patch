@@ -1,6 +1,6 @@
 --- a/bsd/dev/sweet_ufs.c
 +++ b/bsd/dev/sweet_ufs.c
-@@ -1,11 +1,463 @@
+@@ -1,11 +1,495 @@
 -/* ziyi early profile: hardware provider deliberately absent.
 - * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
 +/* SPDX-License-Identifier: BSD-2-Clause-Patent
@@ -34,6 +34,7 @@
 +#include "ziyi_u4_verify.h"
 +#include "ziyi_u7_write_policy.h"
 +#include "ziyi_u8_read_policy.h"
++#include "ziyi_u9_install_policy.h"
 +extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
 +extern ppnum_t pmap_find_phys(pmap_t,addr64_t);
 +void ziyi_ufs_probe(void);
@@ -381,6 +382,14 @@
 +        case DKIOCGETMAXBLOCKCOUNTWRITE:*w=u1.volume.writable?U3_REQUEST_MAX/u1.secsize:0;break;
 +        case DKIOCGETMAXSEGMENTCOUNTREAD:*w=1;break;
 +        case DKIOCGETMAXSEGMENTCOUNTWRITE:*w=u1.volume.writable?1:0;break;
++        case DKIOCGETFEATURES:*v=DK_FEATURE_FORCE_UNIT_ACCESS;break;
++        case DKIOCSYNCHRONIZE: {
++            const dk_synchronize_t *s=(const dk_synchronize_t *)data;
++            if(!s||!u9_sync_valid(u1.volume.image_bytes,s->offset,s->length,s->options,s->reserved0160))error=EINVAL;
++            else if(!u1.volume.writable)error=EROFS;
++            /* Same synchronous lock and FUA/readback invariant as legacy sync. */
++            break;
++        }
 +        case DKIOCSYNCHRONIZECACHE:
 +            /* Every completed media write used FUA and an independent READ.
 +             * The same mutex serializes this with every strategy operation. */
@@ -424,7 +433,30 @@
 +/* Root entry is conditional on a bounded complete readback of the prepared
 + * headless image. Expected SHA comes from private audited boot args, not donor
 + * addresses. A digest mismatch cannot enter Apple userspace. */
++static int verify_installed_root(void) {
++    char hex[65]={0};uint8_t expected[32],actual[32],ids[2][28];
++    uint64_t bytes=u1.volume.image_bytes;
++    if(!u1.ready||u1.poison||!u1.volume.gpt_verified||bytes!=(8ull<<30)||
++       !PE_parse_boot_argn("ziyi_ufs_volume_hash",hex,sizeof(hex))||!u4_expected_hash(hex,expected))return 0;
++    for(unsigned i=0;i<2;i++) {
++        uint64_t off=i?bytes-1024:1024;
++        u1.commands=0;u1.limit=8;u1.deadline=after_ms(30000);
++        if(!read_twice(u1.part.first+off/u1.bs,u1.sample)||
++           !u9_hfs_identity(u1.sample+off%u1.bs,u1.bs-off%u1.bs,bytes,ids[i]))return 0;
++    }
++    if(!u1_equal(ids[0],ids[1],28))return 0;
++    u1_sha256(ids[0],28,actual);
++    int ok=u1_equal(actual,expected,32);
++    printf("ZIYI U9 installed HFS identity primary+alternate match=%d; no whole-volume scan\n",ok);
++    return ok;
++}
 +static int verify_apple_root(void) {
++    char mode[16]={0};
++    if(PE_parse_boot_argn("ziyi_ufs_mode",mode,sizeof(mode))) {
++        if(!strcmp(mode,"installed"))return verify_installed_root();
++        if(strcmp(mode,"full"))return 0;
++    }
++
 +    uint32_t mib=0;char hex[65]={0};uint8_t expected[32],actual[32];
 +    if(!PE_parse_boot_argn("ziyi_ufs_verify_mib",&mib,sizeof(mib))||(mib!=3072&&mib!=8192)||
 +       !PE_parse_boot_argn("ziyi_ufs_hash",hex,sizeof(hex))||!u4_expected_hash(hex,expected)) return 0;
@@ -897,3 +929,76 @@
 +    *out=c;return 1;
 +}
 +#endif
+--- /dev/null
++++ b/bsd/dev/ziyi_u9_install_policy.h
+@@ -0,0 +1,30 @@
++/* Installed-volume identity, not a claim that mutable filesystem data is hashed.
++ * An installed profile is issued only from the sealed full native install proof.
++ */
++#ifndef ZIYI_U9_INSTALL_POLICY_H
++#define ZIYI_U9_INSTALL_POLICY_H
++#include <stdint.h>
++#include <stddef.h>
++static inline uint32_t u9_be32(const uint8_t *p) {
++    return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];
++}
++static inline int u9_hfs_identity(const uint8_t *p,size_t n,uint64_t bytes,uint8_t identity[28]) {
++    if(!p||!identity||n<512||bytes!=(8ull<<30)||p[0]!='H'||p[1]!='X'||p[2]||p[3]!=5)return 0;
++    uint32_t block=u9_be32(p+40),count=u9_be32(p+44),journal=u9_be32(p+12);
++    if(block!=4096||(uint64_t)block*count!=bytes||!(u9_be32(p+4)&0x2000)||
++       !journal||journal>=count||!u9_be32(p+16)||!(u9_be32(p+104)|u9_be32(p+108)))return 0;
++    /* Stable fields only: signature/version, creation date, geometry,
++     * Finder volume ID and journal-info-block location. Mutable counts,
++     * mount status, modification dates and fork extents are excluded. */
++    for(unsigned i=0;i<4;i++){identity[i]=p[i];identity[4+i]=p[16+i];identity[24+i]=p[12+i];}
++    for(unsigned i=0;i<8;i++){identity[8+i]=p[40+i];identity[16+i]=p[104+i];}
++    return 1;
++}
++static inline int u9_sync_valid(uint64_t image,uint64_t offset,uint64_t length,
++                                uint32_t options,const uint8_t reserved[4]) {
++    if(image!=(8ull<<30)&&image!=(3ull<<30))return 0;
++    if(offset>image||length>image-offset||(options&~2u))return 0;
++    for(unsigned i=0;i<4;i++)if(reserved[i])return 0;
++    return 1;
++}
++#endif
+--- a/osfmk/vm/vm_compressor_backing_store.h
++++ b/osfmk/vm/vm_compressor_backing_store.h
+@@ -39,7 +39,10 @@
+ #include <libkern/crypto/aes.h>
+ #include <kern/host_statistics.h>
+ 
+-#if !XNU_TARGET_OS_OSX
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#define MIN_SWAP_FILE_SIZE (64 * 1024 * 1024ULL)
++#define MAX_SWAP_FILE_SIZE (128 * 1024 * 1024ULL)
++#elif !XNU_TARGET_OS_OSX
+ 
+ #define MIN_SWAP_FILE_SIZE              (64 * 1024 * 1024ULL)
+ 
+@@ -53,7 +56,10 @@
+ 
+ #endif /* !XNU_TARGET_OS_OSX */
+ 
+-#if defined(XNU_TARGET_OS_OSX)
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#define SWAP_VOLUME_NAME "/private/var"
++#define SWAP_FILE_NAME SWAP_VOLUME_NAME "/ziyi-swapfile"
++#elif defined(XNU_TARGET_OS_OSX)
+ #define SWAP_VOLUME_NAME        "/System/Volumes"
+ #define SWAP_FILE_NAME          SWAP_VOLUME_NAME "/VM/swapfile"
+ #else
+--- a/osfmk/vm/vm_compressor_backing_store.c
++++ b/osfmk/vm/vm_compressor_backing_store.c
+@@ -165,7 +165,11 @@
+ 
+ #else /* !XNU_TARGET_OS_OSX */
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#define VM_MAX_SWAP_FILE_NUM            4 /* <=512MiB, inside HFS prefix */
++#else
+ #define VM_MAX_SWAP_FILE_NUM            100
++#endif
+ #define VM_SWAPFILE_DELAYED_TRIM_MAX    128
+ 
+ #define VM_SWAP_SHOULD_DEFRAGMENT()     (((vm_swap_force_defrag == TRUE) || (c_swappedout_sparse_count > (vm_swapfile_total_segs_used / 4))) ? 1 : 0)

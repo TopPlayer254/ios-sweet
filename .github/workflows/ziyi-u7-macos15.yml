@@ -74,6 +74,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u8_read_policy.c -o u1-evidence/test-u8-read-policy
           ./u1-evidence/test-u8-read-policy | tee u1-evidence/u8-read-policy-tests.txt
 
+      - name: U9 installed-volume identity and sync bounds
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u9_install_policy.c -o u1-evidence/test-u9-install-policy
+          ./u1-evidence/test-u9-install-policy | tee u1-evidence/u9-install-policy-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb
@@ -132,6 +137,7 @@ jobs:
       - name: Verify U1 compiled sources
         run: |
           python3 tools/ziyi-ufs/audit_ci.py
+          strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U9 ' > u1-evidence/u9-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U8 ' > u1-evidence/u8-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U7 ' > u1-evidence/u7-kernel-markers.txt
           nm dxb/fakeroot/System/Library/Kernels/kernel.development.sweet > u1-evidence/kernel-symbols.txt
