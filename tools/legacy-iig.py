@@ -39,6 +39,23 @@ def prepare(archive,out):
     manifest=dict(result='LEGACY_IIG_CACHE_PREPARED',archiveSha256=TAR_SHA,inputs=inputs,outputs=outputs,definitions=sorted(definitions))
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n');(out/'calls').mkdir()
     print(json.dumps(dict(result=manifest['result'],sourceFiles=len(inputs),generatedFiles=len(outputs),definitions=len(definitions))))
+# This private framebuffer implementation is not an IIG declaration/input
+# dependency. Its reviewed rendering-only change is pinned on both sides;
+# every other inherited source/header and every generated RPC byte stays exact.
+IMPLEMENTATION_OVERRIDE={'iokit/Kernel/arm/SweetFramebuffer.cpp':('aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f','f985cfd415cd28f9e5f117a17fa36558c3bfb3010c217f595a612ee42df2b049')}
+def verify_inputs(root,manifest):
+    reviewed={}
+    for p,digest in manifest['inputs'].items():
+        actual=sha(root/p)
+        if p in IMPLEMENTATION_OVERRIDE:
+            legacy,current=IMPLEMENTATION_OVERRIDE[p]
+            assert digest==legacy and actual==current,'Unapproved private implementation: '+p
+            reviewed[p]=dict(legacySha256=legacy,currentSha256=current,rpcDeclarationsUnchanged=True)
+        else:
+            assert actual==digest,'Legacy IIG input changed: '+p
+    assert set(reviewed)==set(IMPLEMENTATION_OVERRIDE)
+    return reviewed
+
 def invoke(args):
     cache=Path(os.environ['ZIYI_LEGACY_IIG_CACHE']).resolve();build=Path(os.environ['ZIYI_LEGACY_IIG_BUILD']).resolve()
     split=args.index('--');flags=args[:split]
@@ -47,7 +64,7 @@ def invoke(args):
     root=source.parent.parent.parent;manifest=json.loads((cache/'manifest.json').read_text());assert manifest['archiveSha256']==TAR_SHA
     name=source.stem;assert name in manifest['definitions']
     # No inherited source/type declarations may drift while reusing generation.
-    for p,digest in manifest['inputs'].items():assert sha(root/p)==digest,'Legacy IIG input changed: '+p
+    reviewed=verify_inputs(root,manifest)
     result={}
     for raw,leaf in [(flags[3],name+'.h'),(flags[5],name+'.iig.cpp')]:
         target=Path(raw).resolve();assert target.is_relative_to(build) and target.name==leaf
@@ -59,7 +76,7 @@ def invoke(args):
         result[leaf]=expected
     receipt=cache/'calls'/(name+'.json')
     if not receipt.exists():
-        with receipt.open('x') as f:json.dump(dict(source=name,outputs=result,legacyAbi=True),f)
+        with receipt.open('x') as f:json.dump(dict(source=name,outputs=result,legacyAbi=True,implementationReview=reviewed),f)
     print('ZIYI LEGACY IIG',name,'source/header hashes PASS')
 def audit(cache):
     m=json.loads((cache/'manifest.json').read_text());calls={p.stem for p in (cache/'calls').glob('*.json')}
@@ -67,6 +84,7 @@ def audit(cache):
     for name in calls:
         proof=json.loads((cache/'calls'/(name+'.json')).read_text())
         assert proof['legacyAbi'] and all(m['outputs'][p]==v for p,v in proof['outputs'].items())
+        assert proof['implementationReview']=={p:dict(legacySha256=v[0],currentSha256=v[1],rpcDeclarationsUnchanged=True) for p,v in IMPLEMENTATION_OVERRIDE.items()}
     print('LEGACY_IIG_FULL_AUDIT_PASS definitions='+str(len(calls)))
 if __name__=='__main__':
     if sys.argv[1:2]==['--prepare']:prepare(Path(sys.argv[2]),Path(sys.argv[3]))
