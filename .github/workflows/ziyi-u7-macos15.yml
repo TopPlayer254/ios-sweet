@@ -137,6 +137,7 @@ jobs:
       - name: Verify U1 compiled sources
         run: |
           python3 tools/ziyi-ufs/audit_ci.py
+          strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U10 ' > u1-evidence/u10-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U9 ' > u1-evidence/u9-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U8 ' > u1-evidence/u8-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U7 ' > u1-evidence/u7-kernel-markers.txt
