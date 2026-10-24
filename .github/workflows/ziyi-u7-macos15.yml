@@ -116,6 +116,13 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u15_spi.c -o u1-evidence/test-u15-spi
           ./u1-evidence/test-u15-spi | tee u1-evidence/u15-spi-tests.txt
 
+      - name: U16 exact SPI functions and read-only fault snapshots
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u16_spi.c -o u1-evidence/test-u16-spi
+          ./u1-evidence/test-u16-spi | tee u1-evidence/u16-spi-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u16_board.c -o u1-evidence/test-u16-board
+          ./u1-evidence/test-u16-board | tee u1-evidence/u16-board-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb

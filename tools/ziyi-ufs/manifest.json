@@ -77,7 +77,7 @@
   },
   "bsd/dev/sweet_touch.c": {
     "before": "b758ef31133629311b8b42eb324d1041e5ccaba7807c0f29ccc62793f83b2234",
-    "after": "c6f71dc357db03e531c5e413348b2354dd21125cdbde88061acd002676a3edfa"
+    "after": "2fb8fd24f7476ce7029a8cfaf9c2378b7a3b95126893d24fbaf686ca90c74356"
   },
   "bsd/dev/ziyi_u12_input.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -85,7 +85,7 @@
   },
   "bsd/dev/ziyi_u13_board.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "cbf56b0f6fe8e98b8e6339ac6d062e241b9a54801b4e3b39b8ae6a966461f6b9"
+    "after": "f38666c6ba379a36469874878bd823ccd8884eed3c54d51fae507934451d42b7"
   },
   "bsd/dev/ziyi_u14_gpi.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

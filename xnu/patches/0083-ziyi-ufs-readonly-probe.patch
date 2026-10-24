@@ -1662,11 +1662,11 @@
  #endif
 --- a/bsd/dev/sweet_touch.c
 +++ b/bsd/dev/sweet_touch.c
-@@ -1,7 +1,262 @@
+@@ -1,7 +1,265 @@
 -/* ziyi early profile: hardware provider deliberately absent.
 - * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
 - */
-+/* U15: ziyi SPI0 clocks, mux and reset release, then bounded TCM FIFO.
++/* U16: ziyi SPI0 clocks, mux and reset release, then bounded TCM FIFO.
 + * No DMA addresses, PMIC writes, firmware upload or flash commands. */
  #if defined(ARM64_BOARD_CONFIG_SWEET)
 -#include <stdint.h>
@@ -1718,8 +1718,8 @@
 + int error=zg_quiet(&io,&s);
 + static unsigned reports;
 + if(reports++<2) {
-+  printf("ZIYI U15 GPI events=%x quiet=%d signature=%x repeated=98\n",zt_rd(zt_se,0xe18),error,s.signature);
-+  for(unsigned n=0;n<7;n++)printf("ZIYI U15 GPI %u cfg=%x/%x scratch=%x/%x\n",n,s.word[n*2][0],s.word[n*2+1][0],s.word[n*2][6],s.word[n*2+1][6]);
++  printf("ZIYI U16 GPI events=%x quiet=%d signature=%x repeated=98\n",zt_rd(zt_se,0xe18),error,s.signature);
++  for(unsigned n=0;n<7;n++)printf("ZIYI U16 GPI %u cfg=%x/%x scratch=%x/%x\n",n,s.word[n*2][0],s.word[n*2+1][0],s.word[n*2][6],s.word[n*2+1][6]);
 + }
 + return !error;
 +}
@@ -1734,12 +1734,13 @@
 +static void zt_fault(unsigned stage,unsigned detail,unsigned sent,unsigned received) {
 + static unsigned records;
 + if(records++>=4)return;
-+ printf("ZIYI U15 SPI fault stage=%u detail=%u sent=%u received=%u dead=%u\n",stage,detail,sent,received,zt_dead);
-+ printf("ZIYI U15 SPI state=%x cmd=%x ctl=%x irq=%x enable=%x route=%x gsi=%x\n",zt_rd(zt_se,0x40),zt_rd(zt_se,0x600),zt_rd(zt_se,0x604),zt_rd(zt_se,0x610),zt_rd(zt_se,0x614),zt_rd(zt_se,0xe1c),zt_rd(zt_se,0xe18));
-+ printf("ZIYI U15 SPI tx=%x rx=%x txlen=%x rxlen=%x ios=%x mode=%x\n",zt_rd(zt_se,0x800),zt_rd(zt_se,0x804),zt_rd(zt_se,0x26c),zt_rd(zt_se,0x270),zt_rd(zt_se,0x908),zt_rd(zt_se,0x258));
-+ printf("ZIYI U15 SPI clock=%x select=%x word=%x pack=%x/%x rxpack=%x/%x\n",zt_rd(zt_se,0x48),zt_rd(zt_se,0x7c),zt_rd(zt_se,0x268),zt_rd(zt_se,0x260),zt_rd(zt_se,0x264),zt_rd(zt_se,0x284),zt_rd(zt_se,0x288));
++ printf("ZIYI U16 SPI fault stage=%u detail=%u sent=%u received=%u dead=%u\n",stage,detail,sent,received,zt_dead);
++ printf("ZIYI U16 SPI state=%x cmd=%x ctl=%x irq=%x enable=%x route=%x gsi=%x\n",zt_rd(zt_se,0x40),zt_rd(zt_se,0x600),zt_rd(zt_se,0x604),zt_rd(zt_se,0x610),zt_rd(zt_se,0x614),zt_rd(zt_se,0xe1c),zt_rd(zt_se,0xe18));
++ printf("ZIYI U16 SPI tx=%x rx=%x txlen=%x rxlen=%x ios=%x mode=%x\n",zt_rd(zt_se,0x800),zt_rd(zt_se,0x804),zt_rd(zt_se,0x26c),zt_rd(zt_se,0x270),zt_rd(zt_se,0x908),zt_rd(zt_se,0x258));
++ printf("ZIYI U16 SPI clock=%x select=%x word=%x pack=%x/%x rxpack=%x/%x\n",zt_rd(zt_se,0x48),zt_rd(zt_se,0x7c),zt_rd(zt_se,0x268),zt_rd(zt_se,0x260),zt_rd(zt_se,0x264),zt_rd(zt_se,0x284),zt_rd(zt_se,0x288));
 +}
 +static int zt_abort(void) {
++ zt_wr(0x80c,0); /* Stop the owned TX watermark before cancel/abort. */
 + zt_wr(0x604,4);
 + for(unsigned i=0;i<1000;i++){if(!(zt_rd(zt_se,0x40)&1))return 0;delay(1);}
 + zt_wr(0x604,2);
@@ -1765,6 +1766,7 @@
 + zt_wr(0x618,0x7fffffff);
 + /* Pinned Qualcomm setup_fifo_xfer uses TX_ONLY|RX_ONLY for duplex. */
 + zt_wr(0x600,((rx?3u:1u)<<27)|4u);
++ zt_wr(0x80c,1);
 + for(unsigned poll=0;poll<100000;poll++) {
 +  uint32_t irq=zt_rd(zt_se,0x610);
 +  if(irq&0x3300003e){reason=2;goto bad;}
@@ -1774,6 +1776,7 @@
 +   uint32_t word=0;
 +   for(unsigned k=0;k<4&&sent<bytes;k++,sent++)word|=(uint32_t)(tx?tx[sent]:255)<<(k*8);
 +   zt_wr(0x700,word);
++   if(sent==bytes)zt_wr(0x80c,0); /* Native driver closes watermark at TX tail. */
 +  }
 +  uint32_t status=zt_rd(zt_se,0x804),count=status&0x01ffffff;
 +  if(count>zt_depth){reason=4;goto bad;}
@@ -1800,7 +1803,7 @@
 +}
 +static int zt_read_message(uint8_t *code,uint16_t *length) {
 + uint8_t h[4];int e=zt_transfer(NULL,h,4);if(e)return e;
-+ e=zi_tcm_header(h,4,code,length);if(e){printf("ZIYI U15 TCM header %x %x %x %x\n",h[0],h[1],h[2],h[3]);return 4;}
++ e=zi_tcm_header(h,4,code,length);if(e){printf("ZIYI U16 TCM header %x %x %x %x\n",h[0],h[1],h[2],h[3]);return 4;}
 + if(!*length)return 0;
 + if(zt_transfer(NULL,zt_message,(size_t)*length+3))return 5;
 + if(zt_message[0]!=0xa5||zt_message[1]!=3||zt_message[*length+2]!=0x5a)return 6;
@@ -1815,16 +1818,16 @@
 + uint8_t command[515];command[0]=op;command[1]=(uint8_t)n;command[2]=(uint8_t)(n>>8);
 + if(n)memcpy(command+3,body,n);
 + int transfer_error=zt_transfer(command,NULL,n+3);
-+ if(transfer_error){printf("ZIYI U15 TCM op=%x write_error=%d\n",op,transfer_error);return 2;}
++ if(transfer_error){printf("ZIYI U16 TCM op=%x write_error=%d\n",op,transfer_error);return 2;}
 + for(unsigned i=0;i<100;i++) {
 +  uint8_t code;uint16_t length;zt_sleep(5);
 +  int read_error=zt_read_message(&code,&length);
-+  if(read_error){printf("ZIYI U15 TCM op=%x read_error=%d poll=%u\n",op,read_error,i);return 3;}
++  if(read_error){printf("ZIYI U16 TCM op=%x read_error=%d poll=%u\n",op,read_error,i);return 3;}
 +  if(code==1){*reply=length;return 0;}
 +  if(code==0||code==2||code==0x11)continue;
-+  if(code==0xfe){printf("ZIYI U15 TCM STOP host firmware download required\n");return 4;}
++  if(code==0xfe){printf("ZIYI U16 TCM STOP host firmware download required\n");return 4;}
 +  if(code==0x10&&op==2&&length>=24){*reply=length;return 0;}
-+  if(code<0x10){printf("ZIYI U15 TCM command %x status=%x\n",op,code);return 5;}
++  if(code<0x10){printf("ZIYI U16 TCM command %x status=%x\n",op,code);return 5;}
 + }
 + return 6;
 +}
@@ -1833,18 +1836,18 @@
 +}
 +static int zt_setup(void) {
 + uint32_t fw=zt_rd(zt_se,0x68),state=zt_rd(zt_se,0x40),clk=zt_rd(zt_se,0x48),hw=zt_rd(zt_se,0xe24);
-+ printf("ZIYI U15 TCM fw=%x state=%x clk=%x dma=%x hw=%x\n",fw,state,clk,zt_rd(zt_se,0x258),hw);
++ printf("ZIYI U16 TCM fw=%x state=%x clk=%x dma=%x hw=%x\n",fw,state,clk,zt_rd(zt_se,0x258),hw);
 + uint32_t rc=zt_rd(zt_gcc,0x27014),cfg=zt_rd(zt_gcc,0x27018),sel=zt_rd(zt_se,0x7c);
 + uint32_t rate=zi_spi_rate(rc,cfg,sel,clk);
-+ printf("ZIYI U15 TCM clock root=%x cfg=%x sel=%x upperHz=%u\n",rc,cfg,sel,rate);
++ printf("ZIYI U16 TCM clock root=%x cfg=%x sel=%x upperHz=%u\n",rc,cfg,sel,rate);
 + uint32_t pin[4];for(unsigned i=0;i<4;i++)pin[i]=zt_rd(zt_gpio,i*0x1000);
-+ printf("ZIYI U15 TCM pins=%x,%x,%x,%x reset=%x/%x irq=%x/%x\n",pin[0],pin[1],pin[2],pin[3],zt_rd(zt_gpio,126*0x1000),zt_rd(zt_gpio,126*0x1000+4),zt_rd(zt_gpio,51*0x1000),zt_rd(zt_gpio,51*0x1000+4));
++ printf("ZIYI U16 TCM pins=%x,%x,%x,%x reset=%x/%x irq=%x/%x\n",pin[0],pin[1],pin[2],pin[3],zt_rd(zt_gpio,126*0x1000),zt_rd(zt_gpio,126*0x1000+4),zt_rd(zt_gpio,51*0x1000),zt_rd(zt_gpio,51*0x1000+4));
 + int board_result=zb_qualify(&zt_board_io);
-+ if(board_result){printf("ZIYI U15 TCM STOP ownership=%d\n",board_result);return 30+board_result;}
++ if(board_result){printf("ZIYI U16 TCM STOP ownership=%d\n",board_result);return 30+board_result;}
 + zt_depth=(hw>>16)&63;
 + if(zt_depth<4||zt_depth>32||((hw>>24)&63)!=32)return 11;
 + board_result=zb_start(&zt_board_io,&zt_board);
-+ printf("ZIYI U15 TCM clock start=%d vote=%x root=%x cfg=%x\n",board_result,zt_rd(zt_gcc,0x62008),zt_rd(zt_gcc,0x27014),zt_rd(zt_gcc,0x27018));
++ printf("ZIYI U16 TCM clock start=%d vote=%x root=%x cfg=%x\n",board_result,zt_rd(zt_gcc,0x62008),zt_rd(zt_gcc,0x27014),zt_rd(zt_gcc,0x27018));
 + if(board_result)return 50+board_result;
 + rate=zb_spi_rate(zt_rd(zt_gcc,0x27014),zt_rd(zt_gcc,0x27018),zt_rd(zt_se,0x7c),zt_rd(zt_se,0x48));
 + if(rate!=4800000)return 80;
@@ -1858,34 +1861,34 @@
 + zt_wr(0x284,0x7f8fe);zt_wr(0x288,0xffefe);zt_wr(0x268,4);
 + zt_wr(0x25c,zt_rd(zt_se,0x25c)&~1u);zt_wr(0x80c,1);zt_wr(0x810,zt_depth-3);zt_wr(0x814,zt_depth-2);
 + board_result=zb_connect(&zt_board_io,&zt_board);
-+ printf("ZIYI U15 TCM pins/reset connect=%d reset=%x/%x IRQ=%x\n",board_result,zt_rd(zt_gpio,126*0x1000),zt_rd(zt_gpio,126*0x1000+4),zt_rd(zt_gpio,51*0x1000+4));
++ printf("ZIYI U16 TCM pins/reset connect=%d reset=%x/%x IRQ=%x\n",board_result,zt_rd(zt_gpio,126*0x1000),zt_rd(zt_gpio,126*0x1000+4),zt_rd(zt_gpio,51*0x1000+4));
 + if(board_result)return 90+board_result;
 + zt_sleep(200);
 + uint16_t reply=0;
 + int identify_error=zt_command(2,NULL,0,&reply);
-+ printf("ZIYI U15 TCM identify error=%d bytes=%u mode=%x\n",identify_error,reply,reply>=2?zt_message[1]:0xff);
++ printf("ZIYI U16 TCM identify error=%d bytes=%u mode=%x\n",identify_error,reply,reply>=2?zt_message[1]:0xff);
 + if(identify_error||reply<24||zt_message[1]!=1)return 15;
 + zt_maxwrite=(uint16_t)(zt_message[22]|zt_message[23]<<8);
 + if(zt_maxwrite<16)return 23;
-+ printf("ZIYI U15 TCM application build=%02x%02x%02x%02x maxwrite=%u\n",zt_message[21],zt_message[20],zt_message[19],zt_message[18],zt_message[22]|zt_message[23]<<8);
++ printf("ZIYI U16 TCM application build=%02x%02x%02x%02x maxwrite=%u\n",zt_message[21],zt_message[20],zt_message[19],zt_message[18],zt_message[22]|zt_message[23]<<8);
 + if(zt_command(0x20,NULL,0,&reply)||reply<38||zt_message[2]||zt_message[3])return 16;
 + unsigned mx=zt_message[32]|zt_message[33]<<8,my=zt_message[34]|zt_message[35]<<8,objects=zt_message[36]|zt_message[37]<<8;
-+ printf("ZIYI U15 TCM max=%u,%u objects=%u\n",mx,my,objects);
++ printf("ZIYI U16 TCM max=%u,%u objects=%u\n",mx,my,objects);
 + if(mx!=1079||my!=2399||!objects||objects>ZI_CONTACTS)return 17;
 + if(zt_command(0x25,NULL,0,&reply)||!reply||reply>sizeof(zt_oldconfig)||reply+3u>zt_maxwrite)return 18;
 + memcpy(zt_oldconfig,zt_message,reply);zt_oldconfig_len=reply;
-+ printf("ZIYI U15 TCM saved volatile config bytes=%u\n",reply);
++ printf("ZIYI U16 TCM saved volatile config bytes=%u\n",reply);
 + static const uint8_t config[]={24,8,1,6,4,7,4,8,16,9,16,3,0};
 + if(zt_command(0x26,config,sizeof(config),&reply))return 19;
 + /* Read the controller's accepted configuration back before any HID event. */
 + if(zt_command(0x25,NULL,0,&reply)||reply<sizeof(config)||reply>sizeof(zt_config)||memcmp(zt_message,config,sizeof(config)))return 20;
 + memcpy(zt_config,zt_message,reply);zt_config_len=reply;
 + uint8_t touch=0x11;if(zt_command(5,&touch,1,&reply))return 21;
-+ printf("ZIYI U15 TCM READY native 1080x2400 contacts=%u\n",objects);return 0;
++ printf("ZIYI U16 TCM READY native 1080x2400 contacts=%u\n",objects);return 0;
 +}
 +static void zt_thread(void *arg,wait_result_t wr) {
 + (void)arg;(void)wr;int result=zt_setup();
-+ if(result){printf("ZIYI U15 TCM STOP setup=%d\n",result);goto out;}
++ if(result){printf("ZIYI U16 TCM STOP setup=%d\n",result);goto out;}
 + unsigned errors=0,ticks=0,age=0;
 + for(;;) {
 +  if(!(zt_rd(zt_gpio,51*0x1000+4)&1)||++ticks%10==0) {
@@ -1899,7 +1902,7 @@
 +     zt_previous[i]=contacts[i];
 +    }
 +   }
-+   if(error){if(++errors==10)zt_release();if(errors==1||errors%100==0)printf("ZIYI U15 TCM report error=%d count=%u\n",error,errors);}
++   if(error){if(++errors==10)zt_release();if(errors==1||errors%100==0)printf("ZIYI U16 TCM report error=%d count=%u\n",error,errors);}
 +   else errors=0;
 +   if(zt_dead||errors>=100)break;
 +  }
@@ -1908,13 +1911,13 @@
 + }
 +out:
 + zt_release();
-+ if(!zt_dead&&zt_oldconfig_len){uint16_t reply;int e=zt_command(0x26,zt_oldconfig,zt_oldconfig_len,&reply);printf("ZIYI U15 TCM restore config=%d\n",e);}
++ if(!zt_dead&&zt_oldconfig_len){uint16_t reply;int e=zt_command(0x26,zt_oldconfig,zt_oldconfig_len,&reply);printf("ZIYI U16 TCM restore config=%d\n",e);}
 + if(!zt_dead&&zt_saved_valid&&!(zt_rd(zt_se,0x40)&0x1001)) {
 +  for(unsigned i=0;i<sizeof(zt_offsets)/sizeof(zt_offsets[0]);i++)zt_wr(zt_offsets[i],zt_saved[i]);
-+  printf("ZIYI U15 TCM restored idle SE register configuration\n");
++  printf("ZIYI U16 TCM restored idle SE register configuration\n");
 + }
 + int restore=zb_restore(&zt_board_io,&zt_board,!zt_dead);
-+ printf("ZIYI U15 TCM board restore=%d\n",restore);
++ printf("ZIYI U16 TCM board restore=%d\n",restore);
 + (void)thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
 +}
 +void sweet_touch_init(void) {
@@ -1925,9 +1928,9 @@
 + zt_gpio=ml_io_map(0x0f100000,0x100000);
 + zt_gcc=ml_io_map(0x00100000,0x64000);
 + zt_gpi=ml_io_map(0x00900000,0x60000);
-+ if(!zt_se||!zt_gpio||!zt_gcc){printf("ZIYI U15 TCM STOP map\n");return;}
++ if(!zt_se||!zt_gpio||!zt_gcc){printf("ZIYI U16 TCM STOP map\n");return;}
 + thread_t t;kern_return_t e=kernel_thread_start(zt_thread,NULL,&t);
-+ if(e==KERN_SUCCESS)thread_deallocate(t);else printf("ZIYI U15 TCM thread=%d\n",e);
++ if(e==KERN_SUCCESS)thread_deallocate(t);else printf("ZIYI U16 TCM thread=%d\n",e);
 +}
  #endif
 --- /dev/null
@@ -2021,7 +2024,7 @@
 +#endif
 --- /dev/null
 +++ b/bsd/dev/ziyi_u13_board.h
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,134 @@
 +/* ziyi/Diwali SPI0 bring-up, based on the pinned Xiaomi clock/pinctrl/GENI
 + * drivers and U12's actual idle handoff. No DMA addresses or GPI writes, PMIC writes,
 + * firmware upload, shared clock reset, or persistent storage operation.
@@ -2075,7 +2078,7 @@
 +/* The pinned frequency table begins7.3728,14.7456,19.2MHz. Linux
 + * programs the matching table index into GENI DFS even in FIFO mode. */
 +static inline uint32_t zb_spi_rate(uint32_t cmd,uint32_t cfg,uint32_t sel,uint32_t clk) {
-+ return !(cmd&0x80000001u)&&(cfg&0x371fu)==1u&&sel==2&&clk==0x41?4800000u:0;
++ return !(cmd&0x80000001u)&&(cfg&0x10371fu)==1u&&sel==2&&clk==0x41?4800000u:0;
 +}
 +static inline int zb_start(struct zb_io *io,struct zb_state *s) {
 + if(!io||!s||!io->read||!io->write||!io->wait||s->saved)return 20;
@@ -2097,9 +2100,10 @@
 +    zb_poll(io,ZB_GCC,0x27008,0x80000000,0)||
 +    zb_poll(io,ZB_GCC,0x33000,0x80000000,0)||
 +    zb_poll(io,ZB_GCC,0x3300c,0x80000000,0))return 21;
-+ /* Exact 19.2MHz TCXO entry: HID=1, source=0, MND bypass. No PLL changes.
++ /* Match clk-rcg2 __clk_rcg2_configure: clear HW_CLK_CTRL bit20 for
++  * this plain RCG (no HW_CLK_CTRL_MODE flag). Exact 19.2MHz TCXO entry: HID=1, source=0, MND bypass. No PLL changes.
 +  * GENI divide-by4 gives <=4.8MHz, below the DT 5MHz limit. */
-+ zb_write(io,ZB_GCC,0x27018,(s->config&~0x371fu)|1u);
++ zb_write(io,ZB_GCC,0x27018,(s->config&~0x10371fu)|1u);
 + zb_write(io,ZB_GCC,0x27014,(zb_read(io,ZB_GCC,0x27014)&~1u)|3u);
 + if(zb_poll(io,ZB_GCC,0x27014,0x80000001,0)||
 +    zb_poll(io,ZB_GCC,0x2700c,0x80000000,0))return 22;
