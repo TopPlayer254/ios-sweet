@@ -1079,16 +1079,28 @@
  
 --- a/iokit/Kernel/arm/SweetFramebuffer.cpp
 +++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
-@@ -35,6 +35,8 @@
+@@ -35,6 +35,9 @@
   * the first swap on (it still reaches the persistent log; panics draw).
   */
  #include "SweetSurface.h"
 +#include <pexpert/arm64/ziyi_log_strip.h>
 +#include <pexpert/arm64/ziyi_u12_ui.h>
++#include <pexpert/arm64/ziyi_u14_timing.h>
  
  extern "C" int sweet_console_muted;     /* osfmk/console/serial_console.c */
  
-@@ -113,6 +115,8 @@
+@@ -96,8 +99,10 @@
+ 	IOWorkLoop         *fWorkLoop;
+ 	IOTimerEventSource *fVsync;
+ 	uint64_t            fVsyncCount;
++    uint64_t fVsyncNext,fVsyncPeriod,fPendingAt,fStatsStart,fStatsFrames,fStatsRenderTotal,fStatsRenderMax,fStatsQueueMax;
+ 
+ 	static void vsyncFired(OSObject *owner, IOTimerEventSource *sender);
++    void armVsync(IOTimerEventSource *sender);
+ 
+ public:
+ 	uint64_t      fPhys;
+@@ -113,6 +118,8 @@
  	bool          fConsolePaused;
  	uint8_t       fPending[SWEET_FB_SWAP_REC_SIZE];     /* latest swap, not yet shown */
  	bool          fDirty;
@@ -1097,7 +1109,7 @@
  	uint32_t      fFlushTicks;    /* vsync ticks between panel copies */
  	bool          fPowerOff;      /* RequestPowerChange(0) */
  	uint32_t      fFadeStep;      /* fade-out steps done while off */
-@@ -162,6 +166,13 @@
+@@ -162,6 +169,13 @@
  	fWidth = (uint32_t)video.v_width;
  	fHeight = (uint32_t)video.v_height;
  	fRowBytes = (uint32_t)video.v_rowBytes;
@@ -1111,7 +1123,148 @@
  	if (fPhys == 0 || fWidth == 0 || fHeight == 0 || fRowBytes < fWidth * 4) {
  		IOLog("SWEET FB: no boot framebuffer\n");
  		return false;
-@@ -311,94 +322,45 @@
+@@ -192,10 +206,13 @@
+ 		IOLog("SWEET FB: no vsync timer\n");
+ 		return false;
+ 	}
+-	uint32_t hz = 10;
++	uint32_t hz = 0;
+ 	PE_parse_boot_argn("sweetfb_hz", &hz, sizeof(hz));
+ 	fFlushTicks = (hz == 0 || hz >= 60) ? 1 : 60 / hz;
+-	fVsync->setTimeoutUS(SWEET_FB_VSYNC_US);
++	clock_interval_to_absolutetime_interval(SWEET_FB_VSYNC_US,NSEC_PER_USEC,&fVsyncPeriod);
++    fVsyncCount=0;fPendingAt=0;fStatsFrames=fStatsRenderTotal=fStatsRenderMax=fStatsQueueMax=0;
++    fStatsStart=mach_absolute_time();fVsyncNext=fStatsStart+fVsyncPeriod;
++    fVsync->wakeAtTime(fVsyncNext);
+ 
+ 	setProperty(kIOUserClientClassKey, "IOMobileFramebufferUserClient");
+ 	setProperty("external", false);
+@@ -207,56 +224,66 @@
+ }
+ 
+ void
+-AppleCLCD::vsyncFired(OSObject *owner, IOTimerEventSource *sender)
+-{
+-	AppleCLCD *fb = (AppleCLCD *)owner;
+-	uint64_t now = mach_absolute_time();
+-	uint64_t count = ++fb->fVsyncCount;
+-	uint64_t values[6] = {
+-		(uint32_t)count, (uint32_t)(count >> 32),
+-		(uint32_t)now, (uint32_t)(now >> 32),
+-		0, 0,
+-	};
+-
+-	IOLockLock(fb->fLock);
+-	for (unsigned int i = 0; i < fb->fClients->getCount(); i++) {
+-		IOMobileFramebufferUserClient *client =
+-		    (IOMobileFramebufferUserClient *)fb->fClients->getObject(i);
+-		client->notify(SWEET_FB_NOTIFY_VSYNC, values, 6);
+-	}
+-	if (fb->fPowerOff) {
+-		/* Fade out: halve every channel each vsync, then black, then idle. */
+-		uint32_t step = fb->fFadeStep;
+-		if (step <= 6) {
+-			fb->fFadeStep = step + 1;
+-		}
+-		IOLockUnlock(fb->fLock);
+-		if (step <= 6) {
+-			for (uint32_t y = 0; y < fb->fHeight; y++) {
+-				volatile uint32_t *row = (volatile uint32_t *)(fb->fPixels + (uint64_t)y * fb->fRowBytes);
+-				for (uint32_t x = 0; x < fb->fWidth; x++) {
+-					row[x] = step < 6 ? (row[x] >> 1) & 0x7f7f7f7f : 0;
+-				}
+-			}
+-		}
+-		sender->setTimeoutUS(SWEET_FB_VSYNC_US);
+-		return;
+-	}
+-	bool flush = fb->fDirty && (count % fb->fFlushTicks) == 0;
+-	uint8_t *rec = NULL;
+-	if (flush) {
+-		rec = (uint8_t *)IOMallocData(SWEET_FB_SWAP_REC_SIZE);
+-		if (rec != NULL) {
+-			memcpy(rec, fb->fPending, SWEET_FB_SWAP_REC_SIZE);
+-			fb->fDirty = false;
+-		}
+-	}
+-	IOLockUnlock(fb->fLock);
+-	if (rec != NULL) {
+-		fb->present(rec);
+-		IOFreeData(rec, SWEET_FB_SWAP_REC_SIZE);
+-	}
+-	sender->setTimeoutUS(SWEET_FB_VSYNC_US);
++AppleCLCD::armVsync(IOTimerEventSource *sender)
++{
++ fVsyncNext=zv_next_deadline(fVsyncNext,mach_absolute_time(),fVsyncPeriod);
++ if(fVsyncNext)sender->wakeAtTime(fVsyncNext);
++ else sender->setTimeoutUS(SWEET_FB_VSYNC_US);
++}
++
++void
++AppleCLCD::vsyncFired(OSObject *owner,IOTimerEventSource *sender)
++{
++ AppleCLCD *fb=(AppleCLCD *)owner;
++ uint64_t now=mach_absolute_time(),count=++fb->fVsyncCount;
++ uint64_t values[6]={(uint32_t)count,(uint32_t)(count>>32),
++  (uint32_t)now,(uint32_t)(now>>32),0,0};
++ uint8_t rec[SWEET_FB_SWAP_REC_SIZE];bool have=false;uint64_t queued=0;
++ IOLockLock(fb->fLock);
++ for(unsigned i=0;i<fb->fClients->getCount();i++) {
++  IOMobileFramebufferUserClient *client=(IOMobileFramebufferUserClient *)fb->fClients->getObject(i);
++  client->notify(SWEET_FB_NOTIFY_VSYNC,values,6);
++ }
++ if(fb->fPowerOff) {
++  uint32_t step=fb->fFadeStep;if(step<=6)fb->fFadeStep=step+1;
++  IOLockUnlock(fb->fLock);
++  if(step<=6)for(uint32_t y=0;y<fb->fHeight;y++) {
++   volatile uint32_t *row=(volatile uint32_t *)(fb->fPixels+(uint64_t)y*fb->fRowBytes);
++   for(uint32_t x=0;x<fb->fWidth;x++)row[x]=step<6?(row[x]>>1)&0x7f7f7f7f:0;
++  }
++  fb->armVsync(sender);return;
++ }
++ if(fb->fDirty&&(count%fb->fFlushTicks)==0) {
++  memcpy(rec,fb->fPending,sizeof(rec));queued=fb->fPendingAt;
++  fb->fDirty=false;have=true;
++ }
++ IOLockUnlock(fb->fLock);
++ if(have) {
++  uint64_t begin=mach_absolute_time(),ns=0;
++  if(queued&&begin>=queued) {
++   absolutetime_to_nanoseconds(begin-queued,&ns);
++   if(ns>fb->fStatsQueueMax)fb->fStatsQueueMax=ns;
++  }
++  fb->present(rec);
++  absolutetime_to_nanoseconds(mach_absolute_time()-begin,&ns);
++  fb->fStatsFrames++;fb->fStatsRenderTotal+=ns;
++  if(ns>fb->fStatsRenderMax)fb->fStatsRenderMax=ns;
++ }
++ uint64_t elapsed=0;absolutetime_to_nanoseconds(mach_absolute_time()-fb->fStatsStart,&elapsed);
++ if(elapsed>=5000000000ULL) {
++  uint64_t frames=fb->fStatsFrames;
++  uint64_t fps=frames*1000000000000ULL/elapsed;
++  uint64_t avg=frames?fb->fStatsRenderTotal/(frames*1000):0;
++  fb->setProperty("ZIYI-frame-fps-milli",fps,64);
++  fb->setProperty("ZIYI-frame-copy-us-avg",avg,64);
++  fb->setProperty("ZIYI-frame-copy-us-max",fb->fStatsRenderMax/1000,64);
++  fb->setProperty("ZIYI-frame-queue-us-max",fb->fStatsQueueMax/1000,64);
++  IOLog("ZIYI U14 FB window-ms=%llu frames=%llu fps-milli=%llu copy-us-avg=%llu copy-us-max=%llu queue-us-max=%llu\n",
++   elapsed/1000000,frames,fps,avg,fb->fStatsRenderMax/1000,fb->fStatsQueueMax/1000);
++  fb->fStatsStart=mach_absolute_time();fb->fStatsFrames=0;
++  fb->fStatsRenderTotal=fb->fStatsRenderMax=fb->fStatsQueueMax=0;
++ }
++ fb->armVsync(sender);
+ }
+ 
+ void
+@@ -301,6 +328,7 @@
+ {
+ 	IOLockLock(fLock);
+ 	memcpy(fPending, rec, SWEET_FB_SWAP_REC_SIZE);
++    fPendingAt=mach_absolute_time();
+ 	fDirty = true;
+ 	IOLockUnlock(fLock);
+ 	if ((++sweet_fb_swap_count % 1000) == 0) {
+@@ -311,94 +339,45 @@
  void
  AppleCLCD::present(const uint8_t *rec)
  {
@@ -1270,18 +1423,19 @@
 +#endif
 --- a/pexpert/pexpert/arm64/Makefile
 +++ b/pexpert/pexpert/arm64/Makefile
-@@ -18,7 +18,9 @@
+@@ -18,7 +18,10 @@
  	H13.h \
  	VMAPPLE.h \
  	BCM2837.h \
 -	SWEET.h
 +	SWEET.h \
 +	ziyi_log_strip.h \
-+	ziyi_u12_ui.h
++	ziyi_u12_ui.h \
++	ziyi_u14_timing.h
  
  
  # Headers installed into System.framework/PrivateHeaders (userspace internal SDK only).
-@@ -44,3 +46,5 @@
+@@ -44,3 +47,5 @@
  
  include $(MakeInc_rule)
  include $(MakeInc_dir)
@@ -1289,7 +1443,7 @@
 +# CPU scanout helper is header-only.
 --- /dev/null
 +++ b/pexpert/pexpert/arm64/ziyi_u12_ui.h
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,99 @@
 +/* Bounded CPU scanout. Source-over is opt-in: swap plane alpha semantics
 + * must be measured, never inferred from an IOSurface's fourth byte. */
 +#ifndef ZIYI_U12_UI_H
@@ -1336,6 +1490,24 @@
 +}
 +/* mode0: hardware-style opaque plane copy; mode1: premultiplied source-over.
 + * No allocation, global state, MMIO, or access outside the prepared rectangles. */
++/* Exact nearest-neighbour stepping: division is outside the pixel loop.
++ * Opaque pixels use one32-bit store, including colour conversion. */
++static inline uint32_t zui_pixel(uint32_t v,uint32_t format) {
++ if(format==ZUI_BGRA)return v;
++ if(format==ZUI_RGBA)return (v&0xff00ff00u)|((v&255u)<<16)|((v>>16)&255u);
++ if(format==ZUI_ARGB)return __builtin_bswap32(v);
++ return (v>>8)|(v<<24);
++}
++struct zui_axis {uint32_t at,remainder,whole,fraction,denominator;};
++static inline struct zui_axis zui_axis_make(uint32_t source,uint32_t span,uint32_t dest,uint32_t skip) {
++ uint64_t offset=(uint64_t)skip*span;
++ struct zui_axis a={source+(uint32_t)(offset/dest),(uint32_t)(offset%dest),span/dest,span%dest,dest};
++ return a;
++}
++static inline void zui_axis_next(struct zui_axis *a) {
++ a->at+=a->whole;a->remainder+=a->fraction;
++ if(a->remainder>=a->denominator){a->remainder-=a->denominator;a->at++;}
++}
 +static inline void zui_render(const struct zui_image *s,const struct zui_target *d,
 + const struct zui_plan *p,unsigned mode) {
 + if(!mode&&s->format==ZUI_BGRA&&p->source.w==p->dest.w&&p->source.h==p->dest.h) {
@@ -1346,18 +1518,27 @@
 +  }
 +  return;
 + }
-+ for(int32_t y=p->clip.y;y<p->clip.y+p->clip.h;y++) {
-+  uint32_t sy=(uint32_t)(p->source.y+((int64_t)y-p->dest.y)*p->source.h/p->dest.h);
-+  for(int32_t x=p->clip.x;x<p->clip.x+p->clip.w;x++) {
-+   uint32_t sx=(uint32_t)(p->source.x+((int64_t)x-p->dest.x)*p->source.w/p->dest.w);
-+   const uint8_t *src=s->pixels+s->offset+(uint64_t)sy*s->stride+(uint64_t)sx*4;
-+   uint8_t *dst=d->pixels+(uint64_t)y*d->stride+(uint64_t)x*4;uint32_t c[4];
-+   zui_channels(src,s->format,c);
-+   for(unsigned k=0;k<3;k++) {
-+    uint32_t v=mode?c[k]+((uint32_t)dst[k]*(255-c[3])+127)/255:c[k];
-+    dst[k]=(uint8_t)(v>255?255:v);
++ struct zui_axis first=zui_axis_make((uint32_t)p->source.x,(uint32_t)p->source.w,
++  (uint32_t)p->dest.w,(uint32_t)(p->clip.x-p->dest.x));
++ struct zui_axis yaxis=zui_axis_make((uint32_t)p->source.y,(uint32_t)p->source.h,
++  (uint32_t)p->dest.h,(uint32_t)(p->clip.y-p->dest.y));
++ for(int32_t y=p->clip.y;y<p->clip.y+p->clip.h;y++,zui_axis_next(&yaxis)) {
++  const uint8_t *row=s->pixels+s->offset+(uint64_t)yaxis.at*s->stride;
++  uint8_t *dst=d->pixels+(uint64_t)y*d->stride+(uint64_t)p->clip.x*4;
++  struct zui_axis xaxis=first;
++  for(int32_t x=0;x<p->clip.w;x++,dst+=4,zui_axis_next(&xaxis)) {
++   uint32_t raw,pixel;__builtin_memcpy(&raw,row+(uint64_t)xaxis.at*4,4);
++   pixel=zui_pixel(raw,s->format);
++   if(mode) {
++    uint32_t old;__builtin_memcpy(&old,dst,4);
++    uint32_t alpha=pixel>>24,out=0xff000000u;
++    for(unsigned k=0;k<3;k++) {
++     uint32_t v=((pixel>>(8*k))&255u)+(((old>>(8*k))&255u)*(255-alpha)+127)/255;
++     out|=(v>255?255:v)<<(8*k);
++    }
++    pixel=out;
 +   }
-+   dst[3]=mode?255:(uint8_t)c[3];
++   __builtin_memcpy(dst,&pixel,4);
 +  }
 + }
 +}
@@ -1481,7 +1662,7 @@
  #endif
 --- a/bsd/dev/sweet_touch.c
 +++ b/bsd/dev/sweet_touch.c
-@@ -1,7 +1,231 @@
+@@ -1,7 +1,246 @@
 -/* ziyi early profile: hardware provider deliberately absent.
 - * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
 - */
@@ -1499,11 +1680,12 @@
 +#include <pexpert/pexpert.h>
 +#include "ziyi_u12_input.h"
 +#include "ziyi_u13_board.h"
++#include "ziyi_u14_gpi.h"
 +extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
 +extern void sweet_hid_touch(int,int,int,int);
 +extern kern_return_t thread_terminate(thread_t);
 +void sweet_touch_init(void);
-+static vm_offset_t zt_se,zt_gpio,zt_gcc;
++static vm_offset_t zt_se,zt_gpio,zt_gcc,zt_gpi;
 +static unsigned zt_depth,zt_dead;
 +static uint16_t zt_maxwrite;
 +static const uint32_t zt_offsets[]={0x614,0x644,0xe18,0xe1c,0x28,0xe30,0x24,0x254,0x260,0x264,0x284,0x288,0x268,0x25c,0x810,0x814,0x20,0x258,0x224,0x22c,0x230,0x24c,0x250,0x80c};
@@ -1528,7 +1710,20 @@
 + __asm__ volatile("dmb oshst":::"memory");*(volatile uint32_t *)(base+o)=v;__asm__ volatile("dsb osh":::"memory");
 +}
 +static void zt_board_wait(void *ctx,unsigned us){(void)ctx;delay(us);}
-+static struct zb_io zt_board_io={NULL,zt_board_read,zt_board_write,zt_board_wait};
++static uint32_t zt_gpi_read(void *ctx,uint32_t o){(void)ctx;return zt_rd(zt_gpi,o);}
++static int zt_gpi_quiet(void *ctx) {
++ (void)ctx;
++ if(!zt_gpi||(zt_rd(zt_se,0xe18)&~15u))return 0;
++ struct zg_io io={NULL,zt_gpi_read,zt_board_wait};struct zg_snapshot s;
++ int error=zg_quiet(&io,&s);
++ static unsigned reports;
++ if(reports++<2) {
++  printf("ZIYI U14 GPI events=%x quiet=%d signature=%x repeated=98\n",zt_rd(zt_se,0xe18),error,s.signature);
++  for(unsigned n=0;n<7;n++)printf("ZIYI U14 GPI %u cfg=%x/%x scratch=%x/%x\n",n,s.word[n*2][0],s.word[n*2+1][0],s.word[n*2][6],s.word[n*2+1][6]);
++ }
++ return !error;
++}
++static struct zb_io zt_board_io={NULL,zt_board_read,zt_board_write,zt_board_wait,zt_gpi_quiet};
 +static void zt_sleep(unsigned ms) {
 + static int chan;uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);
 + (void)assert_wait_deadline(&chan,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);
@@ -1561,7 +1756,7 @@
 + zt_wr(0x600,((rx?3u:1u)<<27)|4u);
 + for(unsigned poll=0;poll<100000;poll++) {
 +  uint32_t irq=zt_rd(zt_se,0x610);
-+  if(irq&0x3300003e){printf("ZIYI U13 TCM SPI error=%x\n",irq);goto bad;}
++  if(irq&0x3300003e){printf("ZIYI U14 TCM SPI error=%x\n",irq);goto bad;}
 +  uint32_t used=zt_rd(zt_se,0x800)&0x0fffffff;
 +  if(used>zt_depth)goto bad;
 +  while(sent<bytes&&used++<zt_depth) {
@@ -1593,7 +1788,7 @@
 +}
 +static int zt_read_message(uint8_t *code,uint16_t *length) {
 + uint8_t h[4];int e=zt_transfer(NULL,h,4);if(e)return e;
-+ e=zi_tcm_header(h,4,code,length);if(e){printf("ZIYI U13 TCM header %x %x %x %x\n",h[0],h[1],h[2],h[3]);return 4;}
++ e=zi_tcm_header(h,4,code,length);if(e){printf("ZIYI U14 TCM header %x %x %x %x\n",h[0],h[1],h[2],h[3]);return 4;}
 + if(!*length)return 0;
 + if(zt_transfer(NULL,zt_message,(size_t)*length+3))return 5;
 + if(zt_message[0]!=0xa5||zt_message[1]!=3||zt_message[*length+2]!=0x5a)return 6;
@@ -1613,9 +1808,9 @@
 +  if(zt_read_message(&code,&length))return 3;
 +  if(code==1){*reply=length;return 0;}
 +  if(code==0||code==2||code==0x11)continue;
-+  if(code==0xfe){printf("ZIYI U13 TCM STOP host firmware download required\n");return 4;}
++  if(code==0xfe){printf("ZIYI U14 TCM STOP host firmware download required\n");return 4;}
 +  if(code==0x10&&op==2&&length>=24){*reply=length;return 0;}
-+  if(code<0x10){printf("ZIYI U13 TCM command %x status=%x\n",op,code);return 5;}
++  if(code<0x10){printf("ZIYI U14 TCM command %x status=%x\n",op,code);return 5;}
 + }
 + return 6;
 +}
@@ -1624,18 +1819,18 @@
 +}
 +static int zt_setup(void) {
 + uint32_t fw=zt_rd(zt_se,0x68),state=zt_rd(zt_se,0x40),clk=zt_rd(zt_se,0x48),hw=zt_rd(zt_se,0xe24);
-+ printf("ZIYI U13 TCM fw=%x state=%x clk=%x dma=%x hw=%x\n",fw,state,clk,zt_rd(zt_se,0x258),hw);
++ printf("ZIYI U14 TCM fw=%x state=%x clk=%x dma=%x hw=%x\n",fw,state,clk,zt_rd(zt_se,0x258),hw);
 + uint32_t rc=zt_rd(zt_gcc,0x27014),cfg=zt_rd(zt_gcc,0x27018),sel=zt_rd(zt_se,0x7c);
 + uint32_t rate=zi_spi_rate(rc,cfg,sel,clk);
-+ printf("ZIYI U13 TCM clock root=%x cfg=%x sel=%x upperHz=%u\n",rc,cfg,sel,rate);
++ printf("ZIYI U14 TCM clock root=%x cfg=%x sel=%x upperHz=%u\n",rc,cfg,sel,rate);
 + uint32_t pin[4];for(unsigned i=0;i<4;i++)pin[i]=zt_rd(zt_gpio,i*0x1000);
-+ printf("ZIYI U13 TCM pins=%x,%x,%x,%x reset=%x/%x irq=%x/%x\n",pin[0],pin[1],pin[2],pin[3],zt_rd(zt_gpio,126*0x1000),zt_rd(zt_gpio,126*0x1000+4),zt_rd(zt_gpio,51*0x1000),zt_rd(zt_gpio,51*0x1000+4));
++ printf("ZIYI U14 TCM pins=%x,%x,%x,%x reset=%x/%x irq=%x/%x\n",pin[0],pin[1],pin[2],pin[3],zt_rd(zt_gpio,126*0x1000),zt_rd(zt_gpio,126*0x1000+4),zt_rd(zt_gpio,51*0x1000),zt_rd(zt_gpio,51*0x1000+4));
 + int board_result=zb_qualify(&zt_board_io);
-+ if(board_result){printf("ZIYI U13 TCM STOP ownership=%d\n",board_result);return 30+board_result;}
++ if(board_result){printf("ZIYI U14 TCM STOP ownership=%d\n",board_result);return 30+board_result;}
 + zt_depth=(hw>>16)&63;
 + if(zt_depth<4||zt_depth>32||((hw>>24)&63)!=32)return 11;
 + board_result=zb_start(&zt_board_io,&zt_board);
-+ printf("ZIYI U13 TCM clock start=%d vote=%x root=%x cfg=%x\n",board_result,zt_rd(zt_gcc,0x62008),zt_rd(zt_gcc,0x27014),zt_rd(zt_gcc,0x27018));
++ printf("ZIYI U14 TCM clock start=%d vote=%x root=%x cfg=%x\n",board_result,zt_rd(zt_gcc,0x62008),zt_rd(zt_gcc,0x27014),zt_rd(zt_gcc,0x27018));
 + if(board_result)return 50+board_result;
 + rate=zb_spi_rate(zt_rd(zt_gcc,0x27014),zt_rd(zt_gcc,0x27018),zt_rd(zt_se,0x7c),zt_rd(zt_se,0x48));
 + if(rate!=4800000)return 80;
@@ -1649,32 +1844,32 @@
 + zt_wr(0x284,0x7f8fe);zt_wr(0x288,0xffefe);zt_wr(0x268,4);
 + zt_wr(0x25c,zt_rd(zt_se,0x25c)&~1u);zt_wr(0x80c,1);zt_wr(0x810,zt_depth-3);zt_wr(0x814,zt_depth-2);
 + board_result=zb_connect(&zt_board_io,&zt_board);
-+ printf("ZIYI U13 TCM pins/reset connect=%d reset=%x/%x IRQ=%x\n",board_result,zt_rd(zt_gpio,126*0x1000),zt_rd(zt_gpio,126*0x1000+4),zt_rd(zt_gpio,51*0x1000+4));
++ printf("ZIYI U14 TCM pins/reset connect=%d reset=%x/%x IRQ=%x\n",board_result,zt_rd(zt_gpio,126*0x1000),zt_rd(zt_gpio,126*0x1000+4),zt_rd(zt_gpio,51*0x1000+4));
 + if(board_result)return 90+board_result;
 + zt_sleep(200);
 + uint16_t reply=0;
 + if(zt_command(2,NULL,0,&reply)||reply<24||zt_message[1]!=1)return 15;
 + zt_maxwrite=(uint16_t)(zt_message[22]|zt_message[23]<<8);
 + if(zt_maxwrite<16)return 23;
-+ printf("ZIYI U13 TCM application build=%02x%02x%02x%02x maxwrite=%u\n",zt_message[21],zt_message[20],zt_message[19],zt_message[18],zt_message[22]|zt_message[23]<<8);
++ printf("ZIYI U14 TCM application build=%02x%02x%02x%02x maxwrite=%u\n",zt_message[21],zt_message[20],zt_message[19],zt_message[18],zt_message[22]|zt_message[23]<<8);
 + if(zt_command(0x20,NULL,0,&reply)||reply<38||zt_message[2]||zt_message[3])return 16;
 + unsigned mx=zt_message[32]|zt_message[33]<<8,my=zt_message[34]|zt_message[35]<<8,objects=zt_message[36]|zt_message[37]<<8;
-+ printf("ZIYI U13 TCM max=%u,%u objects=%u\n",mx,my,objects);
++ printf("ZIYI U14 TCM max=%u,%u objects=%u\n",mx,my,objects);
 + if(mx!=1079||my!=2399||!objects||objects>ZI_CONTACTS)return 17;
 + if(zt_command(0x25,NULL,0,&reply)||!reply||reply>sizeof(zt_oldconfig)||reply+3u>zt_maxwrite)return 18;
 + memcpy(zt_oldconfig,zt_message,reply);zt_oldconfig_len=reply;
-+ printf("ZIYI U13 TCM saved volatile config bytes=%u\n",reply);
++ printf("ZIYI U14 TCM saved volatile config bytes=%u\n",reply);
 + static const uint8_t config[]={24,8,1,6,4,7,4,8,16,9,16,3,0};
 + if(zt_command(0x26,config,sizeof(config),&reply))return 19;
 + /* Read the controller's accepted configuration back before any HID event. */
 + if(zt_command(0x25,NULL,0,&reply)||reply<sizeof(config)||reply>sizeof(zt_config)||memcmp(zt_message,config,sizeof(config)))return 20;
 + memcpy(zt_config,zt_message,reply);zt_config_len=reply;
 + uint8_t touch=0x11;if(zt_command(5,&touch,1,&reply))return 21;
-+ printf("ZIYI U13 TCM READY native 1080x2400 contacts=%u\n",objects);return 0;
++ printf("ZIYI U14 TCM READY native 1080x2400 contacts=%u\n",objects);return 0;
 +}
 +static void zt_thread(void *arg,wait_result_t wr) {
 + (void)arg;(void)wr;int result=zt_setup();
-+ if(result){printf("ZIYI U13 TCM STOP setup=%d\n",result);goto out;}
++ if(result){printf("ZIYI U14 TCM STOP setup=%d\n",result);goto out;}
 + unsigned errors=0,ticks=0,age=0;
 + for(;;) {
 +  if(!(zt_rd(zt_gpio,51*0x1000+4)&1)||++ticks%10==0) {
@@ -1688,7 +1883,7 @@
 +     zt_previous[i]=contacts[i];
 +    }
 +   }
-+   if(error){if(++errors==10)zt_release();if(errors==1||errors%100==0)printf("ZIYI U13 TCM report error=%d count=%u\n",error,errors);}
++   if(error){if(++errors==10)zt_release();if(errors==1||errors%100==0)printf("ZIYI U14 TCM report error=%d count=%u\n",error,errors);}
 +   else errors=0;
 +   if(zt_dead||errors>=100)break;
 +  }
@@ -1697,13 +1892,13 @@
 + }
 +out:
 + zt_release();
-+ if(!zt_dead&&zt_oldconfig_len){uint16_t reply;int e=zt_command(0x26,zt_oldconfig,zt_oldconfig_len,&reply);printf("ZIYI U13 TCM restore config=%d\n",e);}
++ if(!zt_dead&&zt_oldconfig_len){uint16_t reply;int e=zt_command(0x26,zt_oldconfig,zt_oldconfig_len,&reply);printf("ZIYI U14 TCM restore config=%d\n",e);}
 + if(!zt_dead&&zt_saved_valid&&!(zt_rd(zt_se,0x40)&0x1001)) {
 +  for(unsigned i=0;i<sizeof(zt_offsets)/sizeof(zt_offsets[0]);i++)zt_wr(zt_offsets[i],zt_saved[i]);
-+  printf("ZIYI U13 TCM restored idle SE register configuration\n");
++  printf("ZIYI U14 TCM restored idle SE register configuration\n");
 + }
 + int restore=zb_restore(&zt_board_io,&zt_board,!zt_dead);
-+ printf("ZIYI U13 TCM board restore=%d\n",restore);
++ printf("ZIYI U14 TCM board restore=%d\n",restore);
 + (void)thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
 +}
 +void sweet_touch_init(void) {
@@ -1713,9 +1908,10 @@
 + /* Diwali PINGROUP uses TLMM+0x100000+GPIO*0x1000. */
 + zt_gpio=ml_io_map(0x0f100000,0x100000);
 + zt_gcc=ml_io_map(0x00100000,0x64000);
-+ if(!zt_se||!zt_gpio||!zt_gcc){printf("ZIYI U13 TCM STOP map\n");return;}
++ zt_gpi=ml_io_map(0x00900000,0x60000);
++ if(!zt_se||!zt_gpio||!zt_gcc){printf("ZIYI U14 TCM STOP map\n");return;}
 + thread_t t;kern_return_t e=kernel_thread_start(zt_thread,NULL,&t);
-+ if(e==KERN_SUCCESS)thread_deallocate(t);else printf("ZIYI U13 TCM thread=%d\n",e);
++ if(e==KERN_SUCCESS)thread_deallocate(t);else printf("ZIYI U14 TCM thread=%d\n",e);
 +}
  #endif
 --- /dev/null
@@ -1809,9 +2005,9 @@
 +#endif
 --- /dev/null
 +++ b/bsd/dev/ziyi_u13_board.h
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,133 @@
 +/* ziyi/Diwali SPI0 bring-up, based on the pinned Xiaomi clock/pinctrl/GENI
-+ * drivers and U12's actual idle handoff. No DMA addresses, PMIC writes,
++ * drivers and U12's actual idle handoff. No DMA addresses or GPI writes, PMIC writes,
 + * firmware upload, shared clock reset, or persistent storage operation.
 + * The callbacks make the exact hardware sequence testable on a host. */
 +#ifndef ZIYI_U13_BOARD_H
@@ -1824,10 +2020,12 @@
 + uint32_t (*read)(void *,unsigned,uint32_t);
 + void (*write)(void *,unsigned,uint32_t,uint32_t);
 + void (*wait)(void *,unsigned);
++ int (*quiescent_events)(void *);
 +};
 +struct zb_state {
 + uint32_t vote,root,config,clock,select,pin[4],reset_cfg,reset_io;
-+ unsigned saved,clocks,pins,reset;
++ uint32_t gsi,dma;
++ unsigned saved,clocks,pins,reset,closed;
 +};
 +#define ZB_VOTES 0x7c0u /* wrap0 m/s AHB, core/core2x, SE0 only */
 +static inline uint32_t zb_read(struct zb_io *io,unsigned b,uint32_t o) {
@@ -1849,7 +2047,7 @@
 +static inline int zb_qualify(struct zb_io *io) {
 + if(((zb_read(io,ZB_SE,0x68)>>8)&255)!=1)return 1;
 + if(zb_read(io,ZB_SE,0x40)&0x1001)return 2;
-+ if(zb_read(io,ZB_SE,0xe18))return 3;
++ if(zb_read(io,ZB_SE,0xe18)&&(!io->quiescent_events||!io->quiescent_events(io->context)))return 3;
 + if(zb_read(io,ZB_SE,0x800)||(zb_read(io,ZB_SE,0x804)&0x1ffffff))return 4;
 + if(zb_read(io,ZB_SE,0x258)&~1u)return 5;
 + if(zb_read(io,ZB_GCC,0x27014)&1)return 6;
@@ -1871,7 +2069,12 @@
 + s->select=zb_read(io,ZB_SE,0x7c);
 + for(unsigned i=0;i<4;i++)s->pin[i]=zb_read(io,ZB_GPIO,i*0x1000);
 + s->reset_cfg=zb_read(io,ZB_GPIO,126*0x1000);s->reset_io=zb_read(io,ZB_GPIO,126*0x1000+4);
-+ s->saved=1;s->clocks=1;
++ s->saved=1;s->gsi=zb_read(io,ZB_SE,0xe18);s->dma=zb_read(io,ZB_SE,0x258);
++ s->closed=1;
++ /* Primary GENI FIFO transition, only after repeated idle GPI proof. */
++ zb_write(io,ZB_SE,0xe18,0);zb_write(io,ZB_SE,0x258,0);
++ if(zb_read(io,ZB_SE,0xe18)||zb_read(io,ZB_SE,0x258)||(zb_read(io,ZB_SE,0x40)&0x1001))return 28;
++ s->clocks=1;
 + /* RMW the HLOS vote register; no clock used by another wrapper is removed. */
 + zb_write(io,ZB_GCC,0x62008,zb_read(io,ZB_GCC,0x62008)|ZB_VOTES);
 + if(zb_poll(io,ZB_GCC,0x27004,0x80000000,0)||
@@ -1928,7 +2131,64 @@
 +  uint32_t added=ZB_VOTES&~s->vote;
 +  zb_write(io,ZB_GCC,0x62008,zb_read(io,ZB_GCC,0x62008)&~added);
 + }
-+ s->saved=s->clocks=s->pins=s->reset=0;
++ if(s->closed) {
++  if(s->gsi&&(!io->quiescent_events||!io->quiescent_events(io->context)))return 32;
++  zb_write(io,ZB_SE,0x258,s->dma);zb_write(io,ZB_SE,0xe18,s->gsi);
++ }
++ s->saved=s->clocks=s->pins=s->reset=s->closed=0;
 + return 0;
++}
++#endif
+--- /dev/null
++++ b/bsd/dev/ziyi_u14_gpi.h
+@@ -0,0 +1,31 @@
++/* Read-only HLOS GPI snapshot. Pinned DT: top0x900000,size0x60000,
++ * EE offset -0x10000, static mask1,dynamic mask0x7e. No GPI command,
++ * doorbell, interrupt ACK, ring memory, DMA pointer or SMMU write. */
++#ifndef ZIYI_U14_GPI_H
++#define ZIYI_U14_GPI_H
++#include <stdint.h>
++struct zg_io {void *context;uint32_t (*read)(void *,uint32_t);void (*wait)(void *,unsigned);};
++struct zg_snapshot {uint32_t word[14][7];uint32_t signature;};
++static inline int zg_quiet(struct zg_io *io,struct zg_snapshot *out) {
++ static const uint32_t fields[]={0,4,0x10,0x14,0x18,0x1c,0x60};
++ struct zg_snapshot second;unsigned error=0;
++ if(!io||!out||!io->read||!io->wait)return 1;
++ for(unsigned phase=0;phase<2;phase++) {
++  struct zg_snapshot *s=phase?&second:out;
++  for(unsigned n=0;n<7;n++)for(unsigned ch=0;ch<2;ch++)for(unsigned k=0;k<7;k++)
++   s->word[n*2+ch][k]=io->read(io->context,0x10000+n*0x4000+ch*0x80+fields[k]);
++  if(!phase)io->wait(io->context,50);
++ }
++ uint32_t tag=2166136261u;
++ for(unsigned i=0;i<14;i++) {
++  uint32_t cfg=out->word[i][0],state=(cfg>>20)&15;
++  if(state!=0&&state!=1&&state!=3)error|=2;
++  if(state&&((cfg>>24)!=16||(cfg&7)!=2))error|=4;
++  for(unsigned k=0;k<7;k++) {
++   uint32_t a=out->word[i][k];if(a!=second.word[i][k])error|=8;
++   tag=(tag^a)*16777619u;
++  }
++ }
++ out->signature=tag;return (int)error;
++}
++#endif
+--- /dev/null
++++ b/pexpert/pexpert/arm64/ziyi_u14_timing.h
+@@ -0,0 +1,16 @@
++/* Absolute vsync phase. Late rendering skips expired timer deadlines, not
++ * pending frames. A single latest swap is retained; no catch-up storm. */
++#ifndef ZIYI_U14_TIMING_H
++#define ZIYI_U14_TIMING_H
++#include <stdint.h>
++static inline uint64_t zv_next_deadline(uint64_t previous,uint64_t now,uint64_t period) {
++ if(!period||previous>UINT64_MAX-period)return 0;
++ uint64_t next=previous+period;
++ if(next<=now) {
++  uint64_t missed=(now-next)/period+1;
++  if(missed>(UINT64_MAX-next)/period)return 0;
++  next+=missed*period;
++ }
++ return next;
 +}
 +#endif

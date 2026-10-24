@@ -96,6 +96,21 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u13_spi.c -o u1-evidence/test-u13-spi
           ./u1-evidence/test-u13-spi | tee u1-evidence/u13-spi-tests.txt
 
+      - name: U14 scanout timing and GPI ownership sanitizers
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u14_inherited.c -o u1-evidence/test-u14-inherited
+          ./u1-evidence/test-u14-inherited | tee u1-evidence/u14-inherited-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u14_render.c -o u1-evidence/test-u14-render
+          ./u1-evidence/test-u14-render | tee u1-evidence/u14-render-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u14_board.c -o u1-evidence/test-u14-board
+          ./u1-evidence/test-u14-board | tee u1-evidence/u14-board-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u14_timing.c -o u1-evidence/test-u14-timing
+          ./u1-evidence/test-u14-timing | tee u1-evidence/u14-timing-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u14_gpi.c -o u1-evidence/test-u14-gpi
+          ./u1-evidence/test-u14-gpi | tee u1-evidence/u14-gpi-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u14_spi.c -o u1-evidence/test-u14-spi
+          ./u1-evidence/test-u14-spi | tee u1-evidence/u14-spi-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb

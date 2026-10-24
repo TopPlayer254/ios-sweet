@@ -53,7 +53,7 @@
   },
   "iokit/Kernel/arm/SweetFramebuffer.cpp": {
     "before": "aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f",
-    "after": "8d7ca2c7c10347ce497f8b5f6da0117c6aa2061b408cb6bbe8eae27d7cd32f57"
+    "after": "66176b469e1eacfd0a386db7c087b4615880eac4cd2242c325948adcf079a8c2"
   },
   "pexpert/pexpert/arm64/ziyi_log_strip.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -61,11 +61,11 @@
   },
   "pexpert/pexpert/arm64/Makefile": {
     "before": "03465a5e61a07420f0d4631d25e1cd6626698200b6bc13a113aad7ae67907a6b",
-    "after": "b3e7aa5ddd1328d1a665a7239684a16f8ad96ff070a6abd2f6ce6da171a8925f"
+    "after": "8243f332df6cf181acec39b49dc21e8b4ef9486876627a3bc034a9fd08ea46f0"
   },
   "pexpert/pexpert/arm64/ziyi_u12_ui.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "33bb789d79b2d7e01d35c379795a6e3dd5972f0a1ae77dcc023218e827787353"
+    "after": "6c09e2a7591b9e779bc0098718f4bcbb30399fa223312f286cdf36fbaf443e2b"
   },
   "iokit/Kernel/arm/hid/SweetHID.cpp": {
     "before": "cb8afe01c324d084d95e46bfe42575a2e1200f07155326bdd1448ee4c71ccb8a",
@@ -77,7 +77,7 @@
   },
   "bsd/dev/sweet_touch.c": {
     "before": "b758ef31133629311b8b42eb324d1041e5ccaba7807c0f29ccc62793f83b2234",
-    "after": "5864a00a16f5b7c8860847df890bc3360b2eb51e523ae0cc41f220b91c976cf7"
+    "after": "b51293f238ad452c87004c85fafeb21ad233f7a91bf59b5a0c69e86c257289ec"
   },
   "bsd/dev/ziyi_u12_input.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -85,6 +85,14 @@
   },
   "bsd/dev/ziyi_u13_board.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "f8e104056fef0594a41cb003b670d0d86fa966dbe208aeaf28834c1ab2ea0395"
+    "after": "cbf56b0f6fe8e98b8e6339ac6d062e241b9a54801b4e3b39b8ae6a966461f6b9"
+  },
+  "bsd/dev/ziyi_u14_gpi.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "81540a839510c3248a54ba79fcb53a4a656d79e4ef4122eb9007e12bf729daba"
+  },
+  "pexpert/pexpert/arm64/ziyi_u14_timing.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "306f8ac14434c466699b91da8672de0b65de1e84119bdd1e18ae78f6040a05f8"
   }
 }
