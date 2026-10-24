@@ -12,15 +12,19 @@ for name,item in expected.items():
     dest.parent.mkdir(parents=True,exist_ok=True)
     with dest.open('xb') as f:f.write(data)
     checks.append(dict(path=name,sha256=actual,bytes=len(data)))
-report=dict(result='U16_CI_SOURCE_AUDIT_PASS',commit=os.environ['GITHUB_SHA'],files=checks,
+report=dict(result='U18_CI_SOURCE_AUDIT_PASS',commit=os.environ['GITHUB_SHA'],files=checks,
             phoneTested=False,mediaWritesImplemented=True,writeGate="exact GPT and full install SHA or bound installed HFS identity; opt-in prefix only, FUA/readback")
 (root/'u1-evidence/audit.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report))
 
-# Bind the fake-MMIO transport test to the actual compiled SPI functions.
+# The exercised header must be the exact kernel header, and transport
+# must call it directly. Old FIFO tests remain historical regression tests.
 touch=(root/'dxb/xnu/bsd/dev/sweet_touch.c').read_text()
-spi=(root/'tools/ziyi-ufs/test_u16_spi.c').read_text()
-assert touch[touch.index('/* Snapshot status/configuration only:'):touch.index('static int zt_read_message(')] == spi[spi.index('/* Snapshot status/configuration only:'):spi.index('static void reset(')]
+assert '#include "ziyi_u18_gpio_spi.h"' in touch
+assert 'int e=bb_transfer(&zt_board_io,&zt_board,tx,rx,bytes);' in touch
+assert 'int take=bb_take(&zt_board_io,&zt_board);' in touch
+assert 'int restore=bb_release(&zt_board_io,&zt_board);' in touch
+assert (root/'tools/ziyi-ufs/u18_gpio_spi.h').read_bytes()==(root/'dxb/xnu/bsd/dev/ziyi_u18_gpio_spi.h').read_bytes()
 assert (root/'tools/ziyi-ufs/u16_board.h').read_bytes()==(root/'dxb/xnu/bsd/dev/ziyi_u13_board.h').read_bytes()
 
 assert (root/'tools/ziyi-ufs/u14_ui.h').read_bytes()==(root/'dxb/xnu/pexpert/pexpert/arm64/ziyi_u12_ui.h').read_bytes()

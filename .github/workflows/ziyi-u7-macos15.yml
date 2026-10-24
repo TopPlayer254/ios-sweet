@@ -123,6 +123,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u16_board.c -o u1-evidence/test-u16-board
           ./u1-evidence/test-u16-board | tee u1-evidence/u16-board-tests.txt
 
+      - name: U18 exact GPIO SPI transport and restoration
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u18_gpio_spi.c -o u1-evidence/test-u18-gpio-spi
+          ./u1-evidence/test-u18-gpio-spi | tee u1-evidence/u18-gpio-spi-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb

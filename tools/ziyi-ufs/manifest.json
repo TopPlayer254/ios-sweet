@@ -77,7 +77,7 @@
   },
   "bsd/dev/sweet_touch.c": {
     "before": "b758ef31133629311b8b42eb324d1041e5ccaba7807c0f29ccc62793f83b2234",
-    "after": "2fb8fd24f7476ce7029a8cfaf9c2378b7a3b95126893d24fbaf686ca90c74356"
+    "after": "28c0c6e814150598a63e39755162cac402abdf6685d1573e7624c43cc88e7cb1"
   },
   "bsd/dev/ziyi_u12_input.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -94,5 +94,9 @@
   "pexpert/pexpert/arm64/ziyi_u14_timing.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "after": "306f8ac14434c466699b91da8672de0b65de1e84119bdd1e18ae78f6040a05f8"
+  },
+  "bsd/dev/ziyi_u18_gpio_spi.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "ebee3c8ef046efe37f6721d3b56b0c6e4be89e12c4e4b640c22d7306d080c49c"
   }
 }
