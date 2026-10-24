@@ -1,3 +1,20 @@
+**Ziyi U12 candidate,2026-10-24; NOT phone tested.**
+U11X reached an actual lock-screen clock/date/battery per user photo after
+camera coverage. Native U11X CRC76d8c733 all copied-RAM checks PASS; actual
+launchd/backboardd/logo and RAM sampler stacks on camera. Clock progression,
+interactive home screen and real battery telemetry remain unproven.
+U12 adds bounded format-aware CPU blit/scaling and whole-canvas fit, matching
+HID coordinates, ziyi Gen3 PON/PM7325 GPIO6 keys and Synaptics TCM SPI.
+Input is explicit opt-in (ziyi_keys=1/ziyi_touch=1), after verified root only.
+TCM first profile requires inherited SPI firmware, idle FIFOs, known TCXO
+clock rate and matching pins/reset; otherwise prints STOP and exits safely.
+No donor rails/reset/GCC/firmware/flash programming. Key transport uses only
+SPMI observer READ commands. No storage/SMMU/DMA/GPT/prefix policy changes.
+8319 native host policy checks and exact UFS/keys/touch XNU C compiles PASS.
+Full Apple C++ compile, linked artifacts and hardware results still pending.
+No U12 phone launch/reflash yet. User requests full software UI/touch/buttons.
+Private assets, device identities, partition backups and photos remain local.
+
 **Ziyi UI asset candidate, 2026-10-22 (build only, not phone tested).**
 A separate macOS workflow builds a NEW journaled 8GiB HFSX image from verified
 iPhone X 16.7.16/20H392 OS/SystemOS/AppOS members. The pinned Hack-iOS

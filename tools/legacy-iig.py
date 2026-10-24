@@ -42,7 +42,7 @@ def prepare(archive,out):
 # This private framebuffer implementation is not an IIG declaration/input
 # dependency. Its reviewed rendering-only change is pinned on both sides;
 # every other inherited source/header and every generated RPC byte stays exact.
-IMPLEMENTATION_OVERRIDE={'iokit/Kernel/arm/SweetFramebuffer.cpp':('aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f','f985cfd415cd28f9e5f117a17fa36558c3bfb3010c217f595a612ee42df2b049')}
+IMPLEMENTATION_OVERRIDE={'iokit/Kernel/arm/SweetFramebuffer.cpp': ('aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f', '8d7ca2c7c10347ce497f8b5f6da0117c6aa2061b408cb6bbe8eae27d7cd32f57'), 'iokit/Kernel/arm/hid/SweetHID.cpp': ('cb8afe01c324d084d95e46bfe42575a2e1200f07155326bdd1448ee4c71ccb8a', '330eacf65469f17d73eac782a2b936c36ba6a4766035a08fb4a292551acefd3e')}
 def verify_inputs(root,manifest):
     reviewed={}
     for p,digest in manifest['inputs'].items():

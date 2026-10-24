@@ -1,7 +1,7 @@
 {
   "bsd/dev/sweet_ufs.c": {
-    "before": "6b538c11f6949b9fe0c61b0267fd75ad578a314154d2da14c4b332d8cb80fc37",
-    "after": "914f97cbd40389ce59285b8c640fc4e6ecd8c1404abf00566c08846f52b07add"
+    "before": "a68055c968ace1ed75ef66104b9823d3853b0e2c18d4a3305c1f05f82e0f835c",
+    "after": "27dc0c04317285c084dbfbf6ec7096e2ba0cc4946e9d3d60e1f5c51f166301cc"
   },
   "bsd/kern/bsd_init.c": {
     "before": "9d18e974fdc02e018b3749b3faefff9ff7049f0ffa01c60d59351c182ce0a3e3",
@@ -53,7 +53,7 @@
   },
   "iokit/Kernel/arm/SweetFramebuffer.cpp": {
     "before": "aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f",
-    "after": "f985cfd415cd28f9e5f117a17fa36558c3bfb3010c217f595a612ee42df2b049"
+    "after": "8d7ca2c7c10347ce497f8b5f6da0117c6aa2061b408cb6bbe8eae27d7cd32f57"
   },
   "pexpert/pexpert/arm64/ziyi_log_strip.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -61,6 +61,26 @@
   },
   "pexpert/pexpert/arm64/Makefile": {
     "before": "03465a5e61a07420f0d4631d25e1cd6626698200b6bc13a113aad7ae67907a6b",
-    "after": "5c20ee3db7ada7e3fe0a36bd95734241b99639b855f4f9e74b82fccb83879313"
+    "after": "b3e7aa5ddd1328d1a665a7239684a16f8ad96ff070a6abd2f6ce6da171a8925f"
+  },
+  "pexpert/pexpert/arm64/ziyi_u12_ui.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "33bb789d79b2d7e01d35c379795a6e3dd5972f0a1ae77dcc023218e827787353"
+  },
+  "iokit/Kernel/arm/hid/SweetHID.cpp": {
+    "before": "cb8afe01c324d084d95e46bfe42575a2e1200f07155326bdd1448ee4c71ccb8a",
+    "after": "330eacf65469f17d73eac782a2b936c36ba6a4766035a08fb4a292551acefd3e"
+  },
+  "bsd/dev/sweet_keys.c": {
+    "before": "1487015c4c87fdbf3fb6b1f6abaa17ae1200b8e22eeaea1b63ab705fb1c2352e",
+    "after": "da53f66759cfb4339561a2d2c1f382a705081c40305a492c64f91c2c2cf5e9a7"
+  },
+  "bsd/dev/sweet_touch.c": {
+    "before": "b758ef31133629311b8b42eb324d1041e5ccaba7807c0f29ccc62793f83b2234",
+    "after": "e0c62e1b77502265f6c53148f86a8500792b395b62e5a04af17135b15bd86a7a"
+  },
+  "bsd/dev/ziyi_u12_input.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "e4385efcf3334e5c58d6574094a4d8ad9abe1f5701ff958919646b1dc8bc49a0"
   }
 }

@@ -84,6 +84,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u11_strip.c -o u1-evidence/test-u11-strip
           ./u1-evidence/test-u11-strip | tee u1-evidence/u11-strip-tests.txt
 
+      - name: U12 scanout and input policy sanitizers
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u12.c -o u1-evidence/test-u12
+          ./u1-evidence/test-u12 | tee u1-evidence/u12-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb

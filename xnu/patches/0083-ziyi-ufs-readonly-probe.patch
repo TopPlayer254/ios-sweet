@@ -1,33 +1,51 @@
 --- a/bsd/dev/sweet_ufs.c
 +++ b/bsd/dev/sweet_ufs.c
-@@ -1,11 +1,504 @@
--/* ziyi early profile: hardware provider deliberately absent.
-- * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
+@@ -1,823 +1,506 @@
+-/*
+- * SWEET internal UFS root device.
+- *
+- * The Qualcomm UFS host (UFSHCI 2.1) is left enabled with the link up by the
+- * bootloader, which loaded our boot image from it. This driver reuses that
+- * state: it points the transfer request list at its own memory (verifying the
+- * host took it before ringing any doorbell) and issues polled SCSI commands,
+- * one at a time, to LUN 0. It finds one GPT partition by name (boot-arg
+- * ufsroot=, default "userdata") and exposes it as the BSD disk ufsroot0
+- * (rufsroot0), with 512-byte logical sectors over the device's 4 KiB blocks.
+- * Root on it with rd=ufsroot0.
+- *
+- * All DMA goes through one physically contiguous allocation (descriptors and
+- * a 1 MiB bounce buffer); the host is not cache coherent, so caches are
+- * cleaned/invalidated around each command.
+- *
+- * Writes are refused unless boot-arg ufsrw=1 is set. Every write is checked
+- * against the partition bounds again right before it is issued, so nothing
+- * outside the named partition can be written.
 +/* SPDX-License-Identifier: BSD-2-Clause-Patent
 + * Ziyi U7: image-prefix disk, exact GPT/root hash gates, opt-in FUA writes.
 + * No SMMU/PHY reset or persistent logger. No writes before both hash gates.
   */
  #if defined(ARM64_BOARD_CONFIG_SWEET)
--#include <stdint.h>
--/* dev_t is signed 32-bit in the pinned XNU bsd/sys/_types.h. */
--int sweet_ufs_rootdev(int32_t *dev) { (void)dev; return 6; /* ENXIO */ }
--void sweet_log_append(const char *text,int bytes) { (void)text; (void)bytes; }
--uint32_t sweet_log_copy(uint64_t *pos,char *out,uint32_t max) { (void)pos; (void)out; (void)max; return 0; }
-+#include <sys/param.h>
-+#include <sys/systm.h>
+ #include <sys/param.h>
+ #include <sys/systm.h>
 +#include <sys/errno.h>
-+#include <sys/buf.h>
-+#include <sys/conf.h>
-+#include <sys/disk.h>
-+#include <sys/proc.h>
-+#include <sys/uio.h>
-+#include <miscfs/devfs/devfs.h>
-+#include <kern/locks.h>
-+#include <kern/clock.h>
-+#include <arm/caches_internal.h>
-+#include <vm/pmap.h>
-+#include <vm/vm_kern.h>
-+#include <pexpert/pexpert.h>
+ #include <sys/buf.h>
+ #include <sys/conf.h>
+ #include <sys/disk.h>
+-#include <sys/errno.h>
+ #include <sys/proc.h>
+ #include <sys/uio.h>
+ #include <miscfs/devfs/devfs.h>
+ #include <kern/locks.h>
+ #include <kern/clock.h>
+-#include <kern/sched_prim.h>
+-#include <machine/machine_routines.h>
+ #include <arm/caches_internal.h>
+ #include <vm/pmap.h>
+ #include <vm/vm_kern.h>
+ #include <pexpert/pexpert.h>
+-#include <pexpert/device_tree.h>
+-#include <libkern/libkern.h>
+-#include <machine/atomic.h>
 +#include "ziyi_u1_core.h"
 +#include "ziyi_u3_policy.h"
 +#include "ziyi_u1_sha.inc"
@@ -43,8 +61,21 @@
 +static int register_disk(void);
 +void sweet_log_append(const char *text,int bytes) { (void)text;(void)bytes; }
 +uint32_t sweet_log_copy(uint64_t *pos,char *out,uint32_t max) { (void)pos;(void)out;(void)max;return 0; }
- uint64_t sweet_log_position(void) { return 0; }
-+
++uint64_t sweet_log_position(void) { return 0; }
+ 
+-extern ppnum_t pmap_find_phys(pmap_t pmap, addr64_t va);
+-/* osfmk/arm/machine_routines.h, not exported to the BSD layer */
+-extern vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
+-/* osfmk/arm/cpu_data.h, not exported to the BSD layer */
+-extern int get_preemption_level(void);
+-extern kern_return_t kernel_thread_start(thread_continue_t, void *, thread_t *);
+-extern void thread_deallocate(thread_t);
+-extern int hz;
+-static void sweet_log_start(void);
+-extern void sweet_sample_start(void);
+-extern void sweet_keys_init(void);
+-extern void sweet_touch_init(void);
+-extern void sweet_usb_probe(void);
 +/* Addresses and SID from the saved ziyi firmware DT, not a donor profile. */
 +#define U1_HCI 0x01d84000ull
 +#define U1_SMMU 0x15000000ull
@@ -320,7 +351,17 @@
 +    if(!u1.ready) stop_queue();
 +    printf("ZIYI U1 END success=%d poisoned=%d commands=%u; no media writes\n",success,u1.poison,u1.commands);
 +}
-+
+ 
+-#define REG_CAP         0x00
+-#define REG_IS          0x20
+-#define REG_IE          0x24
+-#define REG_HCS         0x30
+-#define REG_HCE         0x34
+-#define REG_UTRLBA      0x50
+-#define REG_UTRLBAU     0x54
+-#define REG_UTRLDBR     0x58
+-#define REG_UTRLCLR     0x5c
+-#define REG_UTRLRSR     0x60
 +static LCK_GRP_DECLARE(u3_group,"ziyi_ufs_readonly");
 +static LCK_MTX_DECLARE(u3_lock,&u3_group);
 +static int disk_open(__unused dev_t dev,int flags,__unused int type,__unused struct proc *p) {
@@ -457,7 +498,763 @@
 +        if(!strcmp(mode,"installed"))return verify_installed_root();
 +        if(strcmp(mode,"full"))return 0;
 +    }
-+
+ 
+-#define HCS_DP          (1u << 0)
+-#define HCS_UTRLRDY     (1u << 1)
+-#define CAP_64AS        (1u << 24)              /* 64-bit DMA addressing */
+-
+-#define UFS_BLOCK       4096u
+-#define BOUNCE_SIZE     (1u << 20)
+-#define PRDT_CHUNK      (256u << 10)            /* PRDT byte count field: 18 bits */
+-#define PRDT_MAX        (BOUNCE_SIZE / PRDT_CHUNK)
+-#define CMD_TIMEOUT_NS  (5ull * NSEC_PER_SEC)
+-#define CMD_SPIN_NS     (50ull * NSEC_PER_USEC)
+-#define CMD_SLEEP_NS    (200ull * NSEC_PER_USEC)
+-
+-struct utrd {
+-	uint32_t dw0, dw1, dw2, dw3;
+-	uint32_t ucdba, ucdbau;
+-	uint32_t resp;          /* [31:16] response UPIU offset, [15:0] length, DWORDs */
+-	uint32_t prdt;          /* [31:16] PRDT offset (DWORDs), [15:0] entries */
+-};
+-
+-struct ucd {
+-	uint8_t cmd[512];
+-	uint8_t resp[512];
+-	struct {
+-		uint32_t addr_lo, addr_hi, rsvd, dbc;
+-	} prdt[PRDT_MAX];
+-};
+-
+-/* Layout of the contiguous DMA allocation. */
+-#define DMA_UTRL        0x0000                  /* 1 KiB aligned */
+-#define DMA_UCD         0x1000                  /* 128 byte aligned */
+-#define DMA_BOUNCE      0x4000
+-#define DMA_SIZE        (DMA_BOUNCE + BOUNCE_SIZE)
+-
+-static struct {
+-	vm_offset_t regs;
+-	vm_offset_t dma;                        /* kernel VA of the DMA allocation */
+-	uint64_t dma_pa;
+-	uint8_t lun;
+-	uint8_t tag;
+-	uint64_t first_block, nblocks;          /* partition, in 4 KiB device blocks */
+-	uint32_t secsize;                       /* logical sector size for the BSD layer */
+-	bool writable;                          /* boot-arg ufsrw=1 */
+-	bool cache;                             /* boot-arg ufscache=1 */
+-	bool wait;                              /* boot-arg ufswait=1 */
+-	int bmajor, cmajor;
+-	dev_t bdev;
+-	bool ready;
+-} su;
+-
+-static LCK_GRP_DECLARE(sweet_ufs_grp, "sweet_ufs");
+-static LCK_MTX_DECLARE(sweet_ufs_lock, &sweet_ufs_grp);
+-
+-static inline uint32_t
+-ufs_rd(uint32_t off)
+-{
+-	return *(volatile uint32_t *)(su.regs + off);
+-}
+-
+-static inline void
+-ufs_wr(uint32_t off, uint32_t v)
+-{
+-	*(volatile uint32_t *)(su.regs + off) = v;
+-}
+-
+-static void
+-dma_sync(uint32_t off, uint32_t len)
+-{
+-	flush_dcache64((addr64_t)(su.dma_pa + off), len, TRUE);
+-}
+-
+-static void
+-dma_clean(uint32_t off, uint32_t len)
+-{
+-	clean_dcache64((addr64_t)(su.dma_pa + off), len, TRUE);
+-}
+-
+-/*
+- * One SCSI command in slot 0, data (if any) to/from the bounce buffer
+- * (to the device when write is set). Returns 0 or an errno.
+- */
+-static int
+-ufs_scsi(const uint8_t *cdb, unsigned cdb_len, uint32_t len, bool write)
+-{
+-	struct utrd *utrd = (struct utrd *)(su.dma + DMA_UTRL);
+-	struct ucd *ucd = (struct ucd *)(su.dma + DMA_UCD);
+-	uint64_t ucd_pa = su.dma_pa + DMA_UCD, bounce_pa = su.dma_pa + DMA_BOUNCE;
+-
+-	assert(len <= BOUNCE_SIZE);
+-	bzero(utrd, sizeof(*utrd));
+-	bzero(ucd, sizeof(*ucd));
+-
+-	ucd->cmd[0] = 0x01;                     /* COMMAND UPIU */
+-	ucd->cmd[1] = len ? (write ? 0x20 : 0x40) : 0x00;      /* W: data out, R: data in */
+-	ucd->cmd[2] = su.lun;
+-	ucd->cmd[3] = ++su.tag;
+-	ucd->cmd[12] = (uint8_t)(len >> 24);
+-	ucd->cmd[13] = (uint8_t)(len >> 16);
+-	ucd->cmd[14] = (uint8_t)(len >> 8);
+-	ucd->cmd[15] = (uint8_t)len;
+-	memcpy(&ucd->cmd[16], cdb, cdb_len);
+-
+-	/* DD: 1 = memory to device, 2 = device to memory. */
+-	utrd->dw0 = (1u << 28) | ((len ? (write ? 1u : 2u) : 0u) << 25) | (1u << 24);
+-	utrd->dw2 = 0x0f;                       /* OCS invalid until updated */
+-	utrd->ucdba = (uint32_t)ucd_pa;
+-	utrd->ucdbau = (uint32_t)(ucd_pa >> 32);
+-	utrd->resp = (512u / 4) << 16 | (512u / 4);
+-	if (len) {
+-		uint32_t n = 0;
+-		for (uint32_t done = 0; done < len; done += PRDT_CHUNK, n++) {
+-			uint32_t chunk = MIN(PRDT_CHUNK, len - done);
+-			ucd->prdt[n].addr_lo = (uint32_t)(bounce_pa + done);
+-			ucd->prdt[n].addr_hi = (uint32_t)((bounce_pa + done) >> 32);
+-			ucd->prdt[n].dbc = chunk - 1;
+-		}
+-		utrd->prdt = (1024u / 4) << 16 | n;
+-	}
+-
+-	if (su.cache) {
+-		dma_clean(DMA_UTRL, sizeof(*utrd));
+-		dma_clean(DMA_UCD, 16 + cdb_len);
+-		dma_sync(DMA_UCD + offsetof(struct ucd, resp), sizeof(ucd->resp));
+-		if (len) {
+-			dma_clean(DMA_UCD + offsetof(struct ucd, prdt),
+-			    (utrd->prdt & 0xffff) * sizeof(ucd->prdt[0]));
+-		}
+-	} else {
+-		dma_sync(DMA_UTRL, sizeof(*utrd));
+-		dma_sync(DMA_UCD, sizeof(*ucd));
+-	}
+-	if (len) {
+-		if (su.cache && write) {
+-			dma_clean(DMA_BOUNCE, len);
+-		} else {
+-			dma_sync(DMA_BOUNCE, len);
+-		}
+-	}
+-	__builtin_arm_dsb(0xf);
+-
+-	ufs_wr(REG_UTRLDBR, 1);
+-	uint64_t deadline;
+-	nanoseconds_to_absolutetime(CMD_TIMEOUT_NS, &deadline);
+-	deadline += mach_absolute_time();
+-	bool sleepable = su.wait && su.ready && ml_get_interrupts_enabled() &&
+-	    !ml_at_interrupt_context() && get_preemption_level() == 0;
+-	uint64_t spin_until = 0, sleep_interval = 0;
+-	if (sleepable) {
+-		nanoseconds_to_absolutetime(CMD_SPIN_NS, &spin_until);
+-		spin_until += mach_absolute_time();
+-		nanoseconds_to_absolutetime(CMD_SLEEP_NS, &sleep_interval);
+-	}
+-	while (ufs_rd(REG_UTRLDBR) & 1) {
+-		uint64_t now = mach_absolute_time();
+-		if (now > deadline) {
+-			ufs_wr(REG_UTRLCLR, ~1u);
+-			printf("SWEET UFS: command 0x%02x timed out\n", cdb[0]);
+-			return ETIMEDOUT;
+-		}
+-		if (sleepable && now >= spin_until) {
+-			uint64_t wake = now + MIN(sleep_interval, deadline - now);
+-			/* Keep the mutex: slot 0 and the bounce buffer are still owned. */
+-			if (assert_wait_deadline_with_leeway((event_t)&su.wait, THREAD_UNINT,
+-			    TIMEOUT_URGENCY_SYS_CRITICAL, wake, 0) == THREAD_WAITING) {
+-				thread_block(THREAD_CONTINUE_NULL);
+-			}
+-		} else {
+-			delay(1);
+-		}
+-	}
+-	__builtin_arm_dsb(0xf);
+-	ufs_wr(REG_IS, ufs_rd(REG_IS));         /* acknowledge completion status */
+-
+-	dma_sync(DMA_UTRL, sizeof(*utrd));
+-	if (su.cache) {
+-		dma_sync(DMA_UCD + offsetof(struct ucd, resp), sizeof(ucd->resp));
+-	} else {
+-		dma_sync(DMA_UCD, sizeof(*ucd));
+-	}
+-	if (len && !(su.cache && write)) {
+-		dma_sync(DMA_BOUNCE, len);
+-	}
+-
+-	uint32_t ocs = utrd->dw2 & 0xff;
+-	if (ocs || ucd->resp[0] != 0x21 || ucd->resp[6] || ucd->resp[7]) {
+-		printf("SWEET UFS: command 0x%02x failed: ocs 0x%x upiu 0x%x response 0x%x status 0x%x\n",
+-		    cdb[0], ocs, ucd->resp[0], ucd->resp[6], ucd->resp[7]);
+-		return EIO;
+-	}
+-	return 0;
+-}
+-
+-/* READ(10) of count device blocks at lba into the bounce buffer. */
+-static int
+-ufs_read_blocks(uint64_t lba, uint32_t count)
+-{
+-	if (lba > UINT32_MAX || count > BOUNCE_SIZE / UFS_BLOCK) {
+-		return EINVAL;
+-	}
+-	uint8_t cdb[10] = {
+-		0x28, 0,
+-		(uint8_t)(lba >> 24), (uint8_t)(lba >> 16), (uint8_t)(lba >> 8), (uint8_t)lba,
+-		0, (uint8_t)(count >> 8), (uint8_t)count, 0
+-	};
+-	return ufs_scsi(cdb, sizeof(cdb), count * UFS_BLOCK, false);
+-}
+-
+-/*
+- * WRITE(10) of count device blocks from the bounce buffer to lba. The range
+- * must lie inside the partition: this is the only place data goes out.
+- */
+-static int
+-ufs_write_blocks(uint64_t lba, uint32_t count)
+-{
+-	if (!su.writable || !su.nblocks || count == 0 || count > BOUNCE_SIZE / UFS_BLOCK ||
+-	    lba < su.first_block || lba - su.first_block >= su.nblocks ||
+-	    count > su.nblocks - (lba - su.first_block) || lba + count - 1 > UINT32_MAX) {
+-		printf("SWEET UFS: refusing write of %u blocks at 0x%llx\n", count, lba);
+-		return EPERM;
+-	}
+-	uint8_t cdb[10] = {
+-		0x2a, 0,
+-		(uint8_t)(lba >> 24), (uint8_t)(lba >> 16), (uint8_t)(lba >> 8), (uint8_t)lba,
+-		0, (uint8_t)(count >> 8), (uint8_t)count, 0
+-	};
+-	return ufs_scsi(cdb, sizeof(cdb), count * UFS_BLOCK, true);
+-}
+-
+-static int
+-ufs_sync_cache(void)
+-{
+-	static const uint8_t cdb[10] = { 0x35 };       /* SYNCHRONIZE CACHE(10), whole LUN */
+-	return ufs_scsi(cdb, sizeof(cdb), 0, false);
+-}
+-
+-static int
+-ufs_find_partition(const char *want)
+-{
+-	const uint8_t *b = (const uint8_t *)(su.dma + DMA_BOUNCE);
+-	int error = ufs_read_blocks(1, 1);
+-	if (error) {
+-		return error;
+-	}
+-	if (memcmp(b, "EFI PART", 8) != 0) {
+-		printf("SWEET UFS: LUN %u has no GPT\n", su.lun);
+-		return ENXIO;
+-	}
+-	uint64_t entry_lba;
+-	uint32_t nent, esz;
+-	memcpy(&entry_lba, b + 72, 8);
+-	memcpy(&nent, b + 80, 4);
+-	memcpy(&esz, b + 84, 4);
+-	if (esz != 128 || nent == 0 || nent * esz > BOUNCE_SIZE) {
+-		printf("SWEET UFS: unsupported GPT entries %u x %u\n", nent, esz);
+-		return ENXIO;
+-	}
+-	error = ufs_read_blocks(entry_lba, (nent * esz + UFS_BLOCK - 1) / UFS_BLOCK);
+-	if (error) {
+-		return error;
+-	}
+-	for (uint32_t i = 0; i < nent; i++) {
+-		const uint8_t *e = b + i * esz;
+-		char name[37];
+-		unsigned c;
+-		for (c = 0; c < 36; c++) {
+-			uint16_t ch = (uint16_t)(e[56 + 2 * c] | e[57 + 2 * c] << 8);
+-			if (ch == 0 || ch > 0x7f) {
+-				break;
+-			}
+-			name[c] = (char)ch;
+-		}
+-		name[c] = 0;
+-		if (strcmp(name, want) != 0) {
+-			continue;
+-		}
+-		uint64_t first, last;
+-		memcpy(&first, e + 32, 8);
+-		memcpy(&last, e + 40, 8);
+-		if (last < first) {
+-			return ENXIO;
+-		}
+-		su.first_block = first;
+-		su.nblocks = last - first + 1;
+-		return 0;
+-	}
+-	printf("SWEET UFS: no GPT partition named \"%s\"\n", want);
+-	return ENOENT;
+-}
+-
+-static int
+-ufs_take_over_host(void)
+-{
+-	uint32_t hce = ufs_rd(REG_HCE), hcs = ufs_rd(REG_HCS);
+-	if (!(hce & 1) || !(hcs & HCS_DP) || !(hcs & HCS_UTRLRDY)) {
+-		printf("SWEET UFS: host not ready (hce 0x%x hcs 0x%x)\n", hce, hcs);
+-		return ENXIO;
+-	}
+-	if (ufs_rd(REG_UTRLDBR)) {
+-		printf("SWEET UFS: requests outstanding from the bootloader\n");
+-		return EBUSY;
+-	}
+-	/* With RAM above 4 GiB (mkadt.py --highmem) the DMA memory can be there too. */
+-	if (((su.dma_pa + DMA_SIZE - 1) >> 32) && !(ufs_rd(REG_CAP) & CAP_64AS)) {
+-		printf("SWEET UFS: DMA memory at 0x%llx but the host has no 64-bit addressing\n",
+-		    su.dma_pa);
+-		return ENXIO;
+-	}
+-	ufs_wr(REG_IE, 0);                      /* polled operation */
+-	ufs_wr(REG_IS, ufs_rd(REG_IS));
+-	ufs_wr(REG_UTRLRSR, 0);
+-	uint64_t list = su.dma_pa + DMA_UTRL;
+-	ufs_wr(REG_UTRLBA, (uint32_t)list);
+-	ufs_wr(REG_UTRLBAU, (uint32_t)(list >> 32));
+-	ufs_wr(REG_UTRLRSR, 1);
+-	/* Never ring a doorbell unless the host uses our list. */
+-	if (ufs_rd(REG_UTRLBA) != (uint32_t)list || ufs_rd(REG_UTRLBAU) != (uint32_t)(list >> 32) ||
+-	    !(ufs_rd(REG_UTRLRSR) & 1)) {
+-		printf("SWEET UFS: host did not take our request list\n");
+-		return EIO;
+-	}
+-	return 0;
+-}
+-
+-static int
+-sweet_ufs_open(__unused dev_t dev, int flags, __unused int devtype, __unused struct proc *p)
+-{
+-	if (!su.ready) {
+-		return ENXIO;
+-	}
+-	return ((flags & FWRITE) && !su.writable) ? EROFS : 0;
+-}
+-
+-static int
+-sweet_ufs_close(__unused dev_t dev, __unused int flags, __unused int devtype, __unused struct proc *p)
+-{
+-	return 0;
+-}
+-
+-static void
+-sweet_ufs_strategy(buf_t bp)
+-{
+-	int error = 0;
+-	caddr_t vaddr = NULL;
+-	uint64_t off = (uint64_t)buf_blkno(bp) * su.secsize;
+-	uint32_t count = buf_count(bp);
+-	uint64_t part_bytes = su.nblocks * UFS_BLOCK;
+-
+-	bool rd = buf_flags(bp) & B_READ;
+-
+-	buf_setresid(bp, count);
+-	if (!rd && !su.writable) {
+-		error = EROFS;
+-		goto done;
+-	}
+-	if (off > part_bytes || count > part_bytes - off) {
+-		error = EINVAL;
+-		goto done;
+-	}
+-	if (count == 0) {
+-		goto done;
+-	}
+-	if (buf_map(bp, &vaddr)) {
+-		error = EIO;
+-		goto done;
+-	}
+-
+-	lck_mtx_lock(&sweet_ufs_lock);
+-	for (uint32_t done = 0; done < count;) {
+-		uint64_t pos = off + done;
+-		uint64_t lba = pos / UFS_BLOCK;
+-		uint32_t skip = (uint32_t)(pos % UFS_BLOCK);
+-		uint32_t want = MIN(count - done, BOUNCE_SIZE - skip);
+-		uint32_t blocks = (skip + want + UFS_BLOCK - 1) / UFS_BLOCK;
+-		void *bounce = (void *)(su.dma + DMA_BOUNCE);
+-		if (rd) {
+-			error = ufs_read_blocks(su.first_block + lba, blocks);
+-			if (!error) {
+-				memcpy(vaddr + done, (const char *)bounce + skip, want);
+-			}
+-		} else {
+-			/* Partial device blocks at either end: read, merge, write back. */
+-			if (skip || (want % UFS_BLOCK)) {
+-				error = ufs_read_blocks(su.first_block + lba, blocks);
+-			}
+-			if (!error) {
+-				memcpy((char *)bounce + skip, vaddr + done, want);
+-				error = ufs_write_blocks(su.first_block + lba, blocks);
+-			}
+-		}
+-		if (error) {
+-			break;
+-		}
+-		done += want;
+-		buf_setresid(bp, count - done);
+-	}
+-	lck_mtx_unlock(&sweet_ufs_lock);
+-	buf_unmap(bp);
+-
+-done:
+-	if (error) {
+-		buf_seterror(bp, error);
+-	}
+-	buf_biodone(bp);
+-}
+-
+-static int
+-sweet_ufs_ioctl(__unused dev_t dev, u_long cmd, caddr_t data, __unused int flag,
+-    __unused struct proc *p, int is_char)
+-{
+-	uint32_t *f = (uint32_t *)data;
+-	uint64_t *o = (uint64_t *)data;
+-
+-	switch (cmd) {
+-	case DKIOCGETBLOCKSIZE:
+-		*f = su.secsize;
+-		return 0;
+-	case DKIOCSETBLOCKSIZE:
+-		if (is_char) {
+-			return ENODEV;
+-		}
+-		if (*f < DEV_BSIZE || *f > UFS_BLOCK || (*f & (*f - 1))) {
+-			return EINVAL;
+-		}
+-		su.secsize = *f;
+-		return 0;
+-	case DKIOCGETPHYSICALBLOCKSIZE:
+-		*f = UFS_BLOCK;
+-		return 0;
+-	case DKIOCGETBLOCKCOUNT:
+-		*o = su.nblocks * UFS_BLOCK / su.secsize;
+-		return 0;
+-	case DKIOCISWRITABLE:
+-		*f = su.writable;
+-		return 0;
+-	case DKIOCSYNCHRONIZE:
+-	case DKIOCSYNCHRONIZECACHE: {
+-		if (!su.writable) {
+-			return 0;
+-		}
+-		lck_mtx_lock(&sweet_ufs_lock);
+-		int error = ufs_sync_cache();
+-		lck_mtx_unlock(&sweet_ufs_lock);
+-		return error;
+-	}
+-	case DKIOCGETMAXBLOCKCOUNTREAD:
+-		*o = BOUNCE_SIZE / su.secsize;
+-		return 0;
+-	case DKIOCGETMAXBLOCKCOUNTWRITE:
+-		*o = su.writable ? BOUNCE_SIZE / su.secsize : 0;
+-		return 0;
+-	case DKIOCGETMAXSEGMENTCOUNTREAD:
+-	case DKIOCGETMAXSEGMENTCOUNTWRITE:
+-		*o = 1;
+-		return 0;
+-	default:
+-		return ENOTTY;
+-	}
+-}
+-
+-static int
+-sweet_ufs_bioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
+-{
+-	return sweet_ufs_ioctl(dev, cmd, data, flag, p, 0);
+-}
+-
+-static int
+-sweet_ufs_cioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
+-{
+-	return sweet_ufs_ioctl(dev, cmd, data, flag, p, 1);
+-}
+-
+-static int
+-sweet_ufs_psize(__unused dev_t dev)
+-{
+-	return su.ready ? (int)MIN(su.nblocks * UFS_BLOCK / su.secsize, INT_MAX) : -1;
+-}
+-
+-static int
+-sweet_ufs_read(dev_t dev, struct uio *uio, __unused int ioflag)
+-{
+-	return physio(sweet_ufs_strategy, NULL, dev, B_READ, minphys, uio, (int)su.secsize);
+-}
+-
+-static int
+-sweet_ufs_write(dev_t dev, struct uio *uio, __unused int ioflag)
+-{
+-	if (!su.writable) {
+-		return EROFS;
+-	}
+-	return physio(sweet_ufs_strategy, NULL, dev, B_WRITE, minphys, uio, (int)su.secsize);
+-}
+-
+-static const struct bdevsw sweet_ufs_bdevsw = {
+-	.d_open     = sweet_ufs_open,
+-	.d_close    = sweet_ufs_close,
+-	.d_strategy = sweet_ufs_strategy,
+-	.d_ioctl    = sweet_ufs_bioctl,
+-	.d_dump     = eno_dump,
+-	.d_psize    = sweet_ufs_psize,
+-	.d_type     = D_DISK,
+-};
+-
+-static const struct cdevsw sweet_ufs_cdevsw = {
+-	.d_open       = sweet_ufs_open,
+-	.d_close      = sweet_ufs_close,
+-	.d_read       = sweet_ufs_read,
+-	.d_write      = sweet_ufs_write,
+-	.d_ioctl      = sweet_ufs_cioctl,
+-	.d_stop       = eno_stop,
+-	.d_reset      = eno_reset,
+-	.d_ttys       = NULL,
+-	.d_select     = eno_select,
+-	.d_mmap       = eno_mmap,
+-	.d_strategy   = eno_strat,
+-	.d_reserved_1 = eno_getc,
+-	.d_reserved_2 = eno_putc,
+-	.d_type       = D_DISK,
+-};
+-
+-static int
+-sweet_ufs_init(void)
+-{
+-	DTEntry node;
+-	uintptr_t const *reg = NULL;
+-	unsigned int size = 0;
+-	char want[64] = "userdata";
+-	int error;
+-
+-	if (SecureDTLookupEntry(NULL, "/sweet-ufs", &node) != kSuccess ||
+-	    SecureDTGetProperty(node, "reg", (void const **)&reg, &size) != kSuccess ||
+-	    size < 2 * sizeof(uintptr_t)) {
+-		printf("SWEET UFS: no /sweet-ufs node in the device tree\n");
+-		return ENXIO;
+-	}
+-	PE_parse_boot_argn("ufsroot", want, sizeof(want));
+-	uint32_t rw = 0;
+-	PE_parse_boot_argn("ufsrw", &rw, sizeof(rw));
+-	uint32_t cache = 0, wait = 0;
+-	PE_parse_boot_argn("ufscache", &cache, sizeof(cache));
+-	PE_parse_boot_argn("ufswait", &wait, sizeof(wait));
+-	su.cache = (cache == 1);
+-	su.wait = (wait == 1);
+-
+-	su.regs = ml_io_map(reg[0], reg[1]);
+-	if (kmem_alloc_contig(kernel_map, &su.dma, DMA_SIZE, PAGE_MASK, 0, 0,
+-	    KMA_DATA | KMA_ZERO | KMA_PERMANENT, VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
+-		printf("SWEET UFS: no contiguous DMA memory\n");
+-		return ENOMEM;
+-	}
+-	ppnum_t pn = pmap_find_phys(kernel_pmap, (addr64_t)su.dma);
+-	if (!pn) {
+-		return ENOMEM;
+-	}
+-	su.dma_pa = ptoa_64(pn);
+-	su.lun = 0;
+-	su.secsize = DEV_BSIZE;
+-
+-	lck_mtx_lock(&sweet_ufs_lock);
+-	error = ufs_take_over_host();
+-	if (!error) {
+-		static const uint8_t tur[6] = { 0x00 };
+-		/* The first command after the bootloader may report a unit attention. */
+-		for (int i = 0; i < 3 && (error = ufs_scsi(tur, sizeof(tur), 0, false)); i++) {
+-		}
+-	}
+-	if (!error) {
+-		error = ufs_find_partition(want);
+-	}
+-	lck_mtx_unlock(&sweet_ufs_lock);
+-	if (error) {
+-		return error;
+-	}
+-
+-	su.bmajor = bdevsw_add(-1, &sweet_ufs_bdevsw);
+-	if (su.bmajor < 0) {
+-		return ENXIO;
+-	}
+-	su.cmajor = cdevsw_add_with_bdev(-1, &sweet_ufs_cdevsw, su.bmajor);
+-	if (su.cmajor < 0) {
+-		return ENXIO;
+-	}
+-	su.bdev = makedev(su.bmajor, 0);
+-	devfs_make_node(su.bdev, DEVFS_BLOCK, UID_ROOT, GID_OPERATOR, 0640, "ufsroot0");
+-	devfs_make_node(makedev(su.cmajor, 0), DEVFS_CHAR, UID_ROOT, GID_OPERATOR, 0640, "rufsroot0");
+-	/* Only now, with the partition bounds known, can writes be allowed. */
+-	su.writable = (rw != 0);
+-	su.ready = true;
+-	printf("SWEET UFS: \"%s\" on LUN %u: first block 0x%llx, %llu MiB, %s, DMA at 0x%llx\n",
+-	    want, su.lun, su.first_block, su.nblocks * UFS_BLOCK >> 20,
+-	    su.writable ? "read-write" : "read-only", su.dma_pa);
+-	sweet_log_start();
+-	sweet_sample_start();
+-	/* Input drivers (HID services in iokit/Kernel/arm/hid/SweetHID.cpp). */
+-	sweet_keys_init();
+-	sweet_touch_init();
+-	sweet_usb_probe();
+-	return 0;
+-}
+-
+-/*
+- * Persistent console log ("sweetlog"). Filming the phone screen is the only
+- * other way to see the console, so every character that reaches the
+- * console (kernel printf and /dev/console writes of daemons, both through
+- * _cnputs) is also kept in a 4 MiB ring, and once the partition is known
+- * and writable a thread copies new ring blocks to the LAST 4 MiB + 4 KiB of
+- * the partition every ufslogsecs seconds (default 10), far behind the HFS
+- * image at its start. Device block 0 of that area is a header:
+- *   "SWEETLOG" | u32 version 1 | u32 ring size | u64 total bytes written
+- *   | u64 flush sequence
+- * ring offset of byte n = n % ring size. Read it from a recovery with
+- * tools/sweet-log-pull.sh. Disabled with boot-arg sweetlog=0.
+- */
+-#define SWEET_LOG_SIZE          (4u << 20)
+-#define SWEET_LOG_BLOCKS        (1 + SWEET_LOG_SIZE / UFS_BLOCK)
+-#define SWEET_LOG_SECS          10u
+-
+-static char sweet_log_ring[SWEET_LOG_SIZE];
+-static uint64_t _Atomic sweet_log_total;
+-static int sweet_log_chan;
+-static uint32_t sweet_log_secs = SWEET_LOG_SECS;
+-
+-/* Called for all console output, any context: never blocks. */
+-void sweet_log_append(const char *c, int size);
+-
+-void
+-sweet_log_append(const char *c, int size)
+-{
+-	if (size <= 0) {
+-		return;
+-	}
+-	uint64_t at = os_atomic_add_orig(&sweet_log_total, (uint64_t)size, relaxed);
+-	for (int i = 0; i < size; i++) {
+-		sweet_log_ring[(at + (uint64_t)i) % SWEET_LOG_SIZE] = c[i];
+-	}
+-}
+-
+-/*
+- * Copy console bytes [*pos, total) (at most max) for live log streaming
+- * (sweet_usb.c). A reader that fell more than the ring behind skips ahead.
+- * Returns the byte count; *pos advances.
+- */
+-uint32_t sweet_log_copy(uint64_t *pos, char *out, uint32_t max);
+-
+-uint32_t
+-sweet_log_copy(uint64_t *pos, char *out, uint32_t max)
+-{
+-	uint64_t total = os_atomic_load(&sweet_log_total, relaxed);
+-	if (total - *pos > SWEET_LOG_SIZE) {
+-		*pos = total - SWEET_LOG_SIZE;
+-	}
+-	uint32_t n = (uint32_t)MIN((uint64_t)max, total - *pos);
+-	for (uint32_t i = 0; i < n; i++) {
+-		out[i] = sweet_log_ring[(*pos + i) % SWEET_LOG_SIZE];
+-	}
+-	*pos += n;
+-	return n;
+-}
+-
+-uint64_t sweet_log_position(void);
+-
+-uint64_t
+-sweet_log_position(void)
+-{
+-	return os_atomic_load(&sweet_log_total, relaxed);
+-}
+-
+-struct sweet_log_header {
+-	char magic[8];
+-	uint32_t version, size;
+-	uint64_t total, seq;
+-};
+-
+-static void
+-sweet_log_thread(__unused void *arg, __unused wait_result_t wr)
+-{
+-	uint64_t base = su.first_block + su.nblocks - SWEET_LOG_BLOCKS;
+-	uint64_t flushed = 0, seq = 0;
+-	void *bounce = (void *)(su.dma + DMA_BOUNCE);
+-
+-	printf("SWEET LOG: console log to the last %u KiB of the partition (block 0x%llx)\n",
+-	    SWEET_LOG_BLOCKS * UFS_BLOCK >> 10, base);
+-	for (;;) {
+-		(void)tsleep(&sweet_log_chan, PZERO, "sweetlog", hz * (int)sweet_log_secs);
+-		uint64_t total = os_atomic_load(&sweet_log_total, relaxed);
+-		if (total == flushed) {
+-			continue;
+-		}
+-		uint64_t pos = total - flushed >= SWEET_LOG_SIZE ? total - SWEET_LOG_SIZE : flushed;
+-		int error = 0;
+-
+-		lck_mtx_lock(&sweet_ufs_lock);
+-		while (pos < total && !error) {
+-			uint32_t off = (uint32_t)(pos % SWEET_LOG_SIZE);
+-			uint32_t blk = off / UFS_BLOCK;
+-			uint64_t need = ((uint64_t)off % UFS_BLOCK + (total - pos) + UFS_BLOCK - 1) / UFS_BLOCK;
+-			uint32_t n = (uint32_t)MIN(MIN(need, (uint64_t)(SWEET_LOG_SIZE / UFS_BLOCK - blk)),
+-			    (uint64_t)(BOUNCE_SIZE / UFS_BLOCK));
+-			memcpy(bounce, sweet_log_ring + (uint64_t)blk * UFS_BLOCK, n * UFS_BLOCK);
+-			error = ufs_write_blocks(base + 1 + blk, n);
+-			pos += (uint64_t)(blk + n) * UFS_BLOCK - off;
+-		}
+-		if (!error) {
+-			struct sweet_log_header h = {
+-				.magic = { 'S', 'W', 'E', 'E', 'T', 'L', 'O', 'G' },
+-				.version = 1, .size = SWEET_LOG_SIZE, .total = total, .seq = ++seq,
+-			};
+-			bzero(bounce, UFS_BLOCK);
+-			memcpy(bounce, &h, sizeof(h));
+-			error = ufs_write_blocks(base, 1);
+-		}
+-		if (!error) {
+-			error = ufs_sync_cache();
+-		}
+-		lck_mtx_unlock(&sweet_ufs_lock);
+-		if (error) {
+-			printf("SWEET LOG: write failed (%d), stopping\n", error);
+-			return;
+-		}
+-		flushed = total;
+-	}
+-}
+-
+-static void
+-sweet_log_start(void)
+-{
+-	uint32_t on = 1;
+-	thread_t thread;
+-
+-	PE_parse_boot_argn("sweetlog", &on, sizeof(on));
+-	if (!on || !su.writable || su.nblocks < 2 * SWEET_LOG_BLOCKS) {
+-		return;
+-	}
+-	PE_parse_boot_argn("ufslogsecs", &sweet_log_secs, sizeof(sweet_log_secs));
+-	if (sweet_log_secs == 0 || sweet_log_secs > 60) {
+-		sweet_log_secs = SWEET_LOG_SECS;
+-	}
+-	if (kernel_thread_start(sweet_log_thread, NULL, &thread) == KERN_SUCCESS) {
+-		thread_deallocate(thread);
+-	}
+-}
+-
+-/* Root device for rd=ufsroot0 (IOFindBSDRoot). */
+-int sweet_ufs_rootdev(dev_t *dev);
+-
+-int
+-sweet_ufs_rootdev(dev_t *dev)
+-{
+-	if (!su.ready) {
+-		int error = sweet_ufs_init();
+-		if (error) {
+-			return error;
+-		}
+-	}
+-	*dev = su.bdev;
+-	return 0;
+-}
+-#endif /* ARM64_BOARD_CONFIG_SWEET */
 +    uint32_t mib=0;char hex[65]={0};uint8_t expected[32],actual[32];
 +    if(!PE_parse_boot_argn("ziyi_ufs_verify_mib",&mib,sizeof(mib))||(mib!=3072&&mib!=8192)||
 +       !PE_parse_boot_argn("ziyi_ufs_hash",hex,sizeof(hex))||!u4_expected_hash(hex,expected)) return 0;
@@ -496,7 +1293,9 @@
 +        if(!u1.verified) {printf("ZIYI U4 STOP root readback failed; no Apple entry\n");stop_queue();u1.poison=1;return EIO;}
 +        /* The early storage-free profile removed the donor UFS caller.
 +         * Restore only the RAM-only sampler, once, after verified root.
-+         * Persistent logger, PHY, USB and input hardware remain excluded. */
++         * Persistent logger, PHY and USB remain excluded. ziyi input is opt-in. */
++        extern void sweet_keys_init(void),sweet_touch_init(void);
++        sweet_keys_init();sweet_touch_init();
 +        char sample_names[128]={0};
 +        if(PE_parse_boot_argn("sweetsample",sample_names,sizeof(sample_names))&&sample_names[0]&&sample_names[0]!='-') {
 +            printf("ZIYI U10 requesting original RAM-only process sampler after verified root\n");
@@ -511,7 +1310,7 @@
 +           u1.volume.image_bytes,u1.volume.writable);
 +    *dev=u1.disk;return 0;
 +}
- #endif
++#endif
 --- a/bsd/kern/bsd_init.c
 +++ b/bsd/kern/bsd_init.c
 @@ -1044,6 +1044,11 @@
@@ -1077,26 +1876,31 @@
  
 --- a/iokit/Kernel/arm/SweetFramebuffer.cpp
 +++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
-@@ -35,6 +35,7 @@
+@@ -35,6 +35,8 @@
   * the first swap on (it still reaches the persistent log; panics draw).
   */
  #include "SweetSurface.h"
 +#include <pexpert/arm64/ziyi_log_strip.h>
++#include <pexpert/arm64/ziyi_u12_ui.h>
  
  extern "C" int sweet_console_muted;     /* osfmk/console/serial_console.c */
  
-@@ -113,6 +114,7 @@
+@@ -113,6 +115,8 @@
  	bool          fConsolePaused;
  	uint8_t       fPending[SWEET_FB_SWAP_REC_SIZE];     /* latest swap, not yet shown */
  	bool          fDirty;
++	uint32_t      fFitCanvas, fBlendPlanes;
 +	uint32_t      fLogStripPixels;
  	uint32_t      fFlushTicks;    /* vsync ticks between panel copies */
  	bool          fPowerOff;      /* RequestPowerChange(0) */
  	uint32_t      fFadeStep;      /* fade-out steps done while off */
-@@ -162,6 +164,10 @@
+@@ -162,6 +166,13 @@
  	fWidth = (uint32_t)video.v_width;
  	fHeight = (uint32_t)video.v_height;
  	fRowBytes = (uint32_t)video.v_rowBytes;
++    fFitCanvas=1;fBlendPlanes=0;
++    PE_parse_boot_argn("ziyi_fb_fit",&fFitCanvas,sizeof(fFitCanvas));
++    PE_parse_boot_argn("ziyi_fb_blend",&fBlendPlanes,sizeof(fBlendPlanes));
 +    uint32_t strip_rows=0;
 +    PE_parse_boot_argn("ziyi_log_rows",&strip_rows,sizeof(strip_rows));
 +    fLogStripPixels=zs_strip_pixels(strip_rows,fPhys,fWidth,fHeight,fRowBytes);
@@ -1104,20 +1908,140 @@
  	if (fPhys == 0 || fWidth == 0 || fHeight == 0 || fRowBytes < fWidth * 4) {
  		IOLog("SWEET FB: no boot framebuffer\n");
  		return false;
-@@ -381,9 +387,10 @@
- 		if (w > (int32_t)fWidth - dx) {
- 			w = (int32_t)fWidth - dx;
- 		}
+@@ -311,94 +322,45 @@
+ void
+ AppleCLCD::present(const uint8_t *rec)
+ {
+-	uint32_t mask = get32(rec, 0x104);
+-
+-
+-	if (!fConsolePaused) {
+-		int quiet = 0;
+-		fConsolePaused = true;
+-		if (PE_parse_boot_argn("sweetfb_noconsole", &quiet, sizeof(quiet)) && quiet != 0) {
+-			/* Not PE_initialize_console(kPEDisableScreen): its console switch
+-			 * writes the read-only-late cons_ops_index and panics. */
+-			sweet_console_muted = 1;
+-		}
+-	}
+-
+-	for (uint32_t layer = 0; layer < SWEET_FB_LAYERS; layer++) {
+-		uint32_t id = get32(rec, 0x54 + 4 * layer);
+-		const uint8_t *a = rec + 0x64 + 16 * layer;
+-		const uint8_t *b = rec + 0xc4 + 16 * layer;
+-		int32_t sx = (int32_t)get32(a, 0), sy = (int32_t)get32(a, 4);
+-		int32_t dx = (int32_t)get32(b, 0), dy = (int32_t)get32(b, 4);
+-		int32_t w = (int32_t)get32(b, 8), h = (int32_t)get32(b, 12);
+-
+-		if (!(mask & (1u << layer)) || id == 0) {
+-			continue;
+-		}
+-		SweetSurface *s = sweet_surface_copy(id);
+-		if (sweet_fb_swaps_logged < 16) {
+-			sweet_fb_swaps_logged++;
+-			IOLog("SWEET FB: swap %u layer %u surface %u %ux%u fmt 0x%x bpr %u a %d,%d %ux%u b %d,%d %dx%d\n",
+-			    get32(rec, 0x50), layer, id, s ? s->width : 0, s ? s->height : 0,
+-			    s ? s->pixelFormat : 0, s ? s->bytesPerRow : 0, sx, sy, get32(a, 8),
+-			    get32(a, 12), dx, dy, w, h);
+-		}
+-		if (s == NULL || s == fSurface) {
+-			OSSafeReleaseNULL(s);
+-			continue;
+-		}
+-		uintptr_t src = s->kernelAddress();
+-		uint32_t bpe = s->bytesPerElement ? s->bytesPerElement : 4;
+-		if (w <= 0 || h <= 0) {
+-			w = (int32_t)s->width;
+-			h = (int32_t)s->height;
+-		}
+-		if (sx < 0 || sy < 0) {
+-			sx = sy = 0;
+-		}
+-		if (dx < 0 || dy < 0) {
+-			dx = dy = 0;
+-		}
+-		/* Logical (presented) display coordinates -> panel coordinates. */
+-		dx -= fOffX;
+-		dy -= fOffY;
+-		if (dx < 0) {
+-			sx -= dx;
+-			w += dx;
+-			dx = 0;
+-		}
+-		if (dy < 0) {
+-			sy -= dy;
+-			h += dy;
+-			dy = 0;
+-		}
+-		if (w > (int32_t)s->width - sx) {
+-			w = (int32_t)s->width - sx;
+-		}
+-		if (h > (int32_t)s->height - sy) {
+-			h = (int32_t)s->height - sy;
+-		}
+-		if (w > (int32_t)fWidth - dx) {
+-			w = (int32_t)fWidth - dx;
+-		}
 -		if (h > (int32_t)fHeight - dy) {
 -			h = (int32_t)fHeight - dy;
 -		}
-+        /* Preserve the physical console band without changing the logical
-+         * iPhone display or its surfaces. Text never covers the upper UI. */
-+        int32_t panel_bottom=(int32_t)(fHeight-fLogStripPixels);
-+        if(h>panel_bottom-dy)h=panel_bottom-dy;
- 		uint64_t last = (uint64_t)s->offset + (uint64_t)(sy + h - 1) * s->bytesPerRow +
- 		    (uint64_t)(sx + w) * 4;
- 		if (w <= 0 || h <= 0 || s->elementWidth != 1 || s->elementHeight != 1 ||
+-		uint64_t last = (uint64_t)s->offset + (uint64_t)(sy + h - 1) * s->bytesPerRow +
+-		    (uint64_t)(sx + w) * 4;
+-		if (w <= 0 || h <= 0 || s->elementWidth != 1 || s->elementHeight != 1 ||
+-		    s->memory == NULL || last > s->memory->getLength()) {
+-			src = 0;
+-		}
+-		if (src != 0 && bpe == 4) {
+-			for (int32_t y = 0; y < h; y++) {
+-				memcpy((void *)(fPixels + (uint64_t)(dy + y) * fRowBytes + (uint64_t)dx * 4),
+-				    (const void *)(src + s->offset + (uint64_t)(sy + y) * s->bytesPerRow + (uint64_t)sx * 4),
+-				    (size_t)w * 4);
+-			}
+-		}
+-		s->release();
+-	}
++ uint32_t mask=get32(rec,0x104);
++ if(!fConsolePaused) {
++  int quiet=0;fConsolePaused=true;
++  if(PE_parse_boot_argn("sweetfb_noconsole",&quiet,sizeof(quiet))&&quiet)sweet_console_muted=1;
++ }
++ struct zui_target target={(uint8_t *)fPixels,(uint64_t)fRowBytes*fHeight,
++  fWidth,fHeight-fLogStripPixels,fRowBytes};
++ for(uint32_t layer=0;layer<SWEET_FB_LAYERS;layer++) {
++  uint32_t id=get32(rec,0x54+4*layer);
++  if(!(mask&(1u<<layer))||!id)continue;
++  SweetSurface *s=sweet_surface_copy(id);
++  if(!s||s==fSurface){OSSafeReleaseNULL(s);continue;}
++  const uint8_t *a=rec+0x64+16*layer,*b=rec+0xc4+16*layer;
++  struct zui_rect sr={(int32_t)get32(a,0),(int32_t)get32(a,4),(int32_t)get32(a,8),(int32_t)get32(a,12)};
++  struct zui_rect dr={(int32_t)get32(b,0),(int32_t)get32(b,4),(int32_t)get32(b,8),(int32_t)get32(b,12)};
++  if(dr.w<=0||dr.h<=0){dr.w=(int32_t)s->width;dr.h=(int32_t)s->height;}
++  if(sr.w<=0||sr.h<=0){sr.w=dr.w;sr.h=dr.h;}
++  if(fFitCanvas) {
++   int64_t right=(int64_t)dr.x+dr.w,bottom=(int64_t)dr.y+dr.h;
++   int64_t x=(int64_t)dr.x*fWidth/fLogicalW,y=(int64_t)dr.y*fHeight/fLogicalH;
++   right=right*fWidth/fLogicalW;bottom=bottom*fHeight/fLogicalH;
++   dr=(struct zui_rect){(int32_t)x,(int32_t)y,(int32_t)(right-x),(int32_t)(bottom-y)};
++  }else {dr.x-=fOffX;dr.y-=fOffY;}
++  struct zui_image source={(const uint8_t *)s->kernelAddress(),
++   s->memory?s->memory->getLength():0,s->offset,s->width,s->height,s->bytesPerRow,s->pixelFormat};
++  struct zui_plan plan;
++  int error=(s->bytesPerElement!=4||s->elementWidth!=1||s->elementHeight!=1)?6:
++   zui_prepare(&source,&target,sr,dr,&plan);
++  /* Bounded metadata only; no image contents or per-frame print flood. */
++  if(sweet_fb_swaps_logged<64) {
++   sweet_fb_swaps_logged++;
++   IOLog("ZIYI U12 FB layer=%u mask=%x fmt=%x size=%ux%u stride=%u result=%d\n",
++    layer,mask,s->pixelFormat,s->width,s->height,s->bytesPerRow,error);
++   IOLog("ZIYI U12 FB src=%d,%d,%d,%d dst=%d,%d,%d,%d fit=%u blend=%u\n",
++    sr.x,sr.y,sr.w,sr.h,dr.x,dr.y,dr.w,dr.h,fFitCanvas,fBlendPlanes);
++  }
++  if(!error)zui_render(&source,&target,&plan,(fBlendPlanes&&layer)?1:0);
++  s->release();
++ }
+ }
+ 
+ bool
 --- /dev/null
 +++ b/pexpert/pexpert/arm64/ziyi_log_strip.h
 @@ -0,0 +1,20 @@
@@ -1143,13 +2067,524 @@
 +#endif
 --- a/pexpert/pexpert/arm64/Makefile
 +++ b/pexpert/pexpert/arm64/Makefile
-@@ -18,7 +18,8 @@
+@@ -18,7 +18,9 @@
  	H13.h \
  	VMAPPLE.h \
  	BCM2837.h \
 -	SWEET.h
 +	SWEET.h \
-+	ziyi_log_strip.h
++	ziyi_log_strip.h \
++	ziyi_u12_ui.h
  
  
  # Headers installed into System.framework/PrivateHeaders (userspace internal SDK only).
+@@ -44,3 +46,5 @@
+ 
+ include $(MakeInc_rule)
+ include $(MakeInc_dir)
++
++# CPU scanout helper is header-only.
+--- /dev/null
++++ b/pexpert/pexpert/arm64/ziyi_u12_ui.h
+@@ -0,0 +1,72 @@
++/* Bounded CPU scanout. Source-over is opt-in: swap plane alpha semantics
++ * must be measured, never inferred from an IOSurface's fourth byte. */
++#ifndef ZIYI_U12_UI_H
++#define ZIYI_U12_UI_H
++#include <stdint.h>
++#include <stddef.h>
++#define ZUI_BGRA 0x42475241u
++#define ZUI_RGBA 0x52474241u
++#define ZUI_ARGB 0x41524742u
++#define ZUI_ABGR 0x41424752u
++struct zui_image { const uint8_t *pixels; uint64_t bytes,offset; uint32_t width,height,stride,format; };
++struct zui_target { uint8_t *pixels; uint64_t bytes; uint32_t width,height,stride; };
++struct zui_rect { int32_t x,y,w,h; };
++struct zui_plan { struct zui_rect source,dest,clip; };
++static inline int zui_format(uint32_t f) {
++ return f==ZUI_BGRA||f==ZUI_RGBA||f==ZUI_ARGB||f==ZUI_ABGR;
++}
++static inline int zui_prepare(const struct zui_image *s,const struct zui_target *d,
++ struct zui_rect a,struct zui_rect b,struct zui_plan *out) {
++ if(!s||!d||!out||!s->pixels||!d->pixels||!zui_format(s->format))return 1;
++ if(!s->width||!s->height||s->width>16384||s->height>16384||
++    !d->width||!d->height||d->width>16384||d->height>16384||
++    s->stride<(uint64_t)s->width*4||d->stride<(uint64_t)d->width*4)return 2;
++ uint64_t slast=(uint64_t)(s->height-1)*s->stride+(uint64_t)s->width*4;
++ uint64_t dlast=(uint64_t)(d->height-1)*d->stride+(uint64_t)d->width*4;
++ if(s->offset>s->bytes||slast>s->bytes-s->offset||dlast>d->bytes)return 3;
++ if(a.x<0||a.y<0||a.w<=0||a.h<=0||b.w<=0||b.h<=0||
++    a.w>16384||a.h>16384||b.w>32768||b.h>32768||
++    (int64_t)a.x+a.w>s->width||(int64_t)a.y+a.h>s->height)return 4;
++ int64_t x0=b.x>0?b.x:0,y0=b.y>0?b.y:0;
++ int64_t x1=(int64_t)b.x+b.w,y1=(int64_t)b.y+b.h;
++ if(x1>d->width)x1=d->width;
++ if(y1>d->height)y1=d->height;
++ if(x0>=x1||y0>=y1)return 5;
++ out->source=a;out->dest=b;
++ out->clip=(struct zui_rect){(int32_t)x0,(int32_t)y0,(int32_t)(x1-x0),(int32_t)(y1-y0)};
++ return 0;
++}
++static inline void zui_channels(const uint8_t *p,uint32_t f,uint32_t c[4]) {
++ if(f==ZUI_BGRA){c[0]=p[0];c[1]=p[1];c[2]=p[2];c[3]=p[3];}
++ else if(f==ZUI_RGBA){c[0]=p[2];c[1]=p[1];c[2]=p[0];c[3]=p[3];}
++ else if(f==ZUI_ARGB){c[0]=p[3];c[1]=p[2];c[2]=p[1];c[3]=p[0];}
++ else {c[0]=p[1];c[1]=p[2];c[2]=p[3];c[3]=p[0];}
++}
++/* mode0: hardware-style opaque plane copy; mode1: premultiplied source-over.
++ * No allocation, global state, MMIO, or access outside the prepared rectangles. */
++static inline void zui_render(const struct zui_image *s,const struct zui_target *d,
++ const struct zui_plan *p,unsigned mode) {
++ if(!mode&&s->format==ZUI_BGRA&&p->source.w==p->dest.w&&p->source.h==p->dest.h) {
++  for(int32_t y=p->clip.y;y<p->clip.y+p->clip.h;y++) {
++   uint32_t sy=(uint32_t)(p->source.y+y-p->dest.y),sx=(uint32_t)(p->source.x+p->clip.x-p->dest.x);
++   __builtin_memcpy(d->pixels+(uint64_t)y*d->stride+(uint64_t)p->clip.x*4,
++    s->pixels+s->offset+(uint64_t)sy*s->stride+(uint64_t)sx*4,(size_t)p->clip.w*4);
++  }
++  return;
++ }
++ for(int32_t y=p->clip.y;y<p->clip.y+p->clip.h;y++) {
++  uint32_t sy=(uint32_t)(p->source.y+((int64_t)y-p->dest.y)*p->source.h/p->dest.h);
++  for(int32_t x=p->clip.x;x<p->clip.x+p->clip.w;x++) {
++   uint32_t sx=(uint32_t)(p->source.x+((int64_t)x-p->dest.x)*p->source.w/p->dest.w);
++   const uint8_t *src=s->pixels+s->offset+(uint64_t)sy*s->stride+(uint64_t)sx*4;
++   uint8_t *dst=d->pixels+(uint64_t)y*d->stride+(uint64_t)x*4;uint32_t c[4];
++   zui_channels(src,s->format,c);
++   for(unsigned k=0;k<3;k++) {
++    uint32_t v=mode?c[k]+((uint32_t)dst[k]*(255-c[3])+127)/255:c[k];
++    dst[k]=(uint8_t)(v>255?255:v);
++   }
++   dst[3]=mode?255:(uint8_t)c[3];
++  }
++ }
++}
++#endif
+--- a/iokit/Kernel/arm/hid/SweetHID.cpp
++++ b/iokit/Kernel/arm/hid/SweetHID.cpp
+@@ -368,6 +368,7 @@
+ private:
+ 	IOLock *fLock;
+ 	int fLogicalW, fLogicalH, fOffX, fOffY;
++	int fFitCanvas;
+ 	bool fDown[SWEET_TOUCH_FINGERS];
+ 	bool fEdge[SWEET_TOUCH_FINGERS];
+ 	IOFixed fX[SWEET_TOUCH_FINGERS];
+@@ -434,6 +435,8 @@
+ 	}
+ 	int native = 0;
+ 	PE_parse_boot_argn("sweetfb_native", &native, sizeof(native));
++	fFitCanvas=1;
++	PE_parse_boot_argn("ziyi_fb_fit",&fFitCanvas,sizeof(fFitCanvas));
+ 	fLogicalW = native ? 1080 : 1125;
+ 	fLogicalH = native ? 2400 : 2436;
+ 	fOffX = (fLogicalW - 1080) / 2;
+@@ -464,8 +467,8 @@
+ 	IOLockLock(fLock);
+ 	bool was = fDown[finger];
+ 	/* Panel pixels -> the presented 1125x2436 display (SweetFramebuffer.cpp). */
+-	IOFixed nx = (IOFixed)(((int64_t)(x + fOffX) << 16) / fLogicalW);
+-	IOFixed ny = (IOFixed)(((int64_t)(y + fOffY) << 16) / fLogicalH);
++	IOFixed nx = (IOFixed)(((int64_t)(fFitCanvas?x:x+fOffX) << 16) / (fFitCanvas?1080:fLogicalW));
++	IOFixed ny = (IOFixed)(((int64_t)(fFitCanvas?y:y+fOffY) << 16) / (fFitCanvas?2400:fLogicalH));
+ 	bool moved = down && (nx != fX[finger] || ny != fY[finger]);
+ 	if (was == down && !moved) {
+ 		IOLockUnlock(fLock);
+--- a/bsd/dev/sweet_keys.c
++++ b/bsd/dev/sweet_keys.c
+@@ -1,7 +1,79 @@
+-/* ziyi early profile: hardware provider deliberately absent.
+- * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
+- */
++/* ziyi PMK8350 Gen3 PON + PM7325 GPIO6. Read commands only: this driver
++ * never writes PMIC configuration, IRQ acks, reset or power state. */
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+-#include <stdint.h>
+-void sweet_keys_init(void) {}
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <kern/clock.h>
++#include <kern/thread.h>
++#include <kern/sched_prim.h>
++#include <machine/machine_routines.h>
++#include <pexpert/pexpert.h>
++#include "ziyi_u12_input.h"
++extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
++extern void sweet_hid_key(int,int);
++void sweet_keys_init(void);
++static vm_offset_t zkey_core,zkey_cfg,zkey_obs;
++static uint32_t zkey_map,zkey_step,zkey_version;
++static uint16_t zkey_pon=0xffff,zkey_gpio=0xffff;
++static uint32_t zkey_rd(vm_offset_t base,uint32_t off) {
++ uint32_t v=*(volatile uint32_t *)(base+off);__asm__ volatile("dmb oshld":::"memory");return v;
++}
++static uint16_t zkey_find(uint32_t count,uint16_t ppid) {
++ uint16_t result=0xffff;
++ for(uint32_t i=0;i<count;i++) {
++  uint32_t v=zkey_rd(zkey_core,zkey_map+4*i);
++  if(!v||((v>>8)&0xfff)!=ppid)continue;
++  uint32_t owner=zkey_rd(zkey_cfg,(zkey_version>=0x70000000?0:0x700)+4*i)&7;
++  if(result==0xffff||owner==0)result=(uint16_t)i;
++ }
++ return result;
++}
++static int zkey_read(uint16_t apid,uint16_t address,uint8_t *out) {
++ if(apid==0xffff)return 0;
++ uint32_t off=(uint32_t)apid*zkey_step;
++ if(off>0x80000-0x1c)return 0;
++ __asm__ volatile("dmb oshst":::"memory");
++ *(volatile uint32_t *)(zkey_obs+off)=(1u<<27)|((uint32_t)(address&255)<<4);
++ __asm__ volatile("dsb osh":::"memory");
++ for(unsigned n=0;n<1000;n++) {
++  uint32_t status=zkey_rd(zkey_obs,off+8);
++  if(status&1){if(status&14)return 0;*out=(uint8_t)zkey_rd(zkey_obs,off+0x18);return 1;}
++  delay(1);
++ }
++ return 0;
++}
++static void zkey_thread(void *arg,wait_result_t wr) {
++ (void)arg;(void)wr;struct zi_key state[3]={{0}};static int chan;
++ for(;;) {
++  uint8_t p=0,g=0;int pok=zkey_read(zkey_pon,0x1310,&p),gok=zkey_read(zkey_gpio,0x8d10,&g);
++  for(unsigned i=0;i<3;i++) {
++   int event=zi_key_update(&state[i],i==1?gok:pok,zi_key_state(i,p,g));
++   if(event){printf("ZIYI U12 KEY %u %s valid=%d\n",i,event>0?"DOWN":"UP",i==1?gok:pok);sweet_hid_key((int)i,event>0);}
++  }
++  uint64_t deadline;clock_interval_to_deadline(20,NSEC_PER_MSEC,&deadline);
++  (void)assert_wait_deadline(&chan,THREAD_UNINT,deadline);thread_block(THREAD_CONTINUE_NULL);
++ }
++}
++void sweet_keys_init(void) {
++ static int started;int enable=0;
++ if(started)return;started=1;
++ PE_parse_boot_argn("ziyi_keys",&enable,sizeof(enable));if(enable!=1)return;
++ zkey_core=ml_io_map(0x0c400000,0x3000);zkey_cfg=ml_io_map(0x0c42d000,0x4000);zkey_obs=ml_io_map(0x0c440000,0x80000);
++ if(!zkey_core||!zkey_cfg||!zkey_obs){printf("ZIYI U12 KEYS STOP map\n");return;}
++ zkey_version=zkey_rd(zkey_core,0);uint32_t count=zkey_rd(zkey_core,4)&0x7ff;
++ printf("ZIYI U12 KEYS arb=%x count=%u\n",zkey_version,count);
++ if(zi_spmi_layout(zkey_version,&zkey_map,&zkey_step)||!count||count>1024||
++  (zkey_version<0x70000000&&count>512)||zkey_map+4*count>0x3000){printf("ZIYI U12 KEYS STOP layout\n");return;}
++ zkey_pon=zkey_find(count,0x013);zkey_gpio=zkey_find(count,0x18d);
++ uint8_t subtype=0,mode=0,en=0;
++ int pon_ok=zkey_read(zkey_pon,0x1305,&subtype)&&subtype==9;
++ if(!pon_ok)zkey_pon=0xffff;
++ int gpio_ok=zkey_read(zkey_gpio,0x8d05,&subtype)&&subtype>=0x10&&subtype<=0x13&&
++  zkey_read(zkey_gpio,0x8d40,&mode)&&zkey_read(zkey_gpio,0x8d46,&en)&&(en&0x80)&&((mode&3)==0||(mode&3)==2);
++ if(!gpio_ok)zkey_gpio=0xffff;
++ printf("ZIYI U12 KEYS PON=%u GPIO1:8d=%u subtype=%x mode=%x en=%x\n",zkey_pon,zkey_gpio,subtype,mode,en);
++ if(zkey_pon==0xffff&&zkey_gpio==0xffff){printf("ZIYI U12 KEYS STOP no validated input\n");return;}
++ thread_t t;kern_return_t result=kernel_thread_start(zkey_thread,NULL,&t);
++ if(result==KERN_SUCCESS)thread_deallocate(t);else printf("ZIYI U12 KEYS thread failed=%d\n",result);
++}
+ #endif
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -1,7 +1,215 @@
+-/* ziyi early profile: hardware provider deliberately absent.
+- * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
+- */
++/* ziyi Synaptics TCM over GENI SE0 SPI. Initial profile uses only an
++ * already-running SPI firmware/clock/pin/rail handoff. No DMA, firmware
++ * upload, flash command, regulator vote, pin/reset or GCC programming.
++ * Unqualified handoff stops with measured facts instead of using sweet's
++ * I2C/Goodix hardware. TCM report configuration is volatile and saved first. */
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+-#include <stdint.h>
+-void sweet_touch_init(void) {}
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <kern/clock.h>
++#include <kern/thread.h>
++#include <kern/sched_prim.h>
++#include <machine/machine_routines.h>
++#include <pexpert/pexpert.h>
++#include "ziyi_u12_input.h"
++extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
++extern void sweet_hid_touch(int,int,int,int);
++extern kern_return_t thread_terminate(thread_t);
++void sweet_touch_init(void);
++static vm_offset_t zt_se,zt_gpio,zt_gcc;
++static unsigned zt_depth,zt_dead;
++static uint16_t zt_maxwrite;
++static const uint32_t zt_offsets[]={0x614,0x644,0xe18,0xe1c,0x28,0xe30,0x24,0x254,0x260,0x264,0x284,0x288,0x268,0x25c,0x810,0x814,0x20};
++static uint32_t zt_saved[sizeof(zt_offsets)/sizeof(zt_offsets[0])];
++static unsigned zt_saved_valid;
++static uint8_t zt_message[4100],zt_config[512],zt_oldconfig[512];
++static size_t zt_config_len,zt_oldconfig_len;
++static struct zi_contact zt_previous[ZI_CONTACTS];
++static uint32_t zt_rd(vm_offset_t b,uint32_t o) {
++ uint32_t v=*(volatile uint32_t *)(b+o);__asm__ volatile("dmb oshld":::"memory");return v;
++}
++static void zt_wr(uint32_t o,uint32_t v) {
++ __asm__ volatile("dmb oshst":::"memory");*(volatile uint32_t *)(zt_se+o)=v;__asm__ volatile("dsb osh":::"memory");
++}
++static void zt_sleep(unsigned ms) {
++ static int chan;uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);
++ (void)assert_wait_deadline(&chan,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);
++}
++static int zt_abort(void) {
++ zt_wr(0x604,4);
++ for(unsigned i=0;i<1000;i++){if(!(zt_rd(zt_se,0x40)&1))return 0;delay(1);}
++ zt_wr(0x604,2);
++ for(unsigned i=0;i<1000;i++){if(!(zt_rd(zt_se,0x40)&1))return 0;delay(1);}
++ zt_dead=1;return 1;
++}
++static int zt_cs(unsigned assert_cs) {
++ if(zt_dead||(zt_rd(zt_se,0x40)&1))return 1;
++ zt_wr(0x618,0x7fffffff);zt_wr(0x600,(assert_cs?8u:9u)<<27);
++ for(unsigned i=0;i<10000;i++) {
++  uint32_t irq=zt_rd(zt_se,0x610);
++  if(irq&0x3e){(void)zt_abort();return 2;}
++  if(irq&1){zt_wr(0x618,irq);return 0;}
++  delay(1);
++ }
++ (void)zt_abort();return 3;
++}
++static int zt_transfer(const uint8_t *tx,uint8_t *rx,size_t bytes) {
++ if(!bytes||bytes>4099||zt_dead)return 1;
++ if(zt_cs(1))return 2;
++ unsigned sent=0,received=0;
++ zt_wr(0x26c,(uint32_t)bytes);zt_wr(0x270,rx?(uint32_t)bytes:0);
++ zt_wr(0x618,0x7fffffff);
++ /* Pinned Qualcomm setup_fifo_xfer uses TX_ONLY|RX_ONLY for duplex. */
++ zt_wr(0x600,((rx?3u:1u)<<27)|4u);
++ for(unsigned poll=0;poll<100000;poll++) {
++  uint32_t irq=zt_rd(zt_se,0x610);
++  if(irq&0x3300003e){printf("ZIYI U12 TCM SPI error=%x\n",irq);goto bad;}
++  uint32_t used=zt_rd(zt_se,0x800)&0x0fffffff;
++  if(used>zt_depth)goto bad;
++  while(sent<bytes&&used++<zt_depth) {
++   uint32_t word=0;
++   for(unsigned k=0;k<4&&sent<bytes;k++,sent++)word|=(uint32_t)(tx?tx[sent]:255)<<(k*8);
++   zt_wr(0x700,word);
++  }
++  uint32_t status=zt_rd(zt_se,0x804),count=status&0x01ffffff;
++  if(count>zt_depth)goto bad;
++  unsigned available=count*4,last=(status>>28)&7;
++  if((status&0x80000000u)&&last&&last<4&&available>=4)available-=4-last;
++  for(unsigned i=0;i<count;i++) {
++   uint32_t word=zt_rd(zt_se,0x780);
++   for(unsigned k=0;k<4&&i*4+k<available;k++) {
++    if(!rx||received>=bytes)goto bad;
++    rx[received++]=(uint8_t)(word>>(k*8));
++   }
++  }
++  if(irq&1) {
++   zt_wr(0x618,irq);
++   if(sent!=bytes||(rx&&received!=bytes))goto bad;
++   return zt_cs(0);
++  }
++  /* Leave level FIFO indications to their condition; clear completed events. */
++  zt_wr(0x618,irq&~((1u<<26)|(1u<<27)|(1u<<30)));delay(1);
++ }
++bad:
++ (void)zt_abort();if(!zt_dead)(void)zt_cs(0);return 3;
++}
++static int zt_read_message(uint8_t *code,uint16_t *length) {
++ uint8_t h[4];int e=zt_transfer(NULL,h,4);if(e)return e;
++ e=zi_tcm_header(h,4,code,length);if(e){printf("ZIYI U12 TCM header %x %x %x %x\n",h[0],h[1],h[2],h[3]);return 4;}
++ if(!*length)return 0;
++ if(zt_transfer(NULL,zt_message,(size_t)*length+3))return 5;
++ if(zt_message[0]!=0xa5||zt_message[1]!=3||zt_message[*length+2]!=0x5a)return 6;
++ memmove(zt_message,zt_message+2,*length);return 0;
++}
++static int zt_command(uint8_t op,const uint8_t *body,size_t n,uint16_t *reply) {
++ /* Exactly identify/app-info/config-read/volatile-report-config/enable-report.
++  * Flash, firmware upload, reset and charger commands cannot be sent. */
++ if(!((op==2&&n==0)||(op==0x20&&n==0)||(op==0x25&&n==0)||
++      (op==0x26&&n&&n<=512)||(op==5&&n==1&&body&&body[0]==0x11)))return 1;
++ if(zt_maxwrite&&n+3>zt_maxwrite)return 1;
++ uint8_t command[515];command[0]=op;command[1]=(uint8_t)n;command[2]=(uint8_t)(n>>8);
++ if(n)memcpy(command+3,body,n);
++ if(zt_transfer(command,NULL,n+3))return 2;
++ for(unsigned i=0;i<100;i++) {
++  uint8_t code;uint16_t length;zt_sleep(5);
++  if(zt_read_message(&code,&length))return 3;
++  if(code==1){*reply=length;return 0;}
++  if(code==0||code==2||code==0x11)continue;
++  if(code==0xfe){printf("ZIYI U12 TCM STOP host firmware download required\n");return 4;}
++  if(code==0x10&&op==2&&length>=24){*reply=length;return 0;}
++  if(code<0x10){printf("ZIYI U12 TCM command %x status=%x\n",op,code);return 5;}
++ }
++ return 6;
++}
++static void zt_release(void) {
++ for(unsigned i=0;i<ZI_CONTACTS;i++)if(zt_previous[i].down){sweet_hid_touch((int)i,0,(int)zt_previous[i].x,(int)zt_previous[i].y);zt_previous[i].down=0;}
++}
++static int zt_setup(void) {
++ uint32_t fw=zt_rd(zt_se,0x68),state=zt_rd(zt_se,0x40),clk=zt_rd(zt_se,0x48),hw=zt_rd(zt_se,0xe24);
++ printf("ZIYI U12 TCM fw=%x state=%x clk=%x dma=%x hw=%x\n",fw,state,clk,zt_rd(zt_se,0x258),hw);
++ uint32_t rc=zt_rd(zt_gcc,0x27014),cfg=zt_rd(zt_gcc,0x27018),sel=zt_rd(zt_se,0x7c);
++ uint32_t rate=zi_spi_rate(rc,cfg,sel,clk);
++ printf("ZIYI U12 TCM clock root=%x cfg=%x sel=%x upperHz=%u\n",rc,cfg,sel,rate);
++ uint32_t pin[4];for(unsigned i=0;i<4;i++)pin[i]=zt_rd(zt_gpio,i*0x1000);
++ printf("ZIYI U12 TCM pins=%x,%x,%x,%x reset=%x/%x irq=%x/%x\n",pin[0],pin[1],pin[2],pin[3],zt_rd(zt_gpio,126*0x1000),zt_rd(zt_gpio,126*0x1000+4),zt_rd(zt_gpio,51*0x1000),zt_rd(zt_gpio,51*0x1000+4));
++ if(((fw>>8)&255)!=1||(state&0x1001)||!(clk&1)||zt_rd(zt_se,0x258)||zt_rd(zt_se,0xe18)||
++    zt_rd(zt_se,0x800)||(zt_rd(zt_se,0x804)&0x1ffffff))return 10;
++ zt_depth=(hw>>16)&63;
++ if(zt_depth<4||zt_depth>32||((hw>>24)&63)!=32)return 11;
++ for(unsigned i=0;i<4;i++)if(((pin[i]>>2)&15)!=1)return 12;
++ /* Deasserted active-low reset; GPIO51 must still be an input. */
++ if(!(zt_rd(zt_gpio,126*0x1000+4)&2)||(zt_rd(zt_gpio,51*0x1000)&0x200))return 13;
++ /* Preserve inherited clock selection/divider; qualify its real source. */
++ if(!rate)return 22;
++ if(zt_rd(zt_se,0x224)&1||zt_rd(zt_se,0x230)&4||zt_rd(zt_se,0x250)&15)return 14;
++ for(unsigned i=0;i<sizeof(zt_offsets)/sizeof(zt_offsets[0]);i++)zt_saved[i]=zt_rd(zt_se,zt_offsets[i]);
++ zt_saved_valid=1;
++ zt_wr(0xe18,0);zt_wr(0xe1c,0);zt_wr(0x28,zt_rd(zt_se,0x28)|0x7f);
++ zt_wr(0xe30,zt_rd(zt_se,0xe30)|15);zt_wr(0x24,0x7f);zt_wr(0x254,0);zt_wr(0x20,1);
++ zt_wr(0x614,0x7f00003f);zt_wr(0x644,0);zt_wr(0x260,0x7f8fe);zt_wr(0x264,0xffefe);
++ zt_wr(0x284,0x7f8fe);zt_wr(0x288,0xffefe);zt_wr(0x268,4);
++ zt_wr(0x25c,zt_rd(zt_se,0x25c)&~1u);zt_wr(0x810,0);zt_wr(0x814,zt_depth-2);
++ uint16_t reply=0;
++ if(zt_command(2,NULL,0,&reply)||reply<24||zt_message[1]!=1)return 15;
++ zt_maxwrite=(uint16_t)(zt_message[22]|zt_message[23]<<8);
++ if(zt_maxwrite<16)return 23;
++ printf("ZIYI U12 TCM application build=%02x%02x%02x%02x maxwrite=%u\n",zt_message[21],zt_message[20],zt_message[19],zt_message[18],zt_message[22]|zt_message[23]<<8);
++ if(zt_command(0x20,NULL,0,&reply)||reply<38||zt_message[2]||zt_message[3])return 16;
++ unsigned mx=zt_message[32]|zt_message[33]<<8,my=zt_message[34]|zt_message[35]<<8,objects=zt_message[36]|zt_message[37]<<8;
++ printf("ZIYI U12 TCM max=%u,%u objects=%u\n",mx,my,objects);
++ if(mx!=1079||my!=2399||!objects||objects>ZI_CONTACTS)return 17;
++ if(zt_command(0x25,NULL,0,&reply)||!reply||reply>sizeof(zt_oldconfig)||reply+3u>zt_maxwrite)return 18;
++ memcpy(zt_oldconfig,zt_message,reply);zt_oldconfig_len=reply;
++ printf("ZIYI U12 TCM saved volatile config bytes=%u\n",reply);
++ static const uint8_t config[]={24,8,1,6,4,7,4,8,16,9,16,3,0};
++ if(zt_command(0x26,config,sizeof(config),&reply))return 19;
++ /* Read the controller's accepted configuration back before any HID event. */
++ if(zt_command(0x25,NULL,0,&reply)||reply<sizeof(config)||reply>sizeof(zt_config)||memcmp(zt_message,config,sizeof(config)))return 20;
++ memcpy(zt_config,zt_message,reply);zt_config_len=reply;
++ uint8_t touch=0x11;if(zt_command(5,&touch,1,&reply))return 21;
++ printf("ZIYI U12 TCM READY native 1080x2400 contacts=%u\n",objects);return 0;
++}
++static void zt_thread(void *arg,wait_result_t wr) {
++ (void)arg;(void)wr;int result=zt_setup();
++ if(result){printf("ZIYI U12 TCM STOP setup=%d\n",result);goto out;}
++ unsigned errors=0,ticks=0,age=0;
++ for(;;) {
++  if(!(zt_rd(zt_gpio,51*0x1000+4)&1)||++ticks%10==0) {
++   uint8_t code=0;uint16_t n=0;struct zi_contact contacts[ZI_CONTACTS];
++   int error=zt_read_message(&code,&n);
++   if(!error&&code==0x11) {
++    error=zi_tcm_report(zt_config,zt_config_len,zt_message,n,contacts);
++    if(!error)age=0;
++    if(!error)for(unsigned i=0;i<ZI_CONTACTS;i++) {
++     if(contacts[i].down||zt_previous[i].down)sweet_hid_touch((int)i,contacts[i].down,(int)contacts[i].x,(int)contacts[i].y);
++     zt_previous[i]=contacts[i];
++    }
++   }
++   if(error){if(++errors==10)zt_release();if(errors==1||errors%100==0)printf("ZIYI U12 TCM report error=%d count=%u\n",error,errors);}
++   else errors=0;
++   if(zt_dead||errors>=100)break;
++  }
++  if(++age>=50){zt_release();age=0;}
++  zt_sleep(10);
++ }
++out:
++ zt_release();
++ if(!zt_dead&&zt_oldconfig_len){uint16_t reply;int e=zt_command(0x26,zt_oldconfig,zt_oldconfig_len,&reply);printf("ZIYI U12 TCM restore config=%d\n",e);}
++ if(!zt_dead&&zt_saved_valid&&!(zt_rd(zt_se,0x40)&0x1001)) {
++  for(unsigned i=0;i<sizeof(zt_offsets)/sizeof(zt_offsets[0]);i++)zt_wr(zt_offsets[i],zt_saved[i]);
++  printf("ZIYI U12 TCM restored idle SE register configuration\n");
++ }
++ (void)thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
++}
++void sweet_touch_init(void) {
++ static int started;int enable=0;if(started)return;started=1;
++ PE_parse_boot_argn("ziyi_touch",&enable,sizeof(enable));if(enable!=1)return;
++ zt_se=ml_io_map(0x00980000,0x4000);
++ /* Diwali PINGROUP uses TLMM+0x100000+GPIO*0x1000. */
++ zt_gpio=ml_io_map(0x0f100000,0x100000);
++ zt_gcc=ml_io_map(0x00100000,0x30000);
++ if(!zt_se||!zt_gpio||!zt_gcc){printf("ZIYI U12 TCM STOP map\n");return;}
++ thread_t t;kern_return_t e=kernel_thread_start(zt_thread,NULL,&t);
++ if(e==KERN_SUCCESS)thread_deallocate(t);else printf("ZIYI U12 TCM thread=%d\n",e);
++}
+ #endif
+--- /dev/null
++++ b/bsd/dev/ziyi_u12_input.h
+@@ -0,0 +1,86 @@
++/* ziyi input wire policy. Register facts: pinned Xiaomi ziyi-s-oss drivers
++ * and actual runtime DT; TCM framing: Synaptics' msm-modules/touch driver. */
++#ifndef ZIYI_U12_INPUT_H
++#define ZIYI_U12_INPUT_H
++#include <stdint.h>
++#include <stddef.h>
++#define ZI_CONTACTS 10u
++struct zi_contact { uint32_t x,y; uint8_t down; };
++/* First SPI handoff profile accepts a directly measurable TCXO root only.
++ * Unknown PLL/MND parents need a separate clock qualification. Rate is an
++ * upper bound (assume oversampling1); it cannot exceed the DT5MHz limit. */
++static inline uint32_t zi_spi_rate(uint32_t root_cmd,uint32_t root_cfg,uint32_t sel,uint32_t clk) {
++ if((root_cmd&0x80000001u)||(root_cfg&0x3700u)||sel||!(clk&1))return 0;
++ unsigned hid=root_cfg&31,div=(clk>>4)&4095;if(!div)return 0;
++ uint64_t root=hid?(38400000ull+hid)/(hid+1):19200000ull;
++ uint32_t hz=(uint32_t)((root+div-1)/div);
++ return hz>=1000000&&hz<=5000000?hz:0;
++}
++static inline int zi_spmi_layout(uint32_t version,uint32_t *map,uint32_t *step) {
++ if(version>=0x50000000u&&version<0x70000000u){*map=0x900;*step=0x80;return 0;}
++ if(version>=0x70000000u&&version<0x80000000u){*map=0x2000;*step=0x20;return 0;}
++ return 1;
++}
++static inline int zi_key_state(unsigned k,uint8_t pon,uint8_t gpio) {
++ return k==0?!!(pon&0x80):(k==2?!!(pon&0x40):!(gpio&1));
++}
++/* Returns events only after two consecutive valid observations. Failed reads
++ * release held keys after250ms; recovery must debounce again. */
++struct zi_key { uint8_t state,candidate,count;uint16_t misses; };
++static inline int zi_key_update(struct zi_key *k,int valid,int down) {
++ if(!valid){k->count=0;if(k->misses<65535)k->misses++;if(k->misses>=13&&k->state){k->state=0;return -1;}return 0;}
++ k->misses=0;
++ if(k->candidate!=(uint8_t)down){k->candidate=(uint8_t)down;k->count=1;return 0;}
++ if(k->count<2)k->count++;
++ if(k->count==2&&k->state!=(uint8_t)down){k->state=(uint8_t)down;return down?1:-1;}
++ return 0;
++}
++static inline int zi_tcm_header(const uint8_t *p,size_t bytes,uint8_t *code,uint16_t *length) {
++ if(bytes<4||p[0]!=0xa5)return 1;
++ *code=p[1];*length=(uint16_t)(p[2]|((uint16_t)p[3]<<8));
++ return *length>4096?2:0;
++}
++static inline int zi_bits(const uint8_t *p,size_t n,uint32_t *at,unsigned bits,uint32_t *v) {
++ if(!bits||bits>32||*at>(uint64_t)n*8||bits>(uint64_t)n*8-*at)return 1;
++ *v=0;for(unsigned i=0;i<bits;i++)*v|=(uint32_t)((p[(*at+i)/8]>>((*at+i)%8))&1)<<i;
++ *at+=bits;return 0;
++}
++/* Interpret the controller's GET_TOUCH_REPORT_CONFIG. No guessed report
++ * layout, out-of-range contact, nested loop or unbounded program is accepted.
++ * Output is transactional: malformed reports never partially update HID. */
++static inline int zi_tcm_report(const uint8_t *cfg,size_t cn,const uint8_t *p,size_t n,
++ struct zi_contact out[ZI_CONTACTS]) {
++ struct zi_contact tmp[ZI_CONTACTS]={{0,0,0}};uint32_t at=0,obj=0,active=0;
++ size_t pc=0,loop=0;unsigned loops=0,limit=0,have_active=0,seen=0,ended=0,xs=0,ys=0;
++ if(!cfg||!p||!out||cn>512||n>4096)return 1;
++ for(unsigned steps=0;steps<4096&&pc<cn;steps++) {
++  unsigned op=cfg[pc++];uint32_t v=0;
++  if(op==0){if(loop)return 2;ended=1;break;}
++  if(op==1||op==2) {
++   if(loop)return 3;
++   /* Active-object loops require the explicit count. Payload padding is not
++    * evidence of another finger. The caller can request a known RAM config. */
++   if(op==1&&!have_active)return 4;
++   limit=op==1?active:ZI_CONTACTS;loops=0;obj=0;loop=pc;
++   if(!limit){while(pc<cn&&cfg[pc]!=3){unsigned q=cfg[pc++];if(q==1||q==2||q==0)return 5;if(q!=4){if(pc==cn)return 5;pc++;}}if(pc==cn)return 5;pc++;loop=0;}
++   continue;
++  }
++  if(op==3){if(!loop)return 6;if(++loops<limit){obj=loops;pc=loop;}else loop=0;continue;}
++  if(op==4){at=(at+7)&~7u;if(at>(uint64_t)n*8)return 7;continue;}
++  if(pc>=cn)return 8;
++  unsigned bits=cfg[pc++];if(zi_bits(p,n,&at,bits,&v))return 9;
++  if(op==24){if(v>ZI_CONTACTS||loop)return 10;active=v;have_active=1;}
++  else if(op==6){if(!loop||v>=ZI_CONTACTS)return 11;obj=v;}
++  else if(op>=7&&op<=9){
++   if(!loop||obj>=ZI_CONTACTS)return 12;
++   if(op==7){if(seen&(1u<<obj))return 13;seen|=1u<<obj;if(v>2)return 14;tmp[obj].down=v!=0;}
++   else if(op==8){if(v>1079)return 15;tmp[obj].x=v;xs|=1u<<obj;}
++   else {if(v>2399)return 16;tmp[obj].y=v;ys|=1u<<obj;}
++  }else if(!((op>=5&&op<=25)||(op>=0x80&&op<=0x82)))return 17;
++ }
++ if(!ended||loop)return 18;
++ for(unsigned i=0;i<ZI_CONTACTS;i++)if(tmp[i].down&&(!(xs&(1u<<i))||!(ys&(1u<<i))))return 19;
++ for(unsigned i=0;i<ZI_CONTACTS;i++)out[i]=tmp[i];
++ return 0;
++}
++#endif
