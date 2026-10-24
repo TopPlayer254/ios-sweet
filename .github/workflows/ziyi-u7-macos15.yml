@@ -89,6 +89,13 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u12.c -o u1-evidence/test-u12
           ./u1-evidence/test-u12 | tee u1-evidence/u12-tests.txt
 
+      - name: U13 actual SPI0 board and FIFO sequence sanitizers
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u13_board.c -o u1-evidence/test-u13-board
+          ./u1-evidence/test-u13-board | tee u1-evidence/u13-board-tests.txt
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u13_spi.c -o u1-evidence/test-u13-spi
+          ./u1-evidence/test-u13-spi | tee u1-evidence/u13-spi-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb
