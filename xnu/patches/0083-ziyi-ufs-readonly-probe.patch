@@ -1662,11 +1662,11 @@
  #endif
 --- a/bsd/dev/sweet_touch.c
 +++ b/bsd/dev/sweet_touch.c
-@@ -1,7 +1,153 @@
+@@ -1,7 +1,179 @@
 -/* ziyi early profile: hardware provider deliberately absent.
 - * No MMIO, DMA, persistent log or partition I/O is compiled in this unit.
 - */
-+/* U18: bounded GPIO SPI, native TCM identity and stock HID. No DMA. */
++/* U21: bounded GPIO SPI, native TCM identity and stock HID. No DMA. */
  #if defined(ARM64_BOARD_CONFIG_SWEET)
 -#include <stdint.h>
 -void sweet_touch_init(void) {}
@@ -1679,12 +1679,13 @@
 +#include <pexpert/pexpert.h>
 +#include "ziyi_u12_input.h"
 +#include "ziyi_u18_gpio_spi.h"
++#include "ziyi_u21_power.h"
 +#include "ziyi_u14_gpi.h"
 +extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
 +extern void sweet_hid_touch(int,int,int,int);
 +extern kern_return_t thread_terminate(thread_t);
 +void sweet_touch_init(void);
-+static vm_offset_t zt_se,zt_gpio,zt_gpi;
++static vm_offset_t zt_se,zt_gpio,zt_gpi,zt_db,zt_rsc;
 +static unsigned zt_dead;
 +static uint16_t zt_maxwrite;
 +static uint8_t zt_message[4100],zt_config[512],zt_oldconfig[512];
@@ -1705,7 +1706,7 @@
 +static int zt_gpi_quiet(void *ctx) {
 + (void)ctx;if(!zt_gpi)return 0;
 + struct zg_io io={NULL,zt_gpi_read,zt_board_wait};struct zg_snapshot s;
-+ int e=zg_quiet(&io,&s);printf("ZIYI U18 GPI quiet=%d signature=%x\n",e,s.signature);return !e;
++ int e=zg_quiet(&io,&s);printf("ZIYI U21 GPI quiet=%d signature=%x\n",e,s.signature);return !e;
 +}
 +static struct bb_state zt_board;
 +static struct bb_io zt_board_io={NULL,zt_board_read,zt_board_write,zt_board_wait,zt_gpi_quiet};
@@ -1713,14 +1714,30 @@
 + static int chan;uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);
 + (void)assert_wait_deadline(&chan,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);
 +}
++static uint32_t zt_power_read(void *ctx,unsigned b,uint32_t o) {
++ (void)ctx;if((o&3)||(b==ZP_DB?o>=0x20000:o>=0x10000))return ~0u;
++ return zt_rd(b==ZP_DB?zt_db:zt_rsc,o);
++}
++static void zt_power_write(void *ctx,unsigned b,uint32_t o,uint32_t v) {
++ (void)ctx;if(b!=ZP_RSC)return;
++ int allowed=(o==0xd08&&v==2)||
++  (o==ZP_SLOT+0x14&&(v==0||v==0x10000||v==0x1010000))||
++  (o==ZP_SLOT+0x1c&&v<=1)||(o==ZP_SLOT+0x30&&(v==0||v==0x10108))||
++  (o==ZP_SLOT+0x34&&(v==0||v==0x42100||v==0x42104||v==0x42108||v==0x41300||v==0x41304||v==0x41308))||
++  (o==ZP_SLOT+0x38&&(v==0||v==1||v==7||v==1800||v==2800));
++ if(!allowed)return;
++ __asm__ volatile("dmb oshst":::"memory");*(volatile uint32_t *)(zt_rsc+o)=v;__asm__ volatile("dsb osh":::"memory");
++}
++static struct zp_state zt_power;
++static struct zp_io zt_power_io={NULL,zt_power_read,zt_power_write,zt_board_wait};
 +static int zt_transfer(const uint8_t *tx,uint8_t *rx,size_t bytes) {
 + int e=bb_transfer(&zt_board_io,&zt_board,tx,rx,bytes);
-+ if(e){zt_dead=zt_board.poison;printf("ZIYI U18 GPIO SPI STOP transfer=%d poison=%u\n",e,zt_dead);}
++ if(e){zt_dead=zt_board.poison;printf("ZIYI U21 GPIO SPI STOP transfer=%d poison=%u\n",e,zt_dead);}
 + return e;
 +}
 +static int zt_read_message(uint8_t *code,uint16_t *length) {
 + uint8_t h[4];int e=zt_transfer(NULL,h,4);if(e)return e;
-+ e=zi_tcm_header(h,4,code,length);if(e){static unsigned bad; if(bad++<4)printf("ZIYI U18 TCM header %x %x %x %x\n",h[0],h[1],h[2],h[3]);return 4;}
++ e=zi_tcm_header(h,4,code,length);if(e){static unsigned bad; if(bad++<4)printf("ZIYI U21 TCM header %x %x %x %x\n",h[0],h[1],h[2],h[3]);return 4;}
 + if(!*length)return 0;
 + if(zt_transfer(NULL,zt_message,(size_t)*length+3))return 5;
 + if(zt_message[0]!=0xa5||zt_message[1]!=3||zt_message[*length+2]!=0x5a)return 6;
@@ -1735,16 +1752,16 @@
 + uint8_t command[515];command[0]=op;command[1]=(uint8_t)n;command[2]=(uint8_t)(n>>8);
 + if(n)memcpy(command+3,body,n);
 + int transfer_error=zt_transfer(command,NULL,n+3);
-+ if(transfer_error){printf("ZIYI U18 TCM op=%x write_error=%d\n",op,transfer_error);return 2;}
++ if(transfer_error){printf("ZIYI U21 TCM op=%x write_error=%d\n",op,transfer_error);return 2;}
 + for(unsigned i=0;i<100;i++) {
 +  uint8_t code;uint16_t length;zt_sleep(5);
 +  int read_error=zt_read_message(&code,&length);
-+  if(read_error){printf("ZIYI U18 TCM op=%x read_error=%d poll=%u\n",op,read_error,i);return 3;}
++  if(read_error){printf("ZIYI U21 TCM op=%x read_error=%d poll=%u\n",op,read_error,i);return 3;}
 +  if(code==1){*reply=length;return 0;}
 +  if(code==0||code==2||code==0x11)continue;
-+  if(code==0xfe){printf("ZIYI U18 TCM STOP host firmware download required\n");return 4;}
++  if(code==0xfe){printf("ZIYI U21 TCM STOP host firmware download required\n");return 4;}
 +  if(code==0x10&&op==2&&length>=24){*reply=length;return 0;}
-+  if(code<0x10){printf("ZIYI U18 TCM command %x status=%x\n",op,code);return 5;}
++  if(code<0x10){printf("ZIYI U21 TCM command %x status=%x\n",op,code);return 5;}
 + }
 + return 6;
 +}
@@ -1752,36 +1769,44 @@
 + for(unsigned i=0;i<ZI_CONTACTS;i++)if(zt_previous[i].down){sweet_hid_touch((int)i,0,(int)zt_previous[i].x,(int)zt_previous[i].y);zt_previous[i].down=0;}
 +}
 +static int zt_setup(void) {
-+ printf("ZIYI U18 GPIO SPI fifoDisable=%x fw=%x state=%x mode0 MISO0 MOSI1 CLK2 CS3\n",zt_rd(zt_se,0x64),zt_rd(zt_se,0x68),zt_rd(zt_se,0x40));
++ printf("ZIYI U21 GPIO SPI fifoDisable=%x fw=%x state=%x mode0 MISO0 MOSI1 CLK2 CS3\n",zt_rd(zt_se,0x64),zt_rd(zt_se,0x68),zt_rd(zt_se,0x40));
 + if(zt_rd(zt_se,0x68)!=0x102 || !(zt_rd(zt_se,0x64)&1))return 11;
++ if(bb_idle(&zt_board_io))return 60;
++ for(unsigned i=0;i<4;i++){uint32_t c=zt_rd(zt_gpio,i*0x1000);if(((c>>2)&15)>1||(c&0x200))return 61;}
++ if((zt_rd(zt_gpio,126*0x1000)&0x23c)||(zt_rd(zt_gpio,51*0x1000)&0x23c)||
++    (zt_rd(zt_gpio,126*0x1000+4)&1))return 62;
++ int power=zp_start(&zt_power_io,&zt_power);
++ printf("ZIYI U21 RPMh power=%d qualified=%u steps=%u poison=%u IRQ=%x/%x\n",power,zt_power.qualified,zt_power.steps,zt_power.poison,zt_rd(zt_rsc,0xd00),zt_rd(zt_rsc,0xd04));
++ for(unsigned i=0;i<zt_power.steps;i++)printf("ZIYI U21 RPMh ACK %u status=%x response=%x\n",i,zt_power.status[i],zt_power.response[i]);
++ if(power)return 100+power;
 + int take=bb_take(&zt_board_io,&zt_board);
-+ printf("ZIYI U18 GPIO SPI take=%d pins=%u reset=%u IRQ=%x\n",take,zt_board.pins,zt_board.reset,zt_rd(zt_gpio,51*0x1000+4));
++ printf("ZIYI U21 GPIO SPI take=%d pins=%u reset=%u IRQ=%x\n",take,zt_board.pins,zt_board.reset,zt_rd(zt_gpio,51*0x1000+4));
 + if(take)return 30+take;
 + uint16_t reply=0;
 + int identify_error=zt_command(2,NULL,0,&reply);
-+ printf("ZIYI U18 TCM identify error=%d bytes=%u mode=%x\n",identify_error,reply,reply>=2?zt_message[1]:0xff);
++ printf("ZIYI U21 TCM identify error=%d bytes=%u mode=%x\n",identify_error,reply,reply>=2?zt_message[1]:0xff);
 + if(identify_error||reply<24||zt_message[1]!=1)return 15;
 + zt_maxwrite=(uint16_t)(zt_message[22]|zt_message[23]<<8);
 + if(zt_maxwrite<16)return 23;
-+ printf("ZIYI U18 TCM application build=%02x%02x%02x%02x maxwrite=%u\n",zt_message[21],zt_message[20],zt_message[19],zt_message[18],zt_message[22]|zt_message[23]<<8);
++ printf("ZIYI U21 TCM application build=%02x%02x%02x%02x maxwrite=%u\n",zt_message[21],zt_message[20],zt_message[19],zt_message[18],zt_message[22]|zt_message[23]<<8);
 + if(zt_command(0x20,NULL,0,&reply)||reply<38||zt_message[2]||zt_message[3])return 16;
 + unsigned mx=zt_message[32]|zt_message[33]<<8,my=zt_message[34]|zt_message[35]<<8,objects=zt_message[36]|zt_message[37]<<8;
-+ printf("ZIYI U18 TCM max=%u,%u objects=%u\n",mx,my,objects);
++ printf("ZIYI U21 TCM max=%u,%u objects=%u\n",mx,my,objects);
 + if(mx!=1079||my!=2399||!objects||objects>ZI_CONTACTS)return 17;
 + if(zt_command(0x25,NULL,0,&reply)||!reply||reply>sizeof(zt_oldconfig)||reply+3u>zt_maxwrite)return 18;
 + memcpy(zt_oldconfig,zt_message,reply);zt_oldconfig_len=reply;
-+ printf("ZIYI U18 TCM saved volatile config bytes=%u\n",reply);
++ printf("ZIYI U21 TCM saved volatile config bytes=%u\n",reply);
 + static const uint8_t config[]={24,8,1,6,4,7,4,8,16,9,16,3,0};
 + if(zt_command(0x26,config,sizeof(config),&reply))return 19;
 + /* Read the controller's accepted configuration back before any HID event. */
 + if(zt_command(0x25,NULL,0,&reply)||reply<sizeof(config)||reply>sizeof(zt_config)||memcmp(zt_message,config,sizeof(config)))return 20;
 + memcpy(zt_config,zt_message,reply);zt_config_len=reply;
 + uint8_t touch=0x11;if(zt_command(5,&touch,1,&reply))return 21;
-+ printf("ZIYI U18 TCM READY native 1080x2400 contacts=%u\n",objects);return 0;
++ printf("ZIYI U21 TCM READY native 1080x2400 contacts=%u\n",objects);return 0;
 +}
 +static void zt_thread(void *arg,wait_result_t wr) {
 + (void)arg;(void)wr;int result=zt_setup();
-+ if(result){printf("ZIYI U18 TCM STOP setup=%d\n",result);goto out;}
++ if(result){printf("ZIYI U21 TCM STOP setup=%d\n",result);goto out;}
 + unsigned errors=0,ticks=0,age=0;
 + for(;;) {
 +  if(!(zt_rd(zt_gpio,51*0x1000+4)&1)||++ticks%10==0) {
@@ -1795,7 +1820,7 @@
 +     zt_previous[i]=contacts[i];
 +    }
 +   }
-+   if(error){if(++errors==10)zt_release();if(errors==1||errors%100==0)printf("ZIYI U18 TCM report error=%d count=%u\n",error,errors);}
++   if(error){if(++errors==10)zt_release();if(errors==1||errors%100==0)printf("ZIYI U21 TCM report error=%d count=%u\n",error,errors);}
 +   else errors=0;
 +   if(zt_dead||errors>=100)break;
 +  }
@@ -1804,9 +1829,9 @@
 + }
 +out:
 + zt_release();
-+ if(!zt_dead&&zt_oldconfig_len){uint16_t reply;int e=zt_command(0x26,zt_oldconfig,zt_oldconfig_len,&reply);printf("ZIYI U18 TCM restore config=%d\n",e);}
++ if(!zt_dead&&zt_oldconfig_len){uint16_t reply;int e=zt_command(0x26,zt_oldconfig,zt_oldconfig_len,&reply);printf("ZIYI U21 TCM restore config=%d\n",e);}
 + int restore=bb_release(&zt_board_io,&zt_board);
-+ printf("ZIYI U18 TCM board restore=%d\n",restore);
++ printf("ZIYI U21 TCM board restore=%d\n",restore);
 + (void)thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
 +}
 +void sweet_touch_init(void) {
@@ -1816,9 +1841,10 @@
 + /* Diwali PINGROUP uses TLMM+0x100000+GPIO*0x1000. */
 + zt_gpio=ml_io_map(0x0f100000,0x100000);
 + zt_gpi=ml_io_map(0x00900000,0x60000);
-+ if(!zt_se||!zt_gpio||!zt_gpi){printf("ZIYI U18 TCM STOP map\n");return;}
++ zt_db=ml_io_map(0x80860000,0x20000);zt_rsc=ml_io_map(0x17a20000,0x10000);
++ if(!zt_se||!zt_gpio||!zt_gpi||!zt_db||!zt_rsc){printf("ZIYI U21 TCM STOP map\n");return;}
 + thread_t t;kern_return_t e=kernel_thread_start(zt_thread,NULL,&t);
-+ if(e==KERN_SUCCESS)thread_deallocate(t);else printf("ZIYI U18 TCM thread=%d\n",e);
++ if(e==KERN_SUCCESS)thread_deallocate(t);else printf("ZIYI U21 TCM thread=%d\n",e);
 +}
  #endif
 --- /dev/null
@@ -2102,7 +2128,7 @@
 +#endif
 --- /dev/null
 +++ b/bsd/dev/ziyi_u18_gpio_spi.h
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,114 @@
 +/* Mode0 GPIO SPI: MISO0, MOSI1, SCLK2, CS3, reset126; native TCM identity
 + * remains mandatory. Uses no FIFO, DMA, clock-controller or SMMU command. */
 +#ifndef ZIYI_U18_GPIO_SPI_H
@@ -2173,8 +2199,16 @@
 +  bb_wr(io,BB_GPIO,126*0x1000+4,s->reset_out);
 +  bb_wr(io,BB_GPIO,126*0x1000,s->reset_cfg);
 + }
-+ if(s->latches)for(unsigned i=1;i<4;i++)bb_wr(io,BB_GPIO,i*0x1000+4,s->out[i]);
-+ if(s->pins)for(unsigned i=0;i<4;i++)bb_wr(io,BB_GPIO,i*0x1000,s->cfg[i]);
++ if(s->pins) {
++  /* Keep CS high while relinquishing clock/data. Restore inactive output
++   * latches as inputs; release CS mux last, before its inherited latch. */
++  for(unsigned i=0;i<3;i++) {
++   if(i){bb_wr(io,BB_GPIO,i*0x1000,s->cfg[i]&~0x23cu);bb_wr(io,BB_GPIO,i*0x1000+4,s->out[i]);}
++   bb_wr(io,BB_GPIO,i*0x1000,s->cfg[i]);
++  }
++  bb_wr(io,BB_GPIO,3*0x1000,s->cfg[3]);
++  bb_wr(io,BB_GPIO,3*0x1000+4,s->out[3]);
++ } else if(s->latches)for(unsigned i=1;i<4;i++)bb_wr(io,BB_GPIO,i*0x1000+4,s->out[i]);
 + for(unsigned i=0;i<4;i++)if(bb_rd(io,BB_GPIO,i*0x1000)!=s->cfg[i] ||
 +   (i&&(bb_rd(io,BB_GPIO,i*0x1000+4)&2)!=(s->out[i]&2))){s->poison=1;return 4;}
 + if(s->reset&&(bb_rd(io,BB_GPIO,126*0x1000)!=s->reset_cfg ||
@@ -2207,5 +2241,117 @@
 +bad:
 + /* No further clock or data pulses after a failed latch readback. */
 + s->poison=1;(void)bb_level(io,s,3,1);return 2;
++}
++#endif
+--- /dev/null
++++ b/bsd/dev/ziyi_u21_power.h
+@@ -0,0 +1,109 @@
++/* Ziyi RPMh active votes. Exact CMDDB identities and inherited idle DRV2
++ * are checked before any write. No arbitrary resource/voltage API, PMIC
++ * direct command, sleep/wake TCS modification, IRQ mask or media change. */
++#ifndef ZIYI_U21_POWER_H
++#define ZIYI_U21_POWER_H
++#include <stdint.h>
++enum { ZP_DB,ZP_RSC };
++struct zp_io {void *ctx;uint32_t (*read)(void *,unsigned,uint32_t);void (*write)(void *,unsigned,uint32_t,uint32_t);void (*wait)(void *,unsigned);};
++struct zp_state {uint32_t saved[16][3],status[6],response[6];unsigned qualified,steps,poison;};
++#define ZP_SLOT 0xfa0u /* actual DT d00 + active TCS1 stride2a0 */
++static inline uint32_t zp_rd(struct zp_io *io,unsigned b,uint32_t o){return io->read(io->ctx,b,o);}
++static inline void zp_wr(struct zp_io *io,uint32_t o,uint32_t v){io->write(io->ctx,ZP_RSC,o,v);}
++static inline int zp_sync(struct zp_io *io,uint32_t o,uint32_t v){zp_wr(io,o,v);return zp_rd(io,ZP_RSC,o)!=v;}
++static inline int zp_database(struct zp_io *io) {
++ uint32_t header[36],second[36],found[2][7]={{0}};unsigned mask=0;
++ for(unsigned pass=0;pass<2;pass++) {
++  uint32_t *h=pass?second:header;for(unsigned i=0;i<36;i++)h[i]=zp_rd(io,ZP_DB,4*i);
++  if(h[0]!=1||h[1]!=0x0c0330db)return 1;
++  unsigned resource=0,local=0;
++  for(unsigned slave=0;slave<8;slave++) {
++   uint32_t a=h[2+4*slave],b=h[3+4*slave];unsigned id=a&65535,headers=a>>16,data=b&65535,count=b>>16;
++   if(id!=4)continue;
++   if(++resource!=1||h[4+4*slave]!=0x100||count>512||(headers&3)||144u+headers>0x20000||count*24u>0x20000u-144u-headers)return 2;
++   for(unsigned i=0;i<count;i++) {
++    uint32_t w[6];for(unsigned k=0;k<6;k++)w[k]=zp_rd(io,ZP_DB,144u+headers+i*24u+k*4u);
++    if(w[0]!=0x636f646c||(w[1]!=0x32&&w[1]!=0x3131))continue;
++    unsigned which=w[1]==0x32?0:1;
++    if(local&(1u<<which))return 3;
++    local|=1u<<which;
++    unsigned len=w[5]&65535,offset=w[5]>>16,at=144u+data+offset;
++    if(len!=4||at>0x20000-4||(at&3)||w[2]||w[3]||w[4]!=(which?0x41300u:0x42100u))return 4;
++    uint32_t aux=zp_rd(io,ZP_DB,at);
++    if(aux!=(which?0x3001u:0x2701u))return 5;
++    for(unsigned k=0;k<7;k++) {
++     uint32_t value=k==6?aux:w[k];
++     if(pass&&found[which][k]!=value)return 6;
++     found[which][k]=value;
++    }
++   }
++  }
++  if(resource!=1||local!=3)return 7;
++  if(pass)for(unsigned i=0;i<36;i++)if(header[i]!=second[i])return 8;
++  mask|=local;
++ }
++ return mask==3?0:9;
++}
++static inline int zp_idle(struct zp_io *io) {
++ if(zp_rd(io,ZP_RSC,4)!=0x04010100||zp_rd(io,ZP_RSC,0xc)!=0x800c8104)return 1;
++ if(zp_rd(io,ZP_RSC,0xd00)!=1||zp_rd(io,ZP_RSC,0xd04))return 2;
++ for(unsigned t=0;t<8;t++) {
++  uint32_t at=0xd00+t*0x2a0;
++  if(zp_rd(io,ZP_RSC,at+0x10)||zp_rd(io,ZP_RSC,at+0x14)||zp_rd(io,ZP_RSC,at+0x18)!=1||zp_rd(io,ZP_RSC,at+0x1c))return 3;
++ }
++ return 0;
++}
++static inline int zp_qualify(struct zp_io *io,struct zp_state *s) {
++ if(!io||!s||!io->read||!io->write||!io->wait||s->qualified||s->poison)return 1;
++ if(zp_database(io))return 2;
++ for(unsigned pass=0;pass<2;pass++) {
++  if(zp_idle(io))return 3;
++  for(unsigned i=0;i<16;i++)for(unsigned k=0;k<3;k++) {
++   uint32_t v=zp_rd(io,ZP_RSC,ZP_SLOT+0x30+i*0x14+k*4);
++   /* Blank, disabled active slot only. Never replace an unknown old vote. */
++   if(v)return 4;
++   s->saved[i][k]=v;
++  }
++  if(!pass)io->wait(io->ctx,50);
++ }
++ s->qualified=1;return 0;
++}
++static inline int zp_vote(struct zp_io *io,struct zp_state *s,unsigned step) {
++ static const uint32_t address[]={0x42100,0x42108,0x42104,0x41300,0x41308,0x41304};
++ static const uint32_t value[]={1800,7,1,2800,7,1};
++ if(step>=6||!s->qualified||s->poison||s->steps!=step)return 1;
++ if(zp_idle(io)){s->poison=1;return 2;}
++ /* Only command0 in observed blank active TCS1. No IRQ mask change;
++  * completion is polled while this slot's interrupt remains disabled. */
++ if(zp_sync(io,ZP_SLOT+0x30,0x10108)||zp_sync(io,ZP_SLOT+0x34,address[step])||
++    zp_sync(io,ZP_SLOT+0x38,value[step])||zp_sync(io,ZP_SLOT+0x1c,1))goto bad;
++ /* Same two-stage AMC clear/enable/trigger order as pinned rpmh-rsc.c. */
++ if(zp_sync(io,ZP_SLOT+0x14,0)||zp_sync(io,ZP_SLOT+0x14,0x10000))goto bad;
++ zp_wr(io,ZP_SLOT+0x14,0x1010000);
++ for(unsigned n=0;n<200000;n++) {
++  uint32_t irq=zp_rd(io,ZP_RSC,0xd04),status=zp_rd(io,ZP_RSC,ZP_SLOT+0x3c);
++  if(irq&~2u)goto bad;
++  if((irq&2)&&(status&0x10100)==0x10100&&zp_rd(io,ZP_RSC,ZP_SLOT+0x18)==1) {
++   s->status[step]=status;s->response[step]=zp_rd(io,ZP_RSC,ZP_SLOT+0x40);
++   if(zp_sync(io,ZP_SLOT+0x14,0x10000)||zp_sync(io,ZP_SLOT+0x14,0)||zp_sync(io,ZP_SLOT+0x1c,0))goto bad;
++   zp_wr(io,0xd08,2); /* Clear this newly completed slot only. */
++   for(unsigned k=0;k<3;k++)if(zp_sync(io,ZP_SLOT+0x30+k*4,s->saved[0][k]))goto bad;
++   if(zp_idle(io))goto bad;
++   s->steps++;return 0;
++  }
++  io->wait(io->ctx,1);
++ }
++bad:
++ /* Unknown/in-flight state: no later vote, trigger or blind rollback.
++  * Successful votes are volatile; never disable an unknown shared rail. */
++ s->poison=1;return 3;
++}
++static inline int zp_start(struct zp_io *io,struct zp_state *s) {
++ int e=zp_qualify(io,s);if(e)return e;
++ for(unsigned step=0;step<6;step++) {
++  e=zp_vote(io,s,step);if(e)return 10+(int)step*4+e;
++  if(step==2)io->wait(io->ctx,20000);
++ }
++ io->wait(io->ctx,200000);return 0;
 +}
 +#endif
