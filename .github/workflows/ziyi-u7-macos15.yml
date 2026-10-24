@@ -135,6 +135,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u21_gpio_spi.c -o u1-evidence/test-u21-gpio-spi
           ./u1-evidence/test-u21-gpio-spi | tee u1-evidence/u21-gpio-spi-tests.txt
 
+      - name: U22 fresh native RPMh completion without IRQ
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u22_power.c -o u1-evidence/test-u22-power
+          ./u1-evidence/test-u22-power | tee u1-evidence/u22-power-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb

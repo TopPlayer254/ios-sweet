@@ -12,7 +12,7 @@ for name,item in expected.items():
     dest.parent.mkdir(parents=True,exist_ok=True)
     with dest.open('xb') as f:f.write(data)
     checks.append(dict(path=name,sha256=actual,bytes=len(data)))
-report=dict(result='U21_CI_SOURCE_AUDIT_PASS',commit=os.environ['GITHUB_SHA'],files=checks,
+report=dict(result='U22_CI_SOURCE_AUDIT_PASS',commit=os.environ['GITHUB_SHA'],files=checks,
             phoneTested=False,mediaWritesImplemented=True,writeGate="exact GPT and full install SHA or bound installed HFS identity; opt-in prefix only, FUA/readback")
 (root/'u1-evidence/audit.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report))
@@ -33,4 +33,6 @@ assert (root/'tools/ziyi-ufs/u14_gpi.h').read_bytes()==(root/'dxb/xnu/bsd/dev/zi
 
 assert '#include "ziyi_u21_power.h"' in touch
 assert 'int power=zp_start(&zt_power_io,&zt_power);' in touch
-assert (root/'tools/ziyi-ufs/u21_power.h').read_bytes()==(root/'dxb/xnu/bsd/dev/ziyi_u21_power.h').read_bytes()
+assert (root/'tools/ziyi-ufs/u22_power.h').read_bytes()==(root/'dxb/xnu/bsd/dev/ziyi_u21_power.h').read_bytes()
+
+assert "ZIYI U22 RPMh phase=" in touch and "ZIYI U22 RPMh raw ctl=" in touch
