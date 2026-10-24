@@ -36,6 +36,12 @@ int main(void) {
  reset(0);struct zb_state s={0};CHECK(!zb_start(&io,&s));
  CHECK((gcc[0x62008/4]&ZB_VOTES)==ZB_VOTES);CHECK(gcc[0x27018/4]==0x100001);
  CHECK(!(gcc[0x27014/4]&0x80000001));CHECK(se[0x48/4]==0x41);
+ CHECK(zb_spi_rate(gcc[0x27014/4],gcc[0x27018/4],se[0x7c/4],se[0x48/4])==4800000);
+ for(unsigned i=0;i<8;i++)if(i!=2)CHECK(!zb_spi_rate(0,0x100001,i,0x41));
+ CHECK(!zb_spi_rate(0x80000000,0x100001,2,0x41));
+ CHECK(!zb_spi_rate(0,0x100101,2,0x41));
+ CHECK(!zb_spi_rate(0,0x100000,2,0x41));
+ CHECK(!zb_spi_rate(0,0x100001,2,0x31));
  CHECK(zb_connect(&io,&s)==25); /* DMA mode must be switched by serial owner. */
  se[0x258/4]=0;CHECK(!zb_connect(&io,&s));
  for(unsigned i=0;i<4;i++)CHECK(gpio[i*0x1000/4]==0x84);

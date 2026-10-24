@@ -1637,7 +1637,7 @@
 + board_result=zb_start(&zt_board_io,&zt_board);
 + printf("ZIYI U13 TCM clock start=%d vote=%x root=%x cfg=%x\n",board_result,zt_rd(zt_gcc,0x62008),zt_rd(zt_gcc,0x27014),zt_rd(zt_gcc,0x27018));
 + if(board_result)return 50+board_result;
-+ rate=zi_spi_rate(zt_rd(zt_gcc,0x27014),zt_rd(zt_gcc,0x27018),zt_rd(zt_se,0x7c),zt_rd(zt_se,0x48));
++ rate=zb_spi_rate(zt_rd(zt_gcc,0x27014),zt_rd(zt_gcc,0x27018),zt_rd(zt_se,0x7c),zt_rd(zt_se,0x48));
 + if(rate!=4800000)return 80;
 + for(unsigned i=0;i<sizeof(zt_offsets)/sizeof(zt_offsets[0]);i++)zt_saved[i]=zt_rd(zt_se,zt_offsets[i]);
 + zt_saved_valid=1;
@@ -1809,7 +1809,7 @@
 +#endif
 --- /dev/null
 +++ b/bsd/dev/ziyi_u13_board.h
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,122 @@
 +/* ziyi/Diwali SPI0 bring-up, based on the pinned Xiaomi clock/pinctrl/GENI
 + * drivers and U12's actual idle handoff. No DMA addresses, PMIC writes,
 + * firmware upload, shared clock reset, or persistent storage operation.
@@ -1858,6 +1858,11 @@
 + if(zb_read(io,ZB_GPIO,51*0x1000)&0x23c)return 9;
 + return 0;
 +}
++/* The pinned frequency table begins7.3728,14.7456,19.2MHz. Linux
++ * programs the matching table index into GENI DFS even in FIFO mode. */
++static inline uint32_t zb_spi_rate(uint32_t cmd,uint32_t cfg,uint32_t sel,uint32_t clk) {
++ return !(cmd&0x80000001u)&&(cfg&0x371fu)==1u&&sel==2&&clk==0x41?4800000u:0;
++}
 +static inline int zb_start(struct zb_io *io,struct zb_state *s) {
 + if(!io||!s||!io->read||!io->write||!io->wait||s->saved)return 20;
 + int e=zb_qualify(io);if(e)return e;
@@ -1879,8 +1884,8 @@
 + zb_write(io,ZB_GCC,0x27014,(zb_read(io,ZB_GCC,0x27014)&~1u)|3u);
 + if(zb_poll(io,ZB_GCC,0x27014,0x80000001,0)||
 +    zb_poll(io,ZB_GCC,0x2700c,0x80000000,0))return 22;
-+ zb_write(io,ZB_SE,0x7c,0);zb_write(io,ZB_SE,0x48,0x41);
-+ if(zb_read(io,ZB_SE,0x7c)||zb_read(io,ZB_SE,0x48)!=0x41)return 23;
++ zb_write(io,ZB_SE,0x7c,2);zb_write(io,ZB_SE,0x48,0x41);
++ if(zb_read(io,ZB_SE,0x7c)!=2||zb_read(io,ZB_SE,0x48)!=0x41)return 23;
 + return 0;
 +}
 +/* Called only after the serial engine has FIFO mode, packing, mode0/CS0 and

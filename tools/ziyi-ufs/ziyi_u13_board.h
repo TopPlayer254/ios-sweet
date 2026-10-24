@@ -46,6 +46,11 @@ static inline int zb_qualify(struct zb_io *io) {
  if(zb_read(io,ZB_GPIO,51*0x1000)&0x23c)return 9;
  return 0;
 }
+/* The pinned frequency table begins7.3728,14.7456,19.2MHz. Linux
+ * programs the matching table index into GENI DFS even in FIFO mode. */
+static inline uint32_t zb_spi_rate(uint32_t cmd,uint32_t cfg,uint32_t sel,uint32_t clk) {
+ return !(cmd&0x80000001u)&&(cfg&0x371fu)==1u&&sel==2&&clk==0x41?4800000u:0;
+}
 static inline int zb_start(struct zb_io *io,struct zb_state *s) {
  if(!io||!s||!io->read||!io->write||!io->wait||s->saved)return 20;
  int e=zb_qualify(io);if(e)return e;
@@ -67,8 +72,8 @@ static inline int zb_start(struct zb_io *io,struct zb_state *s) {
  zb_write(io,ZB_GCC,0x27014,(zb_read(io,ZB_GCC,0x27014)&~1u)|3u);
  if(zb_poll(io,ZB_GCC,0x27014,0x80000001,0)||
     zb_poll(io,ZB_GCC,0x2700c,0x80000000,0))return 22;
- zb_write(io,ZB_SE,0x7c,0);zb_write(io,ZB_SE,0x48,0x41);
- if(zb_read(io,ZB_SE,0x7c)||zb_read(io,ZB_SE,0x48)!=0x41)return 23;
+ zb_write(io,ZB_SE,0x7c,2);zb_write(io,ZB_SE,0x48,0x41);
+ if(zb_read(io,ZB_SE,0x7c)!=2||zb_read(io,ZB_SE,0x48)!=0x41)return 23;
  return 0;
 }
 /* Called only after the serial engine has FIFO mode, packing, mode0/CS0 and
