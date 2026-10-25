@@ -1,5 +1,19 @@
 **Ziyi U12 candidate,2026-10-24; NOT phone tested.**
 
+## ziyi U25 native SMP result — 2026-10-25
+
+CI40193138318 at aa2aeeb453c7a46f5907f19d8de129dfc229b2bb passed all31
+audited scopes,17 legacy-IIG calls/34 exact outputs and SMP sanitizer controls.
+Phone at768MiB: all7 PSCI CPU_ON calls returned0, native identities confirm
+four A510 + four A710, each scheduled CPU received local timer IRQs; all64
+source/target xcalls validated shared-memory checksums. Native maskff/timerff.
+Real SpringBoard Home visible; human reports markedly faster UI. No measured
+FPS/latency, DVFS/energy-aware scheduling or sustained stress claim. GPU absent.
+Earlier U24 2GiB/one-core GUI stall remains unexplained. Combined2GiB+8cores
+has not been tested. Old66b604a/51f7498 host-failed candidates were never booted.
+No root reflash/full SHA was needed; current phone stays running U25 iOS.
+
+
 ## ziyi U25 SMP candidate — 2026-10-25
 
 User priority: all-core SMP before GPU. U23 proved first physical swipe,
