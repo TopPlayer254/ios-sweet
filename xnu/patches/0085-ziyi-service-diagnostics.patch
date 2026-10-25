@@ -1,0 +1,168 @@
+--- a/bsd/dev/sweet_sample.c
++++ b/bsd/dev/sweet_sample.c
+@@ -10,12 +10,14 @@
+  * with tools/sweet-crash.py). A thread blocked in a syscall shows the
+  * syscall stub in pc and its caller in lr/bt.
+  *
+- * First sample 90 s after start, then every 120 s, 40 samples at most.
++ * U27 opt-in diagnostics: first20s, every5s,120 rounds; one selected process
++ * per round. No persistence or filesystem mutation. Startup is once-only.
+  */
+ #include <sys/param.h>
+ #include <sys/systm.h>
+ #include <sys/proc.h>
+ #include <sys/proc_internal.h>
++#include <sys/vnode.h>
+ #include <kern/task.h>
+ #include <kern/thread.h>
+ #include <pexpert/pexpert.h>
+@@ -25,33 +27,66 @@
+ extern void sweet_sample_start(void);
+ 
+ static char sweet_sample_names[128];
++static unsigned sweet_sample_slot;
+ 
++static unsigned
++sweet_sample_count(void)
++{
++ unsigned count=0;
++ for(const char *p=sweet_sample_names;*p;) {
++  const char *end=strchr(p,',');size_t n=end?(size_t)(end-p):strlen(p);
++  if(n)count++;
++  if(!end)break;p=end+1;
++ }
++ return count;
++}
+ static bool
+ sweet_sample_wanted(const char *name)
+ {
+-	size_t n = strlen(name);
+-	for (const char *t = sweet_sample_names; *t;) {
+-		const char *end = strchr(t, ',');
+-		size_t tl = end ? (size_t)(end - t) : strlen(t);
+-		if (tl == n && n > 0 && strncmp(t, name, n) == 0) {
+-			return true;
+-		}
+-		if (!end) {
+-			break;
+-		}
+-		t = end + 1;
+-	}
+-	return false;
++ unsigned slot=0;size_t bytes=strlen(name);
++ for(const char *p=sweet_sample_names;*p;) {
++  const char *end=strchr(p,',');size_t n=end?(size_t)(end-p):strlen(p);
++  if(n) {
++   if(slot==sweet_sample_slot)return n==bytes&&strncmp(p,name,n)==0;
++   slot++;
++  }
++  if(!end)break;p=end+1;
++ }
++ return false;
++}
++static void
++sweet_service_paths(void)
++{
++ static const char *const paths[]={
++  "/System/Library/TextInput/kbd","/usr/libexec/timed","/usr/libexec/tzlinkd",
++  "/var/mobile/Library","/var/mobile/Library/Preferences","/var/mobile/Library/Keyboard",
++  "/var/db/timed","/var/db/timezone","/var/db/timezone/zoneinfo",
++  "/usr/share/zoneinfo.default/UTC","/usr/share/zoneinfo/UTC","/var/db/timezone/localtime"
++ };
++ vfs_context_t ctx=vfs_context_kernel();
++ for(unsigned i=0;i<sizeof(paths)/sizeof(paths[0]);i++) {
++  vnode_t vp=NULL;int error=vnode_lookup(paths[i],0,&vp,ctx);
++  if(error){printf("ZIYI U27 SVC path=%s lookup=%d\n",paths[i],error);continue;}
++  struct vnode_attr va={0};VATTR_INIT(&va);
++  VATTR_WANTED(&va,va_uid);VATTR_WANTED(&va,va_gid);
++  VATTR_WANTED(&va,va_mode);VATTR_WANTED(&va,va_data_size);
++  error=vnode_getattr(vp,&va,ctx);
++  int valid=VATTR_IS_SUPPORTED(&va,va_uid)&&VATTR_IS_SUPPORTED(&va,va_gid)&&VATTR_IS_SUPPORTED(&va,va_mode);
++  printf("ZIYI U27 SVC path=%s attr=%d valid=%d uid=%u gid=%u mode=%o bytes=%llu\n",
++   paths[i],error,valid,(unsigned)va.va_uid,(unsigned)va.va_gid,(unsigned)va.va_mode,(unsigned long long)va.va_data_size);
++  vnode_put(vp);
++ }
+ }
+ 
+ extern void sweet_sample_task(const char *name, int pid, task_t task);  /* osfmk/kern/exception.c */
+ 
+ static int
+-sweet_sample_proc(proc_t p, __unused void *arg)
++sweet_sample_proc(proc_t p, void *arg)
+ {
+ 	char name[32];
+ 	proc_name(proc_pid(p), name, sizeof(name));
+ 	if (sweet_sample_wanted(name)) {
++		(*(unsigned *)arg)++;
+ 		task_t task = proc_task(p);
+ 		if (task != TASK_NULL) {
+ 			sweet_sample_task(name, proc_pid(p), task);
+@@ -70,17 +105,23 @@
+ 	if (sweet_sample_names[0] == '-') {
+ 		return;
+ 	}
+-	(void)tsleep(&chan, PZERO, "sweetsmp", 90 * hz);
+-	for (int i = 0; i < 40; i++) {
++	unsigned slots=sweet_sample_count();if(!slots)return;
++	(void)tsleep(&chan, PZERO, "sweetsmp", 20 * hz);
++	for (int i = 0; i < 120; i++) {
++		sweet_sample_slot=(unsigned)i%slots;unsigned found=0;
++		if(i==0||i==18)sweet_service_paths();
+ 		printf("SMP --- sample %d\n", i);
+-		proc_iterate(PROC_ALLPROCLIST, sweet_sample_proc, NULL, NULL, NULL);
+-		(void)tsleep(&chan, PZERO, "sweetsmp", 120 * hz);
++		proc_iterate(PROC_ALLPROCLIST, sweet_sample_proc, &found, NULL, NULL);
++		printf("ZIYI U27 SVC sample=%d slot=%u matching=%u\n",i,sweet_sample_slot,found);
++		(void)tsleep(&chan, PZERO, "sweetsmp", 5 * hz);
+ 	}
+ }
+ 
+ void
+ sweet_sample_start(void)
+ {
++	static unsigned started;
++	if(__atomic_exchange_n(&started,1,__ATOMIC_ACQ_REL))return;
+ 	thread_t thread;
+ 	if (kernel_thread_start(sweet_sample_thread, NULL, &thread) == KERN_SUCCESS) {
+ 		thread_deallocate(thread);
+--- a/osfmk/kern/exception.c
++++ b/osfmk/kern/exception.c
+@@ -1011,15 +1011,25 @@
+ 	}
+ 	printf("SMP %s[%d] slide 0x%llx mh 0x%llx\n", name, pid, slide, task->mach_header_vm_address);
+ 
++	/* Keep references to a bounded snapshot; do not fault user pages while
++	 * holding task_lock. Register/backtrace values are diagnostic snapshots,
++	 * not a stop-the-world debugger view. */
++	thread_t selected[8];unsigned used=0;
+ 	task_lock(task);
+-	queue_iterate(&task->threads, thread, thread_t, task_threads) {
++	queue_iterate(&task->threads,thread,thread_t,task_threads) {
++		if(used==8)break;
++		thread_reference(thread);selected[used++]=thread;
++	}
++	task_unlock(task);
++	for(unsigned j=0;j<used;j++) {
++		thread=selected[j];
+ 		arm_saved_state_t *ss = find_user_regs(thread);
+ 		char line[400];
+ 		int n;
+ 		uint64_t fp;
+ 
+ 		if (ss == NULL || !is_saved_state64(ss)) {
+-			continue;
++			thread_deallocate(thread);continue;
+ 		}
+ 		fp = get_saved_state_fp(ss);
+ 		n = snprintf(line, sizeof(line), "SMP %s t%d pc 0x%llx lr 0x%llx sp 0x%llx bt", name, tn++,
+@@ -1036,8 +1046,8 @@
+ 			fp = frame[0];
+ 		}
+ 		printf("%s\n", line);
+-	}
+-	task_unlock(task);
++		thread_deallocate(thread);
++	}
+ }
+ 
+ #endif /* ARM64_BOARD_CONFIG_SWEET */

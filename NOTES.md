@@ -1,5 +1,20 @@
 **Ziyi U12 candidate,2026-10-24; NOT phone tested.**
 
+## ziyi U27 keyboard/Settings service investigation — 2026-10-25
+
+User reports U26 two-GiB/eight-core UI is fast except CPU blur. Next order:
+keyboard and Settings/Date & Time, GPU, then multitouch, then Wi-Fi.
+Golden root contains kbd/timed/tzlinkd jobs and executables. Its timezone
+symlinks point into missing /var/db/timezone/zoneinfo, while zoneinfo.default
+exists; current runtime may differ. No live root fix inferred or written.
+Patch0085 adds read-only vnode metadata probes to the opt-in RAM sampler,
+samples one chosen process per5s round,120 rounds,8 referenced threads max.
+User-page backtraces now happen outside task_lock. No process is suspended;
+these are approximate diagnostic snapshots, not debugger stop-state.
+All31 inherited compiled scopes and RPC declarations remain unchanged.
+Full CI and actual device process/wait evidence required. No U27 boot yet.
+
+
 ## ziyi U25 native SMP result — 2026-10-25
 
 CI40193138318 at aa2aeeb453c7a46f5907f19d8de129dfc229b2bb passed all31

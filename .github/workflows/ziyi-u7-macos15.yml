@@ -22,6 +22,7 @@ on:
       - ".github/workflows/ziyi-u7-macos15.yml"
       - "xnu/patches/0083-ziyi-ufs-readonly-probe.patch"
       - "xnu/patches/0084-ziyi-native-smp.patch"
+      - "xnu/patches/0085-ziyi-service-diagnostics.patch"
       - "tools/ziyi-ufs/**"
 
 permissions:
@@ -215,6 +216,7 @@ jobs:
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U8 ' > u1-evidence/u8-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U7 ' > u1-evidence/u7-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U25 SMP' > u1-evidence/u25-kernel-markers.txt
+          strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U27 SVC' > u1-evidence/u27-kernel-markers.txt
           nm dxb/fakeroot/System/Library/Kernels/kernel.development.sweet > u1-evidence/kernel-symbols.txt
           grep '_ziyi_ufs_probe' u1-evidence/kernel-symbols.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U1 ' > u1-evidence/kernel-markers.txt
