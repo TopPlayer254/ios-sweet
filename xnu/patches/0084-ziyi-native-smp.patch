@@ -147,16 +147,16 @@
  
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -255,6 +255,9 @@
- 
- #if defined(HAS_IPI)
- void cpu_signal_handler(void);
+@@ -55,6 +55,9 @@
+ #include <pexpert/arm/protos.h>
+ #include <pexpert/arm64/apple_arm64_regs.h>
+ #include <pexpert/arm64/board_config.h>
 +#if defined(SWEET)
 +void ziyi_u25_irq_record(unsigned cpu,unsigned kind);
 +#endif
- extern unsigned int gFastIPI;
- #endif /* defined(HAS_IPI) */
  
+ #include <vm/vm_page.h>
+ #include <vm/pmap.h>
 @@ -1868,6 +1871,7 @@
  		return; /* spurious */
  	}
