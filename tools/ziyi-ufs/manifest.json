@@ -61,7 +61,7 @@
   },
   "pexpert/pexpert/arm64/Makefile": {
     "before": "03465a5e61a07420f0d4631d25e1cd6626698200b6bc13a113aad7ae67907a6b",
-    "after": "8243f332df6cf181acec39b49dc21e8b4ef9486876627a3bc034a9fd08ea46f0"
+    "after": "b51604f32447cd0110467e052fd0bfb9ff18022fb379f023ccd363378d705b02"
   },
   "pexpert/pexpert/arm64/ziyi_u12_ui.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -106,5 +106,21 @@
   "bsd/dev/ziyi_u23_native_touch.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "after": "71bbf21457fb72558483cd4bcee1396a26abcf81e5c3c4ad8c918ff18ded4e86"
+  },
+  "pexpert/pexpert/arm64/SWEET.h": {
+    "before": "f1c0b8a262fb02e9a47b9ca07f3fe17cb59c1d7e43d7d129cee23944e0f6d566",
+    "after": "773536ed23a78d82f97f5bb06a3411b49c2905f87608963666ab1ae26f8e2d4d"
+  },
+  "iokit/Kernel/arm/SweetCPU.cpp": {
+    "before": "73e4e1e0dfb0af5b82581d44d34ec0130b84b7bbcc86198a5e63540df148086d",
+    "after": "9a919dc56b58a3d36e4d11f7417675f428c1d31cfd3c7485a655d62dd45151ce"
+  },
+  "osfmk/arm64/sleh.c": {
+    "before": "ad1d58282a027eb7b4871c62b0c12c27b3f3f3eacb0135ea850db55b68110e60",
+    "after": "13026d4e007a59bfdbc7ef17a0a2b0a26f6751c779e2cd600eebdfcc29a29e34"
+  },
+  "pexpert/pexpert/arm64/ziyi_u25_smp_policy.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "44aa3363f663530e7c00e530b9140b1c3efbfafa71798b546ef8ad80bebbf483"
   }
 }

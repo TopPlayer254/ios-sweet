@@ -1,4 +1,21 @@
 **Ziyi U12 candidate,2026-10-24; NOT phone tested.**
+
+## ziyi U25 SMP candidate — 2026-10-25
+
+User priority: all-core SMP before GPU. U23 proved first physical swipe,
+SpringBoard Home and Settings on one A510/768MiB. U24 same kernel with2GiB
+reached Home but the user reported stopped clock/unresponsive keys; cause
+unknown, not a qualified memory stability result. U25 returns to the proven
+768MiB loader contract for a separate SMP experiment. Patch0084 raises the
+profile CPU maximum to8, retains ziyi timer27/GICR0x40000/CNTP omission,
+adds native identity/timer IRQ/scheduler/all-pairs xcall/shared-memory proof.
+ADT and boot args must BOTH be supplied with the same selected CPU count.
+SMP is homogeneous initially: no energy-aware scheduling/DVFS/CPU_OFF/resume
+claim. Existing touch/keys/software-renderer/UFS implementations unchanged.
+Full CI/artifact/loader audits and actual native per-core proof REQUIRED;
+host8306 policy controls do not prove native SMP. No U25 phone boot yet.
+No GPU action/reflash/full root SHA. Preserve U23 fallback and private assets.
+
 U11X reached an actual lock-screen clock/date/battery per user photo after
 camera coverage. Native U11X CRC76d8c733 all copied-RAM checks PASS; actual
 launchd/backboardd/logo and RAM sampler stacks on camera. Clock progression,

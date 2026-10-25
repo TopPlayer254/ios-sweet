@@ -39,10 +39,10 @@ def prepare(archive,out):
     manifest=dict(result='LEGACY_IIG_CACHE_PREPARED',archiveSha256=TAR_SHA,inputs=inputs,outputs=outputs,definitions=sorted(definitions))
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n');(out/'calls').mkdir()
     print(json.dumps(dict(result=manifest['result'],sourceFiles=len(inputs),generatedFiles=len(outputs),definitions=len(definitions))))
-# This private framebuffer implementation is not an IIG declaration/input
+# Reviewed private framebuffer/HID/CPU implementations are not IIG declarations
 # dependency. Its reviewed rendering-only change is pinned on both sides;
 # every other inherited source/header and every generated RPC byte stays exact.
-IMPLEMENTATION_OVERRIDE={'iokit/Kernel/arm/SweetFramebuffer.cpp': ('aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f', '66176b469e1eacfd0a386db7c087b4615880eac4cd2242c325948adcf079a8c2'), 'iokit/Kernel/arm/hid/SweetHID.cpp': ('cb8afe01c324d084d95e46bfe42575a2e1200f07155326bdd1448ee4c71ccb8a', '330eacf65469f17d73eac782a2b936c36ba6a4766035a08fb4a292551acefd3e')}
+IMPLEMENTATION_OVERRIDE={'iokit/Kernel/arm/SweetFramebuffer.cpp': ('aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f', '66176b469e1eacfd0a386db7c087b4615880eac4cd2242c325948adcf079a8c2'), 'iokit/Kernel/arm/hid/SweetHID.cpp': ('cb8afe01c324d084d95e46bfe42575a2e1200f07155326bdd1448ee4c71ccb8a', '330eacf65469f17d73eac782a2b936c36ba6a4766035a08fb4a292551acefd3e'), 'iokit/Kernel/arm/SweetCPU.cpp': ('73e4e1e0dfb0af5b82581d44d34ec0130b84b7bbcc86198a5e63540df148086d', '9a919dc56b58a3d36e4d11f7417675f428c1d31cfd3c7485a655d62dd45151ce')}
 def verify_inputs(root,manifest):
     reviewed={}
     for p,digest in manifest['inputs'].items():

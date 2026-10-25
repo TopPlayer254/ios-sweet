@@ -21,6 +21,7 @@ on:
       - "tools/legacy-iig.py"
       - ".github/workflows/ziyi-u7-macos15.yml"
       - "xnu/patches/0083-ziyi-ufs-readonly-probe.patch"
+      - "xnu/patches/0084-ziyi-native-smp.patch"
       - "tools/ziyi-ufs/**"
 
 permissions:
@@ -145,6 +146,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u23_native_touch.c -o u1-evidence/test-u23-native-touch
           ./u1-evidence/test-u23-native-touch | tee u1-evidence/u23-native-touch-tests.txt
 
+      - name: U25 fixed CPU identity and shared-memory corruption controls
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u25_smp.c -o u1-evidence/test-u25-smp
+          ./u1-evidence/test-u25-smp | tee u1-evidence/u25-smp-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb
@@ -208,6 +214,7 @@ jobs:
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U9 ' > u1-evidence/u9-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U8 ' > u1-evidence/u8-kernel-markers.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U7 ' > u1-evidence/u7-kernel-markers.txt
+          strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U25 SMP' > u1-evidence/u25-kernel-markers.txt
           nm dxb/fakeroot/System/Library/Kernels/kernel.development.sweet > u1-evidence/kernel-symbols.txt
           grep '_ziyi_ufs_probe' u1-evidence/kernel-symbols.txt
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U1 ' > u1-evidence/kernel-markers.txt
