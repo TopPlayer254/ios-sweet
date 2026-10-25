@@ -140,6 +140,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u22_power.c -o u1-evidence/test-u22-power
           ./u1-evidence/test-u22-power | tee u1-evidence/u22-power-tests.txt
 
+      - name: U23 measured native touch coordinates and transactional reports
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-ufs/test_u23_native_touch.c -o u1-evidence/test-u23-native-touch
+          ./u1-evidence/test-u23-native-touch | tee u1-evidence/u23-native-touch-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb
