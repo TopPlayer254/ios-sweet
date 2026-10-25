@@ -1,0 +1,69 @@
+--- a/bsd/dev/sweet_sample.c
++++ b/bsd/dev/sweet_sample.c
+@@ -55,7 +55,7 @@
+  return false;
+ }
+ static void
+-sweet_service_paths(void)
++sweet_service_path(unsigned round)
+ {
+  static const char *const paths[]={
+   "/System/Library/TextInput/kbd","/usr/libexec/timed","/usr/libexec/tzlinkd",
+@@ -64,15 +64,16 @@
+   "/usr/share/zoneinfo.default/UTC","/usr/share/zoneinfo/UTC","/var/db/timezone/localtime"
+  };
+  vfs_context_t ctx=vfs_context_kernel();
+- for(unsigned i=0;i<sizeof(paths)/sizeof(paths[0]);i++) {
++ unsigned i=round%(sizeof(paths)/sizeof(paths[0]));
++ {
+   vnode_t vp=NULL;int error=vnode_lookup(paths[i],0,&vp,ctx);
+-  if(error){printf("ZIYI U27 SVC path=%s lookup=%d\n",paths[i],error);continue;}
++  if(error){printf("ZIYI U28 SVC path=%s lookup=%d\n",paths[i],error);return;}
+   struct vnode_attr va={0};VATTR_INIT(&va);
+   VATTR_WANTED(&va,va_uid);VATTR_WANTED(&va,va_gid);
+   VATTR_WANTED(&va,va_mode);VATTR_WANTED(&va,va_data_size);
+   error=vnode_getattr(vp,&va,ctx);
+   int valid=VATTR_IS_SUPPORTED(&va,va_uid)&&VATTR_IS_SUPPORTED(&va,va_gid)&&VATTR_IS_SUPPORTED(&va,va_mode);
+-  printf("ZIYI U27 SVC path=%s attr=%d valid=%d uid=%u gid=%u mode=%o bytes=%llu\n",
++  printf("ZIYI U28 SVC path=%s attr=%d valid=%d uid=%u gid=%u mode=%o bytes=%llu\n",
+    paths[i],error,valid,(unsigned)va.va_uid,(unsigned)va.va_gid,(unsigned)va.va_mode,(unsigned long long)va.va_data_size);
+   vnode_put(vp);
+  }
+@@ -109,10 +110,10 @@
+ 	(void)tsleep(&chan, PZERO, "sweetsmp", 20 * hz);
+ 	for (int i = 0; i < 120; i++) {
+ 		sweet_sample_slot=(unsigned)i%slots;unsigned found=0;
+-		if(i==0||i==18)sweet_service_paths();
+-		printf("SMP --- sample %d\n", i);
++		/* One path per round: retain its metadata on screen after the stack. */
+ 		proc_iterate(PROC_ALLPROCLIST, sweet_sample_proc, &found, NULL, NULL);
+-		printf("ZIYI U27 SVC sample=%d slot=%u matching=%u\n",i,sweet_sample_slot,found);
++		printf("ZIYI U28 SVC sample=%d slot=%u matching=%u\n",i,sweet_sample_slot,found);
++		sweet_service_path((unsigned)i);
+ 		(void)tsleep(&chan, PZERO, "sweetsmp", 5 * hz);
+ 	}
+ }
+--- a/osfmk/kern/exception.c
++++ b/osfmk/kern/exception.c
+@@ -1014,10 +1014,10 @@
+ 	/* Keep references to a bounded snapshot; do not fault user pages while
+ 	 * holding task_lock. Register/backtrace values are diagnostic snapshots,
+ 	 * not a stop-the-world debugger view. */
+-	thread_t selected[8];unsigned used=0;
++	thread_t selected[1];unsigned used=0;
+ 	task_lock(task);
+ 	queue_iterate(&task->threads,thread,thread_t,task_threads) {
+-		if(used==8)break;
++		if(used==1)break;
+ 		thread_reference(thread);selected[used++]=thread;
+ 	}
+ 	task_unlock(task);
+@@ -1034,7 +1034,7 @@
+ 		fp = get_saved_state_fp(ss);
+ 		n = snprintf(line, sizeof(line), "SMP %s t%d pc 0x%llx lr 0x%llx sp 0x%llx bt", name, tn++,
+ 		    get_saved_state_pc(ss), get_saved_state_lr(ss), get_saved_state_sp(ss));
+-		for (int i = 0; i < 16 && fp != 0 && (fp & 7) == 0 && n < (int)sizeof(line) - 20; i++) {
++		for (int i = 0; i < 8 && fp != 0 && (fp & 7) == 0 && n < (int)sizeof(line) - 20; i++) {
+ 			uint64_t frame[2];
+ 			if (vm_map_read_user(map, fp, frame, sizeof(frame)) != KERN_SUCCESS) {
+ 				break;

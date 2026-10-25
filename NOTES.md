@@ -1,6 +1,18 @@
 **Ziyi U12 candidate,2026-10-24; NOT phone tested.**
 
-## ziyi U27 keyboard/Settings service investigation — 2026-10-25
+## ziyi U28 readable service snapshots — 2026-10-25
+
+U27B booted 2GiB/eight-core GUI with the corrected11row console. User still
+reports no keyboard. kbd was alive, its first thread in CFRunLoop Mach port
+wait; this does not establish why the keyboard is absent. Preferences' full
+eight-thread dumps exceeded the visible strip and lost the first thread.
+Patch0086 retains only the first task thread, limits the frame chain to8,
+and emits one rotating read-only path probe per round instead of12 in a burst.
+No service fix, root mutation, GPU work or native U28 result is claimed.
+The31 inherited hardware/storage/render scopes remain exact; full CI required.
+
+
+## ziyi U27 keyboard/Settings service investigation вЂ” 2026-10-25
 
 User reports U26 two-GiB/eight-core UI is fast except CPU blur. Next order:
 keyboard and Settings/Date & Time, GPU, then multitouch, then Wi-Fi.
@@ -15,7 +27,7 @@ All31 inherited compiled scopes and RPC declarations remain unchanged.
 Full CI and actual device process/wait evidence required. No U27 boot yet.
 
 
-## ziyi U25 native SMP result — 2026-10-25
+## ziyi U25 native SMP result вЂ” 2026-10-25
 
 CI40193138318 at aa2aeeb453c7a46f5907f19d8de129dfc229b2bb passed all31
 audited scopes,17 legacy-IIG calls/34 exact outputs and SMP sanitizer controls.
@@ -29,7 +41,7 @@ has not been tested. Old66b604a/51f7498 host-failed candidates were never booted
 No root reflash/full SHA was needed; current phone stays running U25 iOS.
 
 
-## ziyi U25 SMP candidate — 2026-10-25
+## ziyi U25 SMP candidate вЂ” 2026-10-25
 
 User priority: all-core SMP before GPU. U23 proved first physical swipe,
 SpringBoard Home and Settings on one A510/768MiB. U24 same kernel with2GiB
@@ -94,7 +106,7 @@ Android return after erasure has not been exercised. Userdata contents were
 waived; GPT/system backups and bounded-write/restore checks remain required.
 Current user explicitly resumed phone tests; old STOP entries are historical.
 
-# Ziyi U3 candidate — 2026-10-22
+# Ziyi U3 candidate вЂ” 2026-10-22
 
 U3 replaces the U1 explicit-bypass-only gate with a repeated, exact live
 SMMUv2 profile check for the surveyed SM7450 SID 0x20 / CB0, including CR2,
@@ -116,7 +128,7 @@ Userdata contents were explicitly waived, while restore and bounded-write gates
 remain mandatory. Earlier build-only STOP entries below are historical and
 superseded by the user's current resumption.
 
-# Active ziyi handoff — 2026-10-21
+# Active ziyi handoff вЂ” 2026-10-21
 
 **FINAL2026-10-21: HOST_BUILD_COMPLETE_NOT_RUN.** CI39595655078 and local
 artifact/source/config/builtin-init/boot packaging audits PASS. Final image:

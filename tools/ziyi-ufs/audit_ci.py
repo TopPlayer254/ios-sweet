@@ -12,7 +12,7 @@ for name,item in expected.items():
     dest.parent.mkdir(parents=True,exist_ok=True)
     with dest.open('xb') as f:f.write(data)
     checks.append(dict(path=name,sha256=actual,bytes=len(data)))
-report=dict(result='U27_CI_SOURCE_AUDIT_PASS',commit=os.environ['GITHUB_SHA'],files=checks,
+report=dict(result='U28_CI_SOURCE_AUDIT_PASS',commit=os.environ['GITHUB_SHA'],files=checks,
             phoneTested=False,mediaWritesImplemented=True,writeGate="exact GPT and full install SHA or bound installed HFS identity; opt-in prefix only, FUA/readback")
 (root/'u1-evidence/audit.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report))
@@ -55,13 +55,17 @@ assert (root/'tools/ziyi-ufs/u25_smp_policy.h').read_bytes()==(root/'dxb/xnu/pex
 # U27 service diagnostics are opt-in and strictly read-only.
 sample=(root/'dxb/xnu/bsd/dev/sweet_sample.c').read_text()
 exception=(root/'dxb/xnu/osfmk/kern/exception.c').read_text()
-assert 'ZIYI U27 SVC path=' in sample and 'vnode_lookup(paths[i],0,&vp,ctx)' in sample
+assert 'ZIYI U28 SVC path=' in sample and 'vnode_lookup(paths[i],0,&vp,ctx)' in sample
 assert 'vnode_getattr(vp,&va,ctx)' in sample and 'struct vnode_attr va={0}' in sample
 assert 'for (int i = 0; i < 120; i++)' in sample and '5 * hz)' in sample
 assert '__atomic_exchange_n(&started,1,__ATOMIC_ACQ_REL)' in sample
 assert all(x not in sample for x in ['VNOP_WRITE','vn_rdwr','vnode_open','VNOP_SYMLINK'])
 body=exception[exception.index('sweet_sample_task(const char *name, int pid, task_t task)\n{'):]
 body=body[:body.index('\n}\n')]
-assert 'thread_t selected[8]' in body and 'thread_reference(thread)' in body
+assert 'thread_t selected[1]' in body and 'thread_reference(thread)' in body
 assert body.index('task_unlock(task)')<body.index('vm_map_read_user')
 assert 'thread_deallocate(thread);continue;' in body
+
+assert 'sweet_service_path((unsigned)i);' in sample
+assert 'i < 8 && fp' in body
+assert 'if(used==1)break' in body
