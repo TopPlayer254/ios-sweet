@@ -166,8 +166,8 @@
     },
     {
       "path": "tools/ziyi-hw/audit_ci.py",
-      "sha256": "65a547f9ee9e672d48e5795c85a36320d57ce22fb5aa1b422acfa5cd054819ba",
-      "bytes": 3518
+      "sha256": "4670312dfcfaa93e7fff4c8967eff4e51c0db7f701073f35ab7b66a4324b9d3c",
+      "bytes": 2724
     },
     {
       "path": "tools/ziyi-hw/base-u25-manifest.json",
@@ -328,6 +328,11 @@
       "path": "tools/ziyi-hw/test_wifi_probe.c",
       "sha256": "cb858f37d58d8c265ca4e5c3e20c11287623083b97f84c1206a272ee4166eaaa",
       "bytes": 11066
+    },
+    {
+      "path": "tools/ziyi-hw/macho_text.py",
+      "sha256": "d3fb1272f92bef597d01fca1bf9404fc8bb4068dbe1277201bded3251de47c4f",
+      "bytes": 3440
     }
   ],
   "startupHook": {
