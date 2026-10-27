@@ -14,5 +14,6 @@ for name,inputs,marker in tests:
     run=subprocess.run(command,capture_output=True,text=True,env=env);(a.out/(name+'-tests.log')).write_text(run.stdout+run.stderr)
     assert run.returncode==0 and marker in run.stdout and 'runtime error:' not in run.stderr and 'Sanitizer' not in run.stderr,run.stdout+run.stderr
     rows.append(dict(name=name,result=run.stdout.strip(),executableSHA256=hashlib.sha256(exe.read_bytes()).hexdigest()))
+subprocess.run([os.sys.executable,str(KIT/'adt-api/run.py'),'--kernel-dir',str(KIT/'files'),'--out',str(a.out/'actual-api'),'--cc',a.cc],check=True,env=env)
 report=dict(result='ZIYI_HW_PUBLIC_SYNTHETIC_HOST_PASS',tests=rows,phoneOperated=False)
 (a.out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))

@@ -17,6 +17,8 @@
 #include <pexpert/pexpert.h>
 #include <pexpert/device_tree.h>
 #include "ziyi_wifi_core.h"
+#include "ziyi_adt_binding.h"
+#include "ziyi_wifi_adt_properties.inc"
 #include "ziyi_wifi_sha.inc"
 #include "ziyi_wifi_read_gate.inc"
 #include "ziyi_wifi_smem.inc"
@@ -33,23 +35,22 @@ static struct zwifi_cursor zwifi_cursor;
 static vm_offset_t zwifi_maps[4];
 static vm_size_t zwifi_map_bytes[4];
 static unsigned zwifi_once;
+static struct zadt_binding zwifi_binding;
 static int zwifi_channel;
 static void zwifi_sleep(unsigned ms){uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);(void)assert_wait_deadline(&zwifi_channel,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);}
 static int zwifi_equal(const void*aa,const void*bb,unsigned n){const uint8_t*a=aa,*b=bb;for(unsigned i=0;i<n;i++)if(a[i]!=b[i])return 0;return 1;}
 static int zwifi_adt(void){
- struct zwifi_record*r=&zwifi_last;DTEntry node;const void*value;unsigned n;r->adt_facts=0;
- if(!SecureDTIsLockedDown()||SecureDTLookupEntry(NULL,"/arm-io/ziyi-wifi-probe",&node)!=0)return 0;r->adt_facts|=1|32;
- static const char compatible[]="ziyi,wcn6750-ro-probe";
- if(SecureDTGetProperty(node,"compatible",&value,&n)!=0||n!=sizeof(compatible)||!zwifi_equal(value,compatible,n))return 0;r->adt_facts|=2;
- if(SecureDTGetProperty(node,"contract",&value,&n)!=0||n!=sizeof(r->contract))return 0;bcopy(value,&r->contract,n);
- if(!zwifi_contract_valid(&r->contract))return 0;r->adt_facts|=4;
- if(SecureDTGetProperty(node,"reg",&value,&n)!=0||n!=sizeof(r->contract.region)||!zwifi_equal(value,r->contract.region,n))return 0;r->adt_facts|=8;
- if(SecureDTGetProperty(node,"source-digest",&value,&n)!=0||n!=32||!zwifi_equal(value,r->contract.source_digest,32))return 0;r->adt_facts|=16;
- return r->adt_facts==ZWIFI_ADT_FACTS;
+ struct zwifi_record*r=&zwifi_last;r->adt_facts=0;
+ if(!zwifi_binding.ready&&zwifi_binding.passes)return 0; /* Failed epoch never reopens itself. */
+ int ok=zwifi_binding.ready?zadt_recheck(&zwifi_binding,"/arm-io/ziyi-wifi-probe",zw_adt_properties,ZW_ADT_PROPERTY_COUNT):zadt_open(&zwifi_binding,"/arm-io/ziyi-wifi-probe",zw_adt_properties,ZW_ADT_PROPERTY_COUNT);
+ if(!ok)return 0;
+ /* Facts63 now means exact compiled board contract + stable snapshot, not hardware lockdown. */
+ bcopy(zwifi_contract_bytes,&r->contract,sizeof(r->contract));
+ if(!zwifi_contract_valid(&r->contract))return 0;r->adt_facts=ZWIFI_ADT_FACTS;return 1;
 }
 static int zwifi_context_now(void){return ZWIFI_SYSREG(CurrentEL)==4&&(ZWIFI_SYSREG(sctlr_el1)&0x1005)==0x1005&&ZWIFI_SYSREG(cntfrq_el0)==19200000;}
 static int zwifi_load(uint64_t physical,void*to,uint32_t bytes){
- struct zwifi_record*r=&zwifi_last;if(!zwifi_context_now())return 0;
+ struct zwifi_record*r=&zwifi_last;if(!zwifi_adt()||!zwifi_context_now())return 0;
  for(unsigned region=0;region<4;region++){
   uint64_t base=r->contract.region[region].physical,size=r->contract.region[region].bytes;
   if(!zwifi_maps[region]||physical<base||physical-base>size||bytes>size-(physical-base))continue;
@@ -74,6 +75,7 @@ static int zwifi_springboard(proc_t p,void*ctx){const char*name=proc_best_name(p
 static void zwifi_hash_line(const char*what,unsigned part,const uint8_t*d){static const char digits[]="0123456789abcdef";char hex[65];for(unsigned i=0;i<32;i++){hex[2*i]=digits[d[i]>>4];hex[2*i+1]=digits[d[i]&15];}hex[64]=0;printf("ZWIFI RO %s p%u %s\n",what,part,hex);zwifi_sleep(250);}
 static void zwifi_summary(int pid){
  struct zwifi_record*r=&zwifi_last;printf("ZWIFI RO kernel sampler SBpid%d status%u stage%u crc%08x bytes%u\n",pid,r->status,r->stage,r->crc,r->bytes);zwifi_sleep(250);
+ printf("ZWIFI RO binding mode%u available%u observed%u snapshots%u\n",zwifi_binding.mode,zwifi_binding.available,zwifi_binding.observed,zwifi_binding.passes);zwifi_sleep(250);
  printf("ZWIFI RO ADT%02x EL%llu MCI%llx counter%llu rawSBL%08x/%08x\n",r->adt_facts,r->el,r->sctlr&0x1005,r->frequency,r->smem_version[0],r->smem_version[1]);zwifi_sleep(250);
  printf("ZWIFI RO table%u reads%u WPSS%u global%u extra%u deny%u flags%x\n",r->smem.count,r->smem.reads,r->smem.wpss_entry,r->smem.global_entry,r->extra_reads,r->denied,r->survey_error);zwifi_sleep(250);
  for(unsigned part=0;part<2;part++){
@@ -89,13 +91,14 @@ static void zwifi_summary(int pid){
  printf("ZWIFI RO DONE crc%08x complete%u; no ACK/alloc/PAS/power/DMA/media writes\n",r->crc,r->survey_complete);
 }
 static void zwifi_thread(void*unused,wait_result_t wait){
- (void)unused;(void)wait;struct zwifi_record*r=&zwifi_last;unsigned delay_seconds=60;int pid=0;r->version=1;r->bytes=sizeof(*r);
+ (void)unused;(void)wait;struct zwifi_record*r=&zwifi_last;unsigned delay_seconds=60;int pid=0;r->version=2;r->bytes=sizeof(*r);
  PE_parse_boot_argn("ziyi_wifi_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
  printf("ZWIFI RO armed opt-in, delay%us then await SpringBoard; radio remains unstarted\n",delay_seconds);zwifi_sleep(delay_seconds*1000u);
  for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zwifi_springboard,&pid,NULL,NULL);if(!pid)zwifi_sleep(5000);}
  if(!pid){r->status=1;printf("ZWIFI RO STOP SpringBoard absent after bounded wait; no device maps\n");goto out;}
  zwifi_sleep(5000);r->start=ZWIFI_SYSREG(cntvct_el0);r->mpidr_start=ZWIFI_SYSREG(mpidr_el1);r->el=ZWIFI_SYSREG(CurrentEL);r->sctlr=ZWIFI_SYSREG(sctlr_el1);r->frequency=ZWIFI_SYSREG(cntfrq_el0);
- if(!zwifi_adt()||!zwifi_context_valid(r)){r->status=2;printf("ZWIFI RO STOP missing/invalid locked ADT contract/context, facts%x; no device maps\n",r->adt_facts);goto out;}
+ if(!zwifi_adt()||!zwifi_context_valid(r)){r->status=2;printf("ZWIFI RO ADT STOP status%u property%u mode%u available%u observed%u facts%x; no device maps\n",zwifi_binding.status,zwifi_binding.property,zwifi_binding.mode,zwifi_binding.available,zwifi_binding.observed,r->adt_facts);goto out;}
+ printf("ZWIFI RO ADT binding mode%u available%u observed%u snapshots%u; board-bound, no fabricated lockdown\n",zwifi_binding.mode,zwifi_binding.available,zwifi_binding.observed,zwifi_binding.passes);
  for(unsigned n=0;n<4;n++){
   uint64_t physical=r->contract.region[n].physical,size=r->contract.region[n].bytes;zwifi_map_bytes[n]=round_page((vm_size_t)size);
   zwifi_maps[n]=io_map(physical,(vm_size_t)size,VM_WIMG_IO,VM_PROT_READ,true);

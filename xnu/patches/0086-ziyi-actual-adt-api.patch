@@ -1,0 +1,625 @@
+--- /dev/null
++++ b/bsd/dev/ziyi_adt_binding.h
+@@ -0,0 +1,51 @@
++/* SPDX-License-Identifier: MIT
++ * Exact-source normalized Apple ADT binding. This is not a fabricated KTRR proof.
++ */
++#pragma once
++#include <stdint.h>
++#include <stddef.h>
++#include <pexpert/device_tree.h>
++
++#if defined(KERNEL_INTEGRITY_KTRR) || defined(KERNEL_INTEGRITY_CTRR)
++#define ZADT_LOCKDOWN_AVAILABLE 1u
++#else
++#define ZADT_LOCKDOWN_AVAILABLE 0u
++#endif
++enum {ZADT_NONE=0,ZADT_APPLE_PROTECTED=1,ZADT_SWEET_BOARD_SNAPSHOT=2};
++enum {ZADT_OK=0,ZADT_PLATFORM,ZADT_NOT_PROTECTED,ZADT_NODE,ZADT_PROPERTY,ZADT_CHANGED};
++struct zadt_property {const char *name;const uint8_t *expected;unsigned bytes;};
++struct zadt_binding {DTEntry entry;unsigned mode,available,observed,ready,status,property,passes;};
++static int zadt_equal(const void*aa,const void*bb,unsigned n){const uint8_t*a=aa,*b=bb;for(unsigned i=0;i<n;i++)if(a[i]!=b[i])return 0;return 1;}
++static int zadt_policy(struct zadt_binding*b){
++ b->available=ZADT_LOCKDOWN_AVAILABLE;b->observed=SecureDTIsLockedDown()?1u:0u;
++ if(b->available){if(!b->observed){b->status=ZADT_NOT_PROTECTED;return 0;}b->mode=ZADT_APPLE_PROTECTED;return 1;}
++#if SWEET
++ /* No meaningful KTRR/CTRR distinction exists on SWEET. Do not call it locked. */
++ b->mode=ZADT_SWEET_BOARD_SNAPSHOT;return 1;
++#else
++ b->status=ZADT_PLATFORM;return 0;
++#endif
++}
++static int zadt_pass(struct zadt_binding*b,const char*path,const struct zadt_property*p,unsigned count){
++ DTEntry node=0;b->status=ZADT_OK;b->property=0;
++ if(!zadt_policy(b))return 0;
++ if(SecureDTLookupEntry(NULL,path,&node)!=kSuccess||!node){b->status=ZADT_NODE;return 0;}
++ if(b->entry&&b->entry!=node){b->status=ZADT_CHANGED;return 0;}
++ for(unsigned i=0;i<count;i++){
++  const void*v=0;unsigned n=0;
++  if(SecureDTGetProperty(node,p[i].name,&v,&n)!=kSuccess||!v||n!=p[i].bytes||!zadt_equal(v,p[i].expected,n)){
++   b->status=ZADT_PROPERTY;b->property=i+1;return 0;
++  }
++ }
++ b->entry=node;b->passes++;return 1;
++}
++static int zadt_open(struct zadt_binding*b,const char*path,const struct zadt_property*p,unsigned count){
++ if(!b||!path||!p||!count)return 0;*b=(struct zadt_binding){0};
++ if(!zadt_pass(b,path,p,count)||!zadt_pass(b,path,p,count))return 0;
++ b->ready=1;return 1;
++}
++static int zadt_recheck(struct zadt_binding*b,const char*path,const struct zadt_property*p,unsigned count){
++ if(!b||!b->ready||!b->entry)return 0;
++ if(!zadt_pass(b,path,p,count)){b->ready=0;return 0;}
++ return 1;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_gpu_adt_properties.inc
+@@ -0,0 +1,14 @@
++static const uint8_t zg_adt_p0[]={122,105,121,105,44,103,112,117,45,112,114,111,98,101,45,118,49,0};
++static const uint8_t zg_adt_p1[]={1,2,6,6};
++static const uint8_t zg_adt_p2[]={6,0,0,0};
++static const uint8_t zg_adt_p3[]={6,0,0,0};
++static const uint8_t zg_adt_p4[]={5,0,0,0};
++static const uint8_t zg_adt_p5[]={0,4,0,0};
++static const uint8_t zg_adt_p6[]={0,0,0,0};
++static const uint8_t zg_adt_p7[]={0,64,3,0};
++static const uint8_t zg_adt_p8[]={218,231,172,40,115,34,128,76,253,133,74,96,206,216,232,181,190,69,127,15,114,202,250,178,163,54,169,161,31,49,145,142};
++static const uint8_t zg_adt_p9[]={103,99,99,0,103,112,117,99,99,0,103,109,117,0,115,109,109,117,0};
++static const uint8_t zg_adt_p10[]={0,0,16,0,0,0,0,0,0,0,9,0,0,0,0,0,0,0,217,3,0,0,0,0,0,160,0,0,0,0,0,0,0,160,214,3,0,0,0,0,0,80,2,0,0,0,0,0,0,0,218,3,0,0,0,0,0,0,2,0,0,0,0,0};
++static const uint8_t zg_adt_p11[]={122,105,121,105,45,103,112,117,45,112,114,111,98,101,0};
++static const struct zadt_property zg_adt_properties[]={{"compatible",zg_adt_p0,sizeof(zg_adt_p0)},{"source-board-id",zg_adt_p1,sizeof(zg_adt_p1)},{"hlos-context-banks",zg_adt_p2,sizeof(zg_adt_p2)},{"hlos-smr",zg_adt_p3,sizeof(zg_adt_p3)},{"gmu-sid",zg_adt_p4,sizeof(zg_adt_p4)},{"gmu-sid-mask",zg_adt_p5,sizeof(zg_adt_p5)},{"source-handoff-count",zg_adt_p6,sizeof(zg_adt_p6)},{"source-gmu-reg-size",zg_adt_p7,sizeof(zg_adt_p7)},{"source-contract-sha256",zg_adt_p8,sizeof(zg_adt_p8)},{"reg-names",zg_adt_p9,sizeof(zg_adt_p9)},{"reg",zg_adt_p10,sizeof(zg_adt_p10)},{"name",zg_adt_p11,sizeof(zg_adt_p11)}};
++#define ZG_ADT_PROPERTY_COUNT 12u
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -1,140 +1,151 @@
+-/* SPDX-License-Identifier: GPL-2.0-only */
+-/* Experimental XNU integration of the guarded G6/G7 acquisition engines.
+- * No framebuffer/GPU service, firmware execution, DMA or acceleration API.
+- * ARM64 ml_probe_read is unimplemented in this XNU. Device loads below may
+- * synchronously abort/panic; no post-fault restoration is asserted. */
+-#include <pexpert/arm64/board_config.h>
+-#if !SWEET
+-#error "ziyi_gpu_probe requires the SWEET kernel profile"
+-#endif
+-#include <stdint.h>
+-#include <stddef.h>
+-#include <stdbool.h>
+-#include <sys/systm.h>
+-#include <sys/proc.h>
+-#include <sys/proc_internal.h>
+-#include <kern/clock.h>
+-#include <kern/thread.h>
+-#include <kern/sched_prim.h>
+-#include <mach/vm_param.h>
+-#include <mach/vm_prot.h>
+-#include <vm/memory_types.h>
+-#include <arm/memory_types.h>
+-#include <machine/machine_routines.h>
+-#include <pexpert/pexpert.h>
+-#include <pexpert/device_tree.h>
+-#include "ziyi_gpu_probe.h"
+-#include "ziyi_gpu_probe_contract.h"
+-#include "ziyi_g7_clock.h"
+-#include "ziyi_g7_engine.h"
+-extern vm_offset_t io_map(vm_map_offset_t,vm_size_t,unsigned int,vm_prot_t,bool);
+-extern void ml_io_unmap(vm_offset_t,vm_size_t);
+-extern kern_return_t thread_terminate(thread_t);
+-#define ZG_RW_MAPS 25u
+-struct zg_mapping {struct zg_region region;struct zg_geometry geometry;vm_offset_t page_va;};
+-struct zg_state {
+- struct zg_contract contract;struct zg_mapping ro[ZG_REGIONS],rw[ZG_RW_MAPS];unsigned rw_count;
+- struct g7c_record clocks;struct g7_record probe;uint64_t lease_epoch;uint32_t lease;
+- uint8_t copy0[G7_TCM_BYTES] __attribute__((aligned(64)));
+- uint8_t copy1[G7_TCM_BYTES] __attribute__((aligned(64)));
+-};
+-static struct zg_state zg;
+-static uint32_t zg_started;
+-static int zg_wait_channel;
+-static void zg_sleep(unsigned ms){uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);(void)assert_wait_deadline(&zg_wait_channel,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);}
+-static int zg_springboard(proc_t p,void*ctx){const char*name=proc_best_name(p);if(name&&strcmp(name,"SpringBoard")==0){*(int*)ctx=proc_pid(p);return PROC_RETURNED_DONE;}return PROC_RETURNED;}
+-static void zg_barrier(void*ctx){(void)ctx;__asm__ volatile("dsb sy":::"memory");}
+-static uint64_t zg_ticks(void*ctx){(void)ctx;uint64_t v;__asm__ volatile("mrs %0,cntvct_el0":"=r"(v));return v;}
+-static uint64_t zg_sctlr(void){uint64_t v;__asm__ volatile("mrs %0,sctlr_el1":"=r"(v));return v;}
+-static uint64_t zg_el(void){uint64_t v;__asm__ volatile("mrs %0,CurrentEL":"=r"(v));return v;}
+-static uint64_t zg_frequency(void){uint64_t v;__asm__ volatile("mrs %0,cntfrq_el0":"=r"(v));return v;}
+-static void zg_delay(void*ctx,uint32_t us){uint64_t first=zg_ticks(ctx),ticks=((uint64_t)us*192+9)/10;while(zg_ticks(ctx)-first<ticks)__asm__ volatile("yield");}
+-static int zg_get(void*ctx,const char*name,const void**data,unsigned*bytes){return SecureDTGetProperty((DTEntry)ctx,name,data,bytes)==kSuccess;}
+-static int zg_map_one(struct zg_mapping*m,struct zg_region region,vm_prot_t prot){
+- struct zg_geometry geometry;if(!zg_map_geometry(region.base,region.bytes,PAGE_SIZE,&geometry))return 0;
+- vm_offset_t va=io_map((vm_map_offset_t)geometry.page_base,(vm_size_t)geometry.page_span,VM_WIMG_IO,prot,true);
+- if(!va)return 0;m->region=region;m->geometry=geometry;m->page_va=va;return 1;
+-}
+-static void zg_unmap_all(struct zg_state*s){
+- for(unsigned i=0;i<s->rw_count;i++)if(s->rw[i].page_va){ml_io_unmap(s->rw[i].page_va,(vm_size_t)s->rw[i].geometry.page_span);s->rw[i].page_va=0;}
+- for(unsigned i=0;i<ZG_REGIONS;i++)if(s->ro[i].page_va){ml_io_unmap(s->ro[i].page_va,(vm_size_t)s->ro[i].geometry.page_span);s->ro[i].page_va=0;}
+-}
+-static int zg_map_all(struct zg_state*s){
+- for(unsigned i=0;i<ZG_REGIONS;i++)if(!zg_map_one(&s->ro[i],s->contract.regions[i],VM_PROT_READ))return 0;
+- for(unsigned i=0;i<G2_NREGS;i++){
+-  const struct g7c_reg*d=&g7c_regs[i];if(!g7c_write_allowed(d->base,d->offset))continue;
+-  uint64_t address=d->base+d->offset;struct zg_geometry g;if(!zg_map_geometry(address,4,PAGE_SIZE,&g))return 0;
+-  unsigned n;for(n=0;n<s->rw_count;n++)if(s->rw[n].geometry.page_base==g.page_base)break;
+-  if(n<s->rw_count)continue;if(s->rw_count==ZG_RW_MAPS)return 0;
+-  if(!zg_map_one(&s->rw[s->rw_count],(struct zg_region){g.page_base,g.page_span},VM_PROT_READ|VM_PROT_WRITE))return 0;
+-  s->rw_count++;
+- }
+- return 1;
+-}
+-static volatile uint32_t*zg_pointer(struct zg_mapping*m,unsigned count,uint64_t address){
+- if(address&3)return 0;
+- for(unsigned i=0;i<count;i++){uint64_t offset;if(m[i].page_va&&zg_region_offset(&m[i].region,address,4,&offset))return (volatile uint32_t*)(uintptr_t)(m[i].page_va+m[i].geometry.bias+offset);}
+- return 0;
+-}
+-static uint32_t zg_read_clock(void*ctx,uint64_t base,uint32_t off,int*ok){
+- struct zg_state*s=ctx;*ok=0;if(!g7c_read_allowed(&s->clocks,base,off)||base>UINT64_MAX-off)return 0;
+- volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,base+off);if(!p)return 0;
+- uint32_t value=*p;zg_barrier(s);*ok=1;return value;
+-}
+-static void zg_write_clock(void*ctx,uint64_t base,uint32_t off,uint32_t value,int*ok){
+- struct zg_state*s=ctx;*ok=0;if(!g7c_write_allowed(base,off)||base>UINT64_MAX-off)return;
+- volatile uint32_t*read=zg_pointer(s->ro,ZG_REGIONS,base+off),*write=zg_pointer(s->rw,s->rw_count,base+off);if(!read||!write)return;
+- uint32_t now=*read;zg_barrier(s);for(unsigned i=0;i<G2_NREGS;i++)if(g7c_regs[i].base==base&&g7c_regs[i].offset==off)s->clocks.final[i]=now;
+- if(!g7c_store_guard(&s->clocks,base,off,value,now))return;
+- *write=value;zg_barrier(s);*ok=1;
+-}
+-static uint32_t zg_read_probe(void*ctx,uint64_t address,int*ok){
+- struct zg_state*s=ctx;*ok=0;if(!g7_read_allowed(&s->probe,address))return 0;
+- volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,address);if(!p)return 0;uint32_t value=*p;zg_barrier(s);*ok=1;return value;
+-}
+-static int zg_lease(void*ctx,uint64_t epoch,int acquire){
+- struct zg_state*s=ctx;if(!epoch)return 0;
+- if(acquire){uint32_t expected=0;if(!__atomic_compare_exchange_n(&s->lease,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return 0;s->lease_epoch=epoch;return 1;}
+- if(__atomic_load_n(&s->lease,__ATOMIC_ACQUIRE)!=1||s->lease_epoch!=epoch)return 0;s->lease_epoch=0;__atomic_store_n(&s->lease,0,__ATOMIC_RELEASE);return 1;
+-}
+-static int zg_owned(void*ctx,const void*memory,size_t bytes){struct zg_state*s=ctx;return bytes==G7_TCM_BYTES&&(memory==s->copy0||memory==s->copy1);}
+-static void zg_phase(void*ctx,uint32_t phase){(void)ctx;printf("ZIYI GPU clock phase %u\n",phase);}
+-static int zg_qualified(void*ctx,struct g7c_record*clocks){
+- struct zg_state*s=ctx;if(clocks!=&s->clocks||clocks->flags!=127||clocks->poison||clocks->error)return 0;
+- struct g7_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,
+- .contract_kind=G7_CONTRACT_XNU_SECURE_DT,.handoff_pairs=s->contract.handoff,.mapped_device_io=1,
+- .execution_kind=G7_EXEC_KERNEL_ON,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr()};
+- for(unsigned i=0;i<4;i++)q.rates[i]=clocks->measure[i][3];
+- struct g7_buffers buffers={s->copy0,s->copy1,sizeof(s->copy0),sizeof(s->copy1)};
+- struct g7_io io={s,zg_read_probe,zg_ticks,zg_lease,zg_owned,zg_barrier};
+- printf("ZIYI GPU G7 acquire kernel-MMU-on, no firmware/DMA\n");
+- int success=g7_run_acquire(&s->probe,&q,&buffers,&io);
+- printf("ZIYI GPU G7 result flags=%x error=%u poison=%u reads=%u TCM=%u CRC=%08x/%08x fw=0 accel=0\n",s->probe.flags,s->probe.error,s->probe.poison,s->probe.reads,s->probe.tcm_equal,s->probe.tcm_crc[0],s->probe.tcm_crc[1]);
+- if(s->probe.poison)clocks->poison=1;return success;
+-}
+-static void zg_worker(void*arg,wait_result_t result){
+- (void)arg;(void)result;bzero(&zg,sizeof(zg));DTEntry entry=0;unsigned delay_seconds=60;int pid=0;
+- PE_parse_boot_argn("ziyi_gpu_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
+- printf("ZIYI GPU probe armed opt-in delay%us then await SpringBoard; fw=0 accel=0\n",delay_seconds);zg_sleep(delay_seconds*1000u);
+- for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zg_springboard,&pid,NULL,NULL);if(!pid)zg_sleep(5000);}
+- if(!pid){printf("ZIYI GPU probe STOP SpringBoard absent after bounded wait; no device maps\n");goto done;}
+- zg_sleep(5000);printf("ZIYI GPU probe SpringBoard pid%d alive; starting in-system qualification\n",pid);
+- if(!SecureDTIsLockedDown()||!zg_kernel_context(zg_el(),zg_sctlr(),zg_frequency())||SecureDTLookupEntry(NULL,"/arm-io/ziyi-gpu-probe",&entry)!=kSuccess||!zg_contract_read(&zg.contract,zg_get,(void*)entry)){
+-  printf("ZIYI GPU probe: kernel/SecureDT contract rejected; no MMIO\n");goto done;
+- }
+- if(!zg_map_all(&zg)){printf("ZIYI GPU probe: mapping failed; no transaction\n");goto unmap;}
+- printf("ZIYI GPU probe: XNU EL1/MMU/cache ON; mappedDeviceRO + guarded clockRW pages=%u\n",zg.rw_count);
+- zg.clocks.opaque|=G7C_PLATFORM_SCOPE; /* validated locked SecureDT kernel contract */
+- struct g7c_io io={&zg,zg_read_clock,zg_write_clock,zg_delay,zg_ticks,zg_phase,zg_qualified};
+- int success=g7c_run(&zg.clocks,&io);
+- printf("ZIYI GPU clocks result=%u flags=%x error=%u poison=%u restore=%u rates=%u/%u/%u/%u\n",success,zg.clocks.flags,zg.clocks.error,zg.clocks.poison,zg.clocks.restore,zg.clocks.measure[0][3],zg.clocks.measure[1][3],zg.clocks.measure[2][3],zg.clocks.measure[3][3]);
+- printf("ZIYI GPU probe done: acquisition only, firmware=0 DMA=0 acceleration=0\n");
+-unmap:zg_unmap_all(&zg);
+-done:thread_terminate(current_thread());
+-}
+-void ziyi_gpu_probe_start(void){
+- uint32_t enabled=0;if(!PE_parse_boot_argn("ziyi_gpu_probe",&enabled,sizeof(enabled))||enabled!=1)return;
+- uint32_t expected=0;if(!__atomic_compare_exchange_n(&zg_started,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return;
+- thread_t worker=THREAD_NULL;kern_return_t kr=kernel_thread_start(zg_worker,NULL,&worker);
+- if(kr!=KERN_SUCCESS){printf("ZIYI GPU probe: cannot create worker %d\n",kr);return;}thread_deallocate(worker);
+-}
++/* SPDX-License-Identifier: GPL-2.0-only */
++/* Experimental XNU integration of the guarded G6/G7 acquisition engines.
++ * No framebuffer/GPU service, firmware execution, DMA or acceleration API.
++ * ARM64 ml_probe_read is unimplemented in this XNU. Device loads below may
++ * synchronously abort/panic; no post-fault restoration is asserted. */
++#include <pexpert/arm64/board_config.h>
++#if !SWEET
++#error "ziyi_gpu_probe requires the SWEET kernel profile"
++#endif
++#include <stdint.h>
++#include <stddef.h>
++#include <stdbool.h>
++#include <sys/systm.h>
++#include <sys/proc.h>
++#include <sys/proc_internal.h>
++#include <kern/clock.h>
++#include <kern/thread.h>
++#include <kern/sched_prim.h>
++#include <mach/vm_param.h>
++#include <mach/vm_prot.h>
++#include <vm/memory_types.h>
++#include <arm/memory_types.h>
++#include <machine/machine_routines.h>
++#include <pexpert/pexpert.h>
++#include <pexpert/device_tree.h>
++#include "ziyi_gpu_probe.h"
++#include "ziyi_gpu_probe_contract.h"
++#include "ziyi_g7_clock.h"
++#include "ziyi_g7_engine.h"
++#include "ziyi_adt_binding.h"
++#include "ziyi_gpu_adt_properties.inc"
++extern vm_offset_t io_map(vm_map_offset_t,vm_size_t,unsigned int,vm_prot_t,bool);
++extern void ml_io_unmap(vm_offset_t,vm_size_t);
++extern kern_return_t thread_terminate(thread_t);
++#define ZG_RW_MAPS 25u
++struct zg_mapping {struct zg_region region;struct zg_geometry geometry;vm_offset_t page_va;};
++struct zg_state {
++ struct zadt_binding adt;uint32_t checked_clock_phase,checked_probe_phase;
++ struct zg_contract contract;struct zg_mapping ro[ZG_REGIONS],rw[ZG_RW_MAPS];unsigned rw_count;
++ struct g7c_record clocks;struct g7_record probe;uint64_t lease_epoch;uint32_t lease;
++ uint8_t copy0[G7_TCM_BYTES] __attribute__((aligned(64)));
++ uint8_t copy1[G7_TCM_BYTES] __attribute__((aligned(64)));
++};
++static struct zg_state zg;
++static uint32_t zg_started;
++static int zg_wait_channel;
++static void zg_sleep(unsigned ms){uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);(void)assert_wait_deadline(&zg_wait_channel,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);}
++static int zg_springboard(proc_t p,void*ctx){const char*name=proc_best_name(p);if(name&&strcmp(name,"SpringBoard")==0){*(int*)ctx=proc_pid(p);return PROC_RETURNED_DONE;}return PROC_RETURNED;}
++static void zg_barrier(void*ctx){(void)ctx;__asm__ volatile("dsb sy":::"memory");}
++static uint64_t zg_ticks(void*ctx){(void)ctx;uint64_t v;__asm__ volatile("mrs %0,cntvct_el0":"=r"(v));return v;}
++static uint64_t zg_sctlr(void){uint64_t v;__asm__ volatile("mrs %0,sctlr_el1":"=r"(v));return v;}
++static uint64_t zg_el(void){uint64_t v;__asm__ volatile("mrs %0,CurrentEL":"=r"(v));return v;}
++static uint64_t zg_frequency(void){uint64_t v;__asm__ volatile("mrs %0,cntfrq_el0":"=r"(v));return v;}
++static void zg_delay(void*ctx,uint32_t us){uint64_t first=zg_ticks(ctx),ticks=((uint64_t)us*192+9)/10;while(zg_ticks(ctx)-first<ticks)__asm__ volatile("yield");}
++static int zg_get(void*ctx,const char*name,const void**data,unsigned*bytes){return SecureDTGetProperty((DTEntry)ctx,name,data,bytes)==kSuccess;}
++static int zg_adt_check(struct zg_state*s,int first){
++ int ok=first?zadt_open(&s->adt,"/arm-io/ziyi-gpu-probe",zg_adt_properties,ZG_ADT_PROPERTY_COUNT):zadt_recheck(&s->adt,"/arm-io/ziyi-gpu-probe",zg_adt_properties,ZG_ADT_PROPERTY_COUNT);
++ if(!ok)return 0;struct zg_contract fresh;
++ if(!zg_contract_read(&fresh,zg_get,(void*)s->adt.entry))return 0;
++ if(first)s->contract=fresh;else if(!zadt_equal(&fresh,&s->contract,sizeof(fresh)))return 0;
++ return 1;
++}
++static int zg_map_one(struct zg_mapping*m,struct zg_region region,vm_prot_t prot){
++ struct zg_geometry geometry;if(!zg_map_geometry(region.base,region.bytes,PAGE_SIZE,&geometry))return 0;
++ vm_offset_t va=io_map((vm_map_offset_t)geometry.page_base,(vm_size_t)geometry.page_span,VM_WIMG_IO,prot,true);
++ if(!va)return 0;m->region=region;m->geometry=geometry;m->page_va=va;return 1;
++}
++static void zg_unmap_all(struct zg_state*s){
++ for(unsigned i=0;i<s->rw_count;i++)if(s->rw[i].page_va){ml_io_unmap(s->rw[i].page_va,(vm_size_t)s->rw[i].geometry.page_span);s->rw[i].page_va=0;}
++ for(unsigned i=0;i<ZG_REGIONS;i++)if(s->ro[i].page_va){ml_io_unmap(s->ro[i].page_va,(vm_size_t)s->ro[i].geometry.page_span);s->ro[i].page_va=0;}
++}
++static int zg_map_all(struct zg_state*s){
++ for(unsigned i=0;i<ZG_REGIONS;i++)if(!zg_map_one(&s->ro[i],s->contract.regions[i],VM_PROT_READ))return 0;
++ for(unsigned i=0;i<G2_NREGS;i++){
++  const struct g7c_reg*d=&g7c_regs[i];if(!g7c_write_allowed(d->base,d->offset))continue;
++  uint64_t address=d->base+d->offset;struct zg_geometry g;if(!zg_map_geometry(address,4,PAGE_SIZE,&g))return 0;
++  unsigned n;for(n=0;n<s->rw_count;n++)if(s->rw[n].geometry.page_base==g.page_base)break;
++  if(n<s->rw_count)continue;if(s->rw_count==ZG_RW_MAPS)return 0;
++  if(!zg_map_one(&s->rw[s->rw_count],(struct zg_region){g.page_base,g.page_span},VM_PROT_READ|VM_PROT_WRITE))return 0;
++  s->rw_count++;
++ }
++ return 1;
++}
++static volatile uint32_t*zg_pointer(struct zg_mapping*m,unsigned count,uint64_t address){
++ if(address&3)return 0;
++ for(unsigned i=0;i<count;i++){uint64_t offset;if(m[i].page_va&&zg_region_offset(&m[i].region,address,4,&offset))return (volatile uint32_t*)(uintptr_t)(m[i].page_va+m[i].geometry.bias+offset);}
++ return 0;
++}
++static uint32_t zg_read_clock(void*ctx,uint64_t base,uint32_t off,int*ok){
++ struct zg_state*s=ctx;*ok=0;if(s->checked_clock_phase!=s->clocks.phase){if(!zg_adt_check(s,0)){s->clocks.poison=1;return 0;}s->checked_clock_phase=s->clocks.phase;}if(!g7c_read_allowed(&s->clocks,base,off)||base>UINT64_MAX-off)return 0;
++ volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,base+off);if(!p)return 0;
++ uint32_t value=*p;zg_barrier(s);*ok=1;return value;
++}
++static void zg_write_clock(void*ctx,uint64_t base,uint32_t off,uint32_t value,int*ok){
++ struct zg_state*s=ctx;*ok=0;if(!zg_adt_check(s,0)){s->clocks.poison=1;return;}if(!g7c_write_allowed(base,off)||base>UINT64_MAX-off)return;
++ volatile uint32_t*read=zg_pointer(s->ro,ZG_REGIONS,base+off),*write=zg_pointer(s->rw,s->rw_count,base+off);if(!read||!write)return;
++ uint32_t now=*read;zg_barrier(s);for(unsigned i=0;i<G2_NREGS;i++)if(g7c_regs[i].base==base&&g7c_regs[i].offset==off)s->clocks.final[i]=now;
++ if(!g7c_store_guard(&s->clocks,base,off,value,now))return;
++ *write=value;zg_barrier(s);*ok=1;
++}
++static uint32_t zg_read_probe(void*ctx,uint64_t address,int*ok){
++ struct zg_state*s=ctx;*ok=0;if(s->checked_probe_phase!=s->probe.phase){if(!zg_adt_check(s,0)){s->probe.poison=1;return 0;}s->checked_probe_phase=s->probe.phase;}if(!g7_read_allowed(&s->probe,address))return 0;
++ volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,address);if(!p)return 0;uint32_t value=*p;zg_barrier(s);*ok=1;return value;
++}
++static int zg_lease(void*ctx,uint64_t epoch,int acquire){
++ struct zg_state*s=ctx;if(!epoch)return 0;
++ if(acquire){uint32_t expected=0;if(!__atomic_compare_exchange_n(&s->lease,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return 0;s->lease_epoch=epoch;return 1;}
++ if(__atomic_load_n(&s->lease,__ATOMIC_ACQUIRE)!=1||s->lease_epoch!=epoch)return 0;s->lease_epoch=0;__atomic_store_n(&s->lease,0,__ATOMIC_RELEASE);return 1;
++}
++static int zg_owned(void*ctx,const void*memory,size_t bytes){struct zg_state*s=ctx;return bytes==G7_TCM_BYTES&&(memory==s->copy0||memory==s->copy1);}
++static void zg_phase(void*ctx,uint32_t phase){(void)ctx;printf("ZIYI GPU clock phase %u\n",phase);}
++static int zg_qualified(void*ctx,struct g7c_record*clocks){
++ struct zg_state*s=ctx;if(!zg_adt_check(s,0)){s->clocks.poison=1;return 0;}if(clocks!=&s->clocks||clocks->flags!=127||clocks->poison||clocks->error)return 0;
++ struct g7_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,
++ .contract_kind=G7_CONTRACT_XNU_SECURE_DT,.handoff_pairs=s->contract.handoff,.mapped_device_io=1,
++ .execution_kind=G7_EXEC_KERNEL_ON,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr()};
++ for(unsigned i=0;i<4;i++)q.rates[i]=clocks->measure[i][3];
++ struct g7_buffers buffers={s->copy0,s->copy1,sizeof(s->copy0),sizeof(s->copy1)};
++ struct g7_io io={s,zg_read_probe,zg_ticks,zg_lease,zg_owned,zg_barrier};
++ printf("ZIYI GPU G7 acquire kernel-MMU-on, no firmware/DMA\n");
++ int success=g7_run_acquire(&s->probe,&q,&buffers,&io);
++ printf("ZIYI GPU G7 result flags=%x error=%u poison=%u reads=%u TCM=%u CRC=%08x/%08x fw=0 accel=0\n",s->probe.flags,s->probe.error,s->probe.poison,s->probe.reads,s->probe.tcm_equal,s->probe.tcm_crc[0],s->probe.tcm_crc[1]);
++ if(s->probe.poison)clocks->poison=1;return success;
++}
++static void zg_worker(void*arg,wait_result_t result){
++ (void)arg;(void)result;bzero(&zg,sizeof(zg));unsigned delay_seconds=60;int pid=0;
++ PE_parse_boot_argn("ziyi_gpu_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
++ printf("ZIYI GPU probe armed opt-in delay%us then await SpringBoard; fw=0 accel=0\n",delay_seconds);zg_sleep(delay_seconds*1000u);
++ for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zg_springboard,&pid,NULL,NULL);if(!pid)zg_sleep(5000);}
++ if(!pid){printf("ZIYI GPU probe STOP SpringBoard absent after bounded wait; no device maps\n");goto done;}
++ zg_sleep(5000);printf("ZIYI GPU probe SpringBoard pid%d alive; starting in-system qualification\n",pid);
++ if(!zg_kernel_context(zg_el(),zg_sctlr(),zg_frequency())||!zg_adt_check(&zg,1)){
++  printf("ZIYI GPU probe ADT STOP status%u property%u mode%u available%u observed%u; no MMIO\n",zg.adt.status,zg.adt.property,zg.adt.mode,zg.adt.available,zg.adt.observed);goto done;
++ }
++ printf("ZIYI GPU ADT binding mode%u available%u observed%u snapshots%u; board-bound, no fabricated lockdown\n",zg.adt.mode,zg.adt.available,zg.adt.observed,zg.adt.passes);
++ if(!zg_adt_check(&zg,0)||!zg_map_all(&zg)){printf("ZIYI GPU probe: mapping failed; no transaction\n");goto unmap;}
++ printf("ZIYI GPU probe: XNU EL1/MMU/cache ON; mappedDeviceRO + guarded clockRW pages=%u\n",zg.rw_count);
++ zg.clocks.opaque|=G7C_PLATFORM_SCOPE; /* validated exact board-bound ADT snapshot; no claim of Apple lockdown */
++ struct g7c_io io={&zg,zg_read_clock,zg_write_clock,zg_delay,zg_ticks,zg_phase,zg_qualified};
++ int success=g7c_run(&zg.clocks,&io);
++ printf("ZIYI GPU clocks result=%u flags=%x error=%u poison=%u restore=%u rates=%u/%u/%u/%u\n",success,zg.clocks.flags,zg.clocks.error,zg.clocks.poison,zg.clocks.restore,zg.clocks.measure[0][3],zg.clocks.measure[1][3],zg.clocks.measure[2][3],zg.clocks.measure[3][3]);
++ printf("ZIYI GPU probe done: acquisition only, firmware=0 DMA=0 acceleration=0\n");
++unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);zg_unmap_all(&zg);
++done:thread_terminate(current_thread());
++}
++void ziyi_gpu_probe_start(void){
++ uint32_t enabled=0;if(!PE_parse_boot_argn("ziyi_gpu_probe",&enabled,sizeof(enabled))||enabled!=1)return;
++ uint32_t expected=0;if(!__atomic_compare_exchange_n(&zg_started,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return;
++ thread_t worker=THREAD_NULL;kern_return_t kr=kernel_thread_start(zg_worker,NULL,&worker);
++ if(kr!=KERN_SUCCESS){printf("ZIYI GPU probe: cannot create worker %d\n",kr);return;}thread_deallocate(worker);
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_wifi_adt_properties.inc
+@@ -0,0 +1,7 @@
++static const uint8_t zw_adt_p0[]={122,105,121,105,45,119,105,102,105,45,112,114,111,98,101,0};
++static const uint8_t zw_adt_p1[]={122,105,121,105,44,119,99,110,54,55,53,48,45,114,111,45,112,114,111,98,101,0};
++static const uint8_t zw_adt_p2[]={90,73,87,80,82,79,48,49,1,0,0,0,160,0,0,0,0,0,144,128,0,0,0,0,0,0,32,0,0,0,0,0,0,0,134,128,0,0,0,0,0,0,2,0,0,0,0,0,0,0,48,12,0,0,0,0,0,4,0,0,0,0,0,0,0,128,209,14,0,0,0,0,0,16,0,0,0,0,0,0,0,0,0,0,13,0,0,0,104,2,0,0,105,2,0,0,114,2,0,0,0,0,0,0,0,0,0,0,24,0,0,0,0,0,0,0,2,0,0,0,19,21,1,149,129,143,222,238,170,248,167,226,91,141,62,208,188,99,83,248,190,227,77,164,101,78,43,14,118,194,126,167,1,0,0,0,149,251,224,75};
++static const uint8_t zw_adt_p3[]={0,0,144,128,0,0,0,0,0,0,32,0,0,0,0,0,0,0,134,128,0,0,0,0,0,0,2,0,0,0,0,0,0,0,48,12,0,0,0,0,0,4,0,0,0,0,0,0,0,128,209,14,0,0,0,0,0,16,0,0,0,0,0,0};
++static const uint8_t zw_adt_p4[]={19,21,1,149,129,143,222,238,170,248,167,226,91,141,62,208,188,99,83,248,190,227,77,164,101,78,43,14,118,194,126,167};
++static const struct zadt_property zw_adt_properties[]={{"name",zw_adt_p0,sizeof(zw_adt_p0)},{"compatible",zw_adt_p1,sizeof(zw_adt_p1)},{"contract",zw_adt_p2,sizeof(zw_adt_p2)},{"reg",zw_adt_p3,sizeof(zw_adt_p3)},{"source-digest",zw_adt_p4,sizeof(zw_adt_p4)}};
++#define ZW_ADT_PROPERTY_COUNT 5u
+--- a/bsd/dev/ziyi_wifi_probe.c
++++ b/bsd/dev/ziyi_wifi_probe.c
+@@ -1,122 +1,125 @@
+-/* SPDX-License-Identifier: MIT
+- * Ziyi opt-in in-system RO WPSS survey. No radio/power/PAS/DMA or media writes.
+- */
+-#include <pexpert/arm64/board_config.h>
+-#if SWEET
+-#include <sys/param.h>
+-#include <sys/systm.h>
+-#include <sys/proc.h>
+-#include <sys/proc_internal.h>
+-#include <kern/clock.h>
+-#include <kern/thread.h>
+-#include <kern/sched_prim.h>
+-#include <machine/machine_routines.h>
+-#include <vm/memory_types.h>
+-#include <arm/memory_types.h>
+-#include <mach/vm_prot.h>
+-#include <pexpert/pexpert.h>
+-#include <pexpert/device_tree.h>
+-#include "ziyi_wifi_core.h"
+-#include "ziyi_wifi_sha.inc"
+-#include "ziyi_wifi_read_gate.inc"
+-#include "ziyi_wifi_smem.inc"
+-#include "ziyi_wifi_gate.inc"
+-#include "ziyi_wifi_survey.inc"
+-/* Exact U25 exported private API: io_map(...,prot,unmappable). */
+-extern vm_offset_t io_map(vm_map_offset_t,vm_size_t,unsigned int,vm_prot_t,bool);
+-extern void ml_io_unmap(vm_offset_t,vm_size_t);
+-extern kern_return_t thread_terminate(thread_t);
+-void ziyi_wifi_probe_start(void);
+-#define ZWIFI_SYSREG(reg) ({uint64_t v;__asm__ volatile("mrs %0," #reg:"=r"(v));v;})
+-static struct zwifi_record zwifi_last;
+-static struct zwifi_cursor zwifi_cursor;
+-static vm_offset_t zwifi_maps[4];
+-static vm_size_t zwifi_map_bytes[4];
+-static unsigned zwifi_once;
+-static int zwifi_channel;
+-static void zwifi_sleep(unsigned ms){uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);(void)assert_wait_deadline(&zwifi_channel,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);}
+-static int zwifi_equal(const void*aa,const void*bb,unsigned n){const uint8_t*a=aa,*b=bb;for(unsigned i=0;i<n;i++)if(a[i]!=b[i])return 0;return 1;}
+-static int zwifi_adt(void){
+- struct zwifi_record*r=&zwifi_last;DTEntry node;const void*value;unsigned n;r->adt_facts=0;
+- if(!SecureDTIsLockedDown()||SecureDTLookupEntry(NULL,"/arm-io/ziyi-wifi-probe",&node)!=0)return 0;r->adt_facts|=1|32;
+- static const char compatible[]="ziyi,wcn6750-ro-probe";
+- if(SecureDTGetProperty(node,"compatible",&value,&n)!=0||n!=sizeof(compatible)||!zwifi_equal(value,compatible,n))return 0;r->adt_facts|=2;
+- if(SecureDTGetProperty(node,"contract",&value,&n)!=0||n!=sizeof(r->contract))return 0;bcopy(value,&r->contract,n);
+- if(!zwifi_contract_valid(&r->contract))return 0;r->adt_facts|=4;
+- if(SecureDTGetProperty(node,"reg",&value,&n)!=0||n!=sizeof(r->contract.region)||!zwifi_equal(value,r->contract.region,n))return 0;r->adt_facts|=8;
+- if(SecureDTGetProperty(node,"source-digest",&value,&n)!=0||n!=32||!zwifi_equal(value,r->contract.source_digest,32))return 0;r->adt_facts|=16;
+- return r->adt_facts==ZWIFI_ADT_FACTS;
+-}
+-static int zwifi_context_now(void){return ZWIFI_SYSREG(CurrentEL)==4&&(ZWIFI_SYSREG(sctlr_el1)&0x1005)==0x1005&&ZWIFI_SYSREG(cntfrq_el0)==19200000;}
+-static int zwifi_load(uint64_t physical,void*to,uint32_t bytes){
+- struct zwifi_record*r=&zwifi_last;if(!zwifi_context_now())return 0;
+- for(unsigned region=0;region<4;region++){
+-  uint64_t base=r->contract.region[region].physical,size=r->contract.region[region].bytes;
+-  if(!zwifi_maps[region]||physical<base||physical-base>size||bytes>size-(physical-base))continue;
+-  /* The policy admits only aligned32bit reads. No memcpy or vector access to Device MMIO. */
+-  if((physical&3)||(bytes&3))return 0;uint8_t*dest=to;vm_offset_t va=zwifi_maps[region]+(vm_offset_t)(physical-base);
+-  for(unsigned i=0;i<bytes;i+=4){uint32_t v=*(volatile const uint32_t*)(va+i);for(unsigned j=0;j<4;j++)dest[i+j]=(uint8_t)(v>>(8*j));}
+-  __asm__ volatile("dsb sy":::"memory");return 1;
+- }
+- return 0;
+-}
+-static int zwifi_smem_read(void*ctx,uint32_t off,void*to,uint32_t bytes){
+- (void)ctx;struct zwifi_record*r=&zwifi_last;uint64_t physical=ZW_SMEM_BASE+off;
+- if(!zwifi_address_allowed(r,physical,bytes)){r->denied++;return 0;}
+- if(!zwifi_load(physical,to,bytes))return 0;
+- if(off==0x5c&&bytes==4){uint8_t*p=to;unsigned pass=r->smem_version[0]?1:0;r->smem_version[pass]=(uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
+- return 1;
+-}
+-static int zwifi_survey_read(void*ctx,uint64_t physical,void*to,uint32_t bytes){
+- (void)ctx;if(!zwifi_survey_allowed(&zwifi_last,&zwifi_cursor,physical,bytes)){zwifi_last.denied++;return 0;}return zwifi_load(physical,to,bytes);
+-}
+-static int zwifi_springboard(proc_t p,void*ctx){const char*name=proc_best_name(p);if(name&&strcmp(name,"SpringBoard")==0){*(int*)ctx=proc_pid(p);return PROC_RETURNED_DONE;}return PROC_RETURNED;}
+-static void zwifi_hash_line(const char*what,unsigned part,const uint8_t*d){static const char digits[]="0123456789abcdef";char hex[65];for(unsigned i=0;i<32;i++){hex[2*i]=digits[d[i]>>4];hex[2*i+1]=digits[d[i]&15];}hex[64]=0;printf("ZWIFI RO %s p%u %s\n",what,part,hex);zwifi_sleep(250);}
+-static void zwifi_summary(int pid){
+- struct zwifi_record*r=&zwifi_last;printf("ZWIFI RO kernel sampler SBpid%d status%u stage%u crc%08x bytes%u\n",pid,r->status,r->stage,r->crc,r->bytes);zwifi_sleep(250);
+- printf("ZWIFI RO ADT%02x EL%llu MCI%llx counter%llu rawSBL%08x/%08x\n",r->adt_facts,r->el,r->sctlr&0x1005,r->frequency,r->smem_version[0],r->smem_version[1]);zwifi_sleep(250);
+- printf("ZWIFI RO table%u reads%u WPSS%u global%u extra%u deny%u flags%x\n",r->smem.count,r->smem.reads,r->smem.wpss_entry,r->smem.global_entry,r->extra_reads,r->denied,r->survey_error);zwifi_sleep(250);
+- for(unsigned part=0;part<2;part++){
+-  struct zwifi_walk*w=&r->walk[0][part];printf("ZWIFI RO chain%u err%u/%u n%u u%u c%u lane%u end%x stable%d\n",part,w->error,r->walk[1][part].error,w->count,w->uncached_count,w->cached_count,w->end_lane,w->end_at,zwifi_equal(w,&r->walk[1][part],sizeof(*w)));zwifi_sleep(250);zwifi_hash_line("metadataSHA256",part,w->sha256);
+- }
+- for(unsigned t=0;t<3;t++){
+-  struct zwifi_item*i=&r->item[0][t];unsigned id=t==0?616:t==1?617:626;uint8_t hash[32];zwifi_sha256(i->data,i->captured<=340?i->captured:340,hash);
+-  printf("ZWIFI RO item%u found%u part%u off%x len%u cap%u stable%d\n",id,i->found,i->part,i->offset,i->logical,i->captured,zwifi_equal(i,&r->item[1][t],sizeof(*i)));zwifi_sleep(250);zwifi_hash_line("payloadSHA256",id,hash);
+-  if(i->found&&t<2){unsigned valid=zc_u16(i->data+14);printf("ZWIFI RO SMP%u v%u %u->%u entries%u flags%08x retained-state-only\n",id,zc_u32(i->data+4)&255,zc_u16(i->data+8),zc_u16(i->data+10),valid,zc_u32(i->data+16));zwifi_sleep(250);for(unsigned n=0;n<valid&&n<16;n++){char name[17];bcopy(i->data+20+20*n,name,16);name[16]=0;printf("ZWIFI RO SMP%u %.16s=%08x\n",id,name,zc_u32(i->data+36+20*n));zwifi_sleep(250);}}
+- }
+- printf("ZWIFI RO QMPerr%u/%u states%08x/%08x boxlen%u/%u IPCC%08x/%08x\n",r->qmp[0].error,r->qmp[1].error,r->qmp[0].descriptor[9],r->qmp[0].descriptor[11],r->qmp[0].length,r->qmp[1].length,r->ipcc_pending[0],r->ipcc_pending[1]);zwifi_sleep(250);
+- printf("ZWIFI RO CMDerr%u/%u cx%x mx%x calls%u/%u, no-radio/no-scan\n",r->db[0].error,r->db[1].error,r->db[0].entry[0][4],r->db[0].entry[1][4],r->db[0].reads,r->db[1].reads);zwifi_sleep(250);
+- printf("ZWIFI RO DONE crc%08x complete%u; no ACK/alloc/PAS/power/DMA/media writes\n",r->crc,r->survey_complete);
+-}
+-static void zwifi_thread(void*unused,wait_result_t wait){
+- (void)unused;(void)wait;struct zwifi_record*r=&zwifi_last;unsigned delay_seconds=60;int pid=0;r->version=1;r->bytes=sizeof(*r);
+- PE_parse_boot_argn("ziyi_wifi_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
+- printf("ZWIFI RO armed opt-in, delay%us then await SpringBoard; radio remains unstarted\n",delay_seconds);zwifi_sleep(delay_seconds*1000u);
+- for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zwifi_springboard,&pid,NULL,NULL);if(!pid)zwifi_sleep(5000);}
+- if(!pid){r->status=1;printf("ZWIFI RO STOP SpringBoard absent after bounded wait; no device maps\n");goto out;}
+- zwifi_sleep(5000);r->start=ZWIFI_SYSREG(cntvct_el0);r->mpidr_start=ZWIFI_SYSREG(mpidr_el1);r->el=ZWIFI_SYSREG(CurrentEL);r->sctlr=ZWIFI_SYSREG(sctlr_el1);r->frequency=ZWIFI_SYSREG(cntfrq_el0);
+- if(!zwifi_adt()||!zwifi_context_valid(r)){r->status=2;printf("ZWIFI RO STOP missing/invalid locked ADT contract/context, facts%x; no device maps\n",r->adt_facts);goto out;}
+- for(unsigned n=0;n<4;n++){
+-  uint64_t physical=r->contract.region[n].physical,size=r->contract.region[n].bytes;zwifi_map_bytes[n]=round_page((vm_size_t)size);
+-  zwifi_maps[n]=io_map(physical,(vm_size_t)size,VM_WIMG_IO,VM_PROT_READ,true);
+-  if(!zwifi_maps[n]){r->status=3;goto out;}
+- }
+- if(!zwifi_adt()||!zwifi_context_now()){r->status=4;goto out;}
+- r->stage=3;int success=zw_smem_observe(zwifi_smem_read,NULL,&r->smem);
+- if(success&&(r->smem_version[0]!=r->smem_version[1]||r->smem_version[0]>>16!=12)){r->smem.error=ZW_CHANGED;success=0;}
+- r->stage=5;int complete=zwifi_survey(r,&zwifi_cursor,zwifi_survey_read,NULL);r->stage=6;
+- if(!success)r->status=2000+r->smem.error;else if(!complete)r->status=3000;
+- if(!zwifi_adt())r->status=5;
+- out:
+- __asm__ volatile("dsb sy":::"memory");for(unsigned n=0;n<4;n++)if(zwifi_maps[n]){ml_io_unmap(zwifi_maps[n],zwifi_map_bytes[n]);zwifi_maps[n]=0;}
+- r->end=ZWIFI_SYSREG(cntvct_el0);r->mpidr_end=ZWIFI_SYSREG(mpidr_el1);r->crc=0;r->crc=zwifi_crc32(r,sizeof(*r));zwifi_summary(pid);
+- (void)thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
+-}
+-void ziyi_wifi_probe_start(void){
+- int enabled=0;if(!PE_parse_boot_argn("ziyi_wifi_probe",&enabled,sizeof(enabled))||enabled!=1)return;
+- unsigned expected=0;if(!__atomic_compare_exchange_n(&zwifi_once,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_RELAXED))return;
+- thread_t thread;kern_return_t error=kernel_thread_start(zwifi_thread,NULL,&thread);if(error==KERN_SUCCESS)thread_deallocate(thread);else printf("ZWIFI RO STOP thread start %d\n",error);
+-}
+-#else
+-#error "ziyi_wifi_probe requires the SWEET kernel profile"
+-#endif
++/* SPDX-License-Identifier: MIT
++ * Ziyi opt-in in-system RO WPSS survey. No radio/power/PAS/DMA or media writes.
++ */
++#include <pexpert/arm64/board_config.h>
++#if SWEET
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <sys/proc.h>
++#include <sys/proc_internal.h>
++#include <kern/clock.h>
++#include <kern/thread.h>
++#include <kern/sched_prim.h>
++#include <machine/machine_routines.h>
++#include <vm/memory_types.h>
++#include <arm/memory_types.h>
++#include <mach/vm_prot.h>
++#include <pexpert/pexpert.h>
++#include <pexpert/device_tree.h>
++#include "ziyi_wifi_core.h"
++#include "ziyi_adt_binding.h"
++#include "ziyi_wifi_adt_properties.inc"
++#include "ziyi_wifi_sha.inc"
++#include "ziyi_wifi_read_gate.inc"
++#include "ziyi_wifi_smem.inc"
++#include "ziyi_wifi_gate.inc"
++#include "ziyi_wifi_survey.inc"
++/* Exact U25 exported private API: io_map(...,prot,unmappable). */
++extern vm_offset_t io_map(vm_map_offset_t,vm_size_t,unsigned int,vm_prot_t,bool);
++extern void ml_io_unmap(vm_offset_t,vm_size_t);
++extern kern_return_t thread_terminate(thread_t);
++void ziyi_wifi_probe_start(void);
++#define ZWIFI_SYSREG(reg) ({uint64_t v;__asm__ volatile("mrs %0," #reg:"=r"(v));v;})
++static struct zwifi_record zwifi_last;
++static struct zwifi_cursor zwifi_cursor;
++static vm_offset_t zwifi_maps[4];
++static vm_size_t zwifi_map_bytes[4];
++static unsigned zwifi_once;
++static struct zadt_binding zwifi_binding;
++static int zwifi_channel;
++static void zwifi_sleep(unsigned ms){uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);(void)assert_wait_deadline(&zwifi_channel,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);}
++static int zwifi_equal(const void*aa,const void*bb,unsigned n){const uint8_t*a=aa,*b=bb;for(unsigned i=0;i<n;i++)if(a[i]!=b[i])return 0;return 1;}
++static int zwifi_adt(void){
++ struct zwifi_record*r=&zwifi_last;r->adt_facts=0;
++ if(!zwifi_binding.ready&&zwifi_binding.passes)return 0; /* Failed epoch never reopens itself. */
++ int ok=zwifi_binding.ready?zadt_recheck(&zwifi_binding,"/arm-io/ziyi-wifi-probe",zw_adt_properties,ZW_ADT_PROPERTY_COUNT):zadt_open(&zwifi_binding,"/arm-io/ziyi-wifi-probe",zw_adt_properties,ZW_ADT_PROPERTY_COUNT);
++ if(!ok)return 0;
++ /* Facts63 now means exact compiled board contract + stable snapshot, not hardware lockdown. */
++ bcopy(zwifi_contract_bytes,&r->contract,sizeof(r->contract));
++ if(!zwifi_contract_valid(&r->contract))return 0;r->adt_facts=ZWIFI_ADT_FACTS;return 1;
++}
++static int zwifi_context_now(void){return ZWIFI_SYSREG(CurrentEL)==4&&(ZWIFI_SYSREG(sctlr_el1)&0x1005)==0x1005&&ZWIFI_SYSREG(cntfrq_el0)==19200000;}
++static int zwifi_load(uint64_t physical,void*to,uint32_t bytes){
++ struct zwifi_record*r=&zwifi_last;if(!zwifi_adt()||!zwifi_context_now())return 0;
++ for(unsigned region=0;region<4;region++){
++  uint64_t base=r->contract.region[region].physical,size=r->contract.region[region].bytes;
++  if(!zwifi_maps[region]||physical<base||physical-base>size||bytes>size-(physical-base))continue;
++  /* The policy admits only aligned32bit reads. No memcpy or vector access to Device MMIO. */
++  if((physical&3)||(bytes&3))return 0;uint8_t*dest=to;vm_offset_t va=zwifi_maps[region]+(vm_offset_t)(physical-base);
++  for(unsigned i=0;i<bytes;i+=4){uint32_t v=*(volatile const uint32_t*)(va+i);for(unsigned j=0;j<4;j++)dest[i+j]=(uint8_t)(v>>(8*j));}
++  __asm__ volatile("dsb sy":::"memory");return 1;
++ }
++ return 0;
++}
++static int zwifi_smem_read(void*ctx,uint32_t off,void*to,uint32_t bytes){
++ (void)ctx;struct zwifi_record*r=&zwifi_last;uint64_t physical=ZW_SMEM_BASE+off;
++ if(!zwifi_address_allowed(r,physical,bytes)){r->denied++;return 0;}
++ if(!zwifi_load(physical,to,bytes))return 0;
++ if(off==0x5c&&bytes==4){uint8_t*p=to;unsigned pass=r->smem_version[0]?1:0;r->smem_version[pass]=(uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++ return 1;
++}
++static int zwifi_survey_read(void*ctx,uint64_t physical,void*to,uint32_t bytes){
++ (void)ctx;if(!zwifi_survey_allowed(&zwifi_last,&zwifi_cursor,physical,bytes)){zwifi_last.denied++;return 0;}return zwifi_load(physical,to,bytes);
++}
++static int zwifi_springboard(proc_t p,void*ctx){const char*name=proc_best_name(p);if(name&&strcmp(name,"SpringBoard")==0){*(int*)ctx=proc_pid(p);return PROC_RETURNED_DONE;}return PROC_RETURNED;}
++static void zwifi_hash_line(const char*what,unsigned part,const uint8_t*d){static const char digits[]="0123456789abcdef";char hex[65];for(unsigned i=0;i<32;i++){hex[2*i]=digits[d[i]>>4];hex[2*i+1]=digits[d[i]&15];}hex[64]=0;printf("ZWIFI RO %s p%u %s\n",what,part,hex);zwifi_sleep(250);}
++static void zwifi_summary(int pid){
++ struct zwifi_record*r=&zwifi_last;printf("ZWIFI RO kernel sampler SBpid%d status%u stage%u crc%08x bytes%u\n",pid,r->status,r->stage,r->crc,r->bytes);zwifi_sleep(250);
++ printf("ZWIFI RO binding mode%u available%u observed%u snapshots%u\n",zwifi_binding.mode,zwifi_binding.available,zwifi_binding.observed,zwifi_binding.passes);zwifi_sleep(250);
++ printf("ZWIFI RO ADT%02x EL%llu MCI%llx counter%llu rawSBL%08x/%08x\n",r->adt_facts,r->el,r->sctlr&0x1005,r->frequency,r->smem_version[0],r->smem_version[1]);zwifi_sleep(250);
++ printf("ZWIFI RO table%u reads%u WPSS%u global%u extra%u deny%u flags%x\n",r->smem.count,r->smem.reads,r->smem.wpss_entry,r->smem.global_entry,r->extra_reads,r->denied,r->survey_error);zwifi_sleep(250);
++ for(unsigned part=0;part<2;part++){
++  struct zwifi_walk*w=&r->walk[0][part];printf("ZWIFI RO chain%u err%u/%u n%u u%u c%u lane%u end%x stable%d\n",part,w->error,r->walk[1][part].error,w->count,w->uncached_count,w->cached_count,w->end_lane,w->end_at,zwifi_equal(w,&r->walk[1][part],sizeof(*w)));zwifi_sleep(250);zwifi_hash_line("metadataSHA256",part,w->sha256);
++ }
++ for(unsigned t=0;t<3;t++){
++  struct zwifi_item*i=&r->item[0][t];unsigned id=t==0?616:t==1?617:626;uint8_t hash[32];zwifi_sha256(i->data,i->captured<=340?i->captured:340,hash);
++  printf("ZWIFI RO item%u found%u part%u off%x len%u cap%u stable%d\n",id,i->found,i->part,i->offset,i->logical,i->captured,zwifi_equal(i,&r->item[1][t],sizeof(*i)));zwifi_sleep(250);zwifi_hash_line("payloadSHA256",id,hash);
++  if(i->found&&t<2){unsigned valid=zc_u16(i->data+14);printf("ZWIFI RO SMP%u v%u %u->%u entries%u flags%08x retained-state-only\n",id,zc_u32(i->data+4)&255,zc_u16(i->data+8),zc_u16(i->data+10),valid,zc_u32(i->data+16));zwifi_sleep(250);for(unsigned n=0;n<valid&&n<16;n++){char name[17];bcopy(i->data+20+20*n,name,16);name[16]=0;printf("ZWIFI RO SMP%u %.16s=%08x\n",id,name,zc_u32(i->data+36+20*n));zwifi_sleep(250);}}
++ }
++ printf("ZWIFI RO QMPerr%u/%u states%08x/%08x boxlen%u/%u IPCC%08x/%08x\n",r->qmp[0].error,r->qmp[1].error,r->qmp[0].descriptor[9],r->qmp[0].descriptor[11],r->qmp[0].length,r->qmp[1].length,r->ipcc_pending[0],r->ipcc_pending[1]);zwifi_sleep(250);
++ printf("ZWIFI RO CMDerr%u/%u cx%x mx%x calls%u/%u, no-radio/no-scan\n",r->db[0].error,r->db[1].error,r->db[0].entry[0][4],r->db[0].entry[1][4],r->db[0].reads,r->db[1].reads);zwifi_sleep(250);
++ printf("ZWIFI RO DONE crc%08x complete%u; no ACK/alloc/PAS/power/DMA/media writes\n",r->crc,r->survey_complete);
++}
++static void zwifi_thread(void*unused,wait_result_t wait){
++ (void)unused;(void)wait;struct zwifi_record*r=&zwifi_last;unsigned delay_seconds=60;int pid=0;r->version=2;r->bytes=sizeof(*r);
++ PE_parse_boot_argn("ziyi_wifi_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
++ printf("ZWIFI RO armed opt-in, delay%us then await SpringBoard; radio remains unstarted\n",delay_seconds);zwifi_sleep(delay_seconds*1000u);
++ for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zwifi_springboard,&pid,NULL,NULL);if(!pid)zwifi_sleep(5000);}
++ if(!pid){r->status=1;printf("ZWIFI RO STOP SpringBoard absent after bounded wait; no device maps\n");goto out;}
++ zwifi_sleep(5000);r->start=ZWIFI_SYSREG(cntvct_el0);r->mpidr_start=ZWIFI_SYSREG(mpidr_el1);r->el=ZWIFI_SYSREG(CurrentEL);r->sctlr=ZWIFI_SYSREG(sctlr_el1);r->frequency=ZWIFI_SYSREG(cntfrq_el0);
++ if(!zwifi_adt()||!zwifi_context_valid(r)){r->status=2;printf("ZWIFI RO ADT STOP status%u property%u mode%u available%u observed%u facts%x; no device maps\n",zwifi_binding.status,zwifi_binding.property,zwifi_binding.mode,zwifi_binding.available,zwifi_binding.observed,r->adt_facts);goto out;}
++ printf("ZWIFI RO ADT binding mode%u available%u observed%u snapshots%u; board-bound, no fabricated lockdown\n",zwifi_binding.mode,zwifi_binding.available,zwifi_binding.observed,zwifi_binding.passes);
++ for(unsigned n=0;n<4;n++){
++  uint64_t physical=r->contract.region[n].physical,size=r->contract.region[n].bytes;zwifi_map_bytes[n]=round_page((vm_size_t)size);
++  zwifi_maps[n]=io_map(physical,(vm_size_t)size,VM_WIMG_IO,VM_PROT_READ,true);
++  if(!zwifi_maps[n]){r->status=3;goto out;}
++ }
++ if(!zwifi_adt()||!zwifi_context_now()){r->status=4;goto out;}
++ r->stage=3;int success=zw_smem_observe(zwifi_smem_read,NULL,&r->smem);
++ if(success&&(r->smem_version[0]!=r->smem_version[1]||r->smem_version[0]>>16!=12)){r->smem.error=ZW_CHANGED;success=0;}
++ r->stage=5;int complete=zwifi_survey(r,&zwifi_cursor,zwifi_survey_read,NULL);r->stage=6;
++ if(!success)r->status=2000+r->smem.error;else if(!complete)r->status=3000;
++ if(!zwifi_adt())r->status=5;
++ out:
++ __asm__ volatile("dsb sy":::"memory");for(unsigned n=0;n<4;n++)if(zwifi_maps[n]){ml_io_unmap(zwifi_maps[n],zwifi_map_bytes[n]);zwifi_maps[n]=0;}
++ r->end=ZWIFI_SYSREG(cntvct_el0);r->mpidr_end=ZWIFI_SYSREG(mpidr_el1);r->crc=0;r->crc=zwifi_crc32(r,sizeof(*r));zwifi_summary(pid);
++ (void)thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
++}
++void ziyi_wifi_probe_start(void){
++ int enabled=0;if(!PE_parse_boot_argn("ziyi_wifi_probe",&enabled,sizeof(enabled))||enabled!=1)return;
++ unsigned expected=0;if(!__atomic_compare_exchange_n(&zwifi_once,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_RELAXED))return;
++ thread_t thread;kern_return_t error=kernel_thread_start(zwifi_thread,NULL,&thread);if(error==KERN_SUCCESS)thread_deallocate(thread);else printf("ZWIFI RO STOP thread start %d\n",error);
++}
++#else
++#error "ziyi_wifi_probe requires the SWEET kernel profile"
++#endif

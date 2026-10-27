@@ -25,6 +25,7 @@ on:
       - "tools/ziyi-ufs/**"
       - "tools/ziyi-hw/**"
       - "xnu/patches/0085-ziyi-hw-in-system.patch"
+      - "xnu/patches/0086-ziyi-actual-adt-api.patch"
 
 permissions:
   contents: read

@@ -1,2 +1,4 @@
 /tools/ziyi-hw/** -text
 /xnu/patches/0085-ziyi-hw-in-system.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0086-ziyi-actual-adt-api.patch -text whitespace=cr-at-eol

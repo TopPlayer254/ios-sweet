@@ -1,0 +1,12 @@
+[
+  {
+    "file": "device_tree.c",
+    "builtXNUPath": "pexpert/gen/device_tree.c",
+    "sha256": "d0bd1085f269fd5e6661836c59e7eb87fd2463deb5bb0ab400590c03ac7a0ca1"
+  },
+  {
+    "file": "include/pexpert/device_tree.h",
+    "builtXNUPath": "pexpert/pexpert/device_tree.h",
+    "sha256": "a558ceea1bfff5b5d381550db38cba482a6fe67096e2cab89073ab3c9ecb8ccf"
+  }
+]

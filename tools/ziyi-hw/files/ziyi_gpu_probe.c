@@ -27,12 +27,15 @@
 #include "ziyi_gpu_probe_contract.h"
 #include "ziyi_g7_clock.h"
 #include "ziyi_g7_engine.h"
+#include "ziyi_adt_binding.h"
+#include "ziyi_gpu_adt_properties.inc"
 extern vm_offset_t io_map(vm_map_offset_t,vm_size_t,unsigned int,vm_prot_t,bool);
 extern void ml_io_unmap(vm_offset_t,vm_size_t);
 extern kern_return_t thread_terminate(thread_t);
 #define ZG_RW_MAPS 25u
 struct zg_mapping {struct zg_region region;struct zg_geometry geometry;vm_offset_t page_va;};
 struct zg_state {
+ struct zadt_binding adt;uint32_t checked_clock_phase,checked_probe_phase;
  struct zg_contract contract;struct zg_mapping ro[ZG_REGIONS],rw[ZG_RW_MAPS];unsigned rw_count;
  struct g7c_record clocks;struct g7_record probe;uint64_t lease_epoch;uint32_t lease;
  uint8_t copy0[G7_TCM_BYTES] __attribute__((aligned(64)));
@@ -50,6 +53,13 @@ static uint64_t zg_el(void){uint64_t v;__asm__ volatile("mrs %0,CurrentEL":"=r"(
 static uint64_t zg_frequency(void){uint64_t v;__asm__ volatile("mrs %0,cntfrq_el0":"=r"(v));return v;}
 static void zg_delay(void*ctx,uint32_t us){uint64_t first=zg_ticks(ctx),ticks=((uint64_t)us*192+9)/10;while(zg_ticks(ctx)-first<ticks)__asm__ volatile("yield");}
 static int zg_get(void*ctx,const char*name,const void**data,unsigned*bytes){return SecureDTGetProperty((DTEntry)ctx,name,data,bytes)==kSuccess;}
+static int zg_adt_check(struct zg_state*s,int first){
+ int ok=first?zadt_open(&s->adt,"/arm-io/ziyi-gpu-probe",zg_adt_properties,ZG_ADT_PROPERTY_COUNT):zadt_recheck(&s->adt,"/arm-io/ziyi-gpu-probe",zg_adt_properties,ZG_ADT_PROPERTY_COUNT);
+ if(!ok)return 0;struct zg_contract fresh;
+ if(!zg_contract_read(&fresh,zg_get,(void*)s->adt.entry))return 0;
+ if(first)s->contract=fresh;else if(!zadt_equal(&fresh,&s->contract,sizeof(fresh)))return 0;
+ return 1;
+}
 static int zg_map_one(struct zg_mapping*m,struct zg_region region,vm_prot_t prot){
  struct zg_geometry geometry;if(!zg_map_geometry(region.base,region.bytes,PAGE_SIZE,&geometry))return 0;
  vm_offset_t va=io_map((vm_map_offset_t)geometry.page_base,(vm_size_t)geometry.page_span,VM_WIMG_IO,prot,true);
@@ -77,19 +87,19 @@ static volatile uint32_t*zg_pointer(struct zg_mapping*m,unsigned count,uint64_t 
  return 0;
 }
 static uint32_t zg_read_clock(void*ctx,uint64_t base,uint32_t off,int*ok){
- struct zg_state*s=ctx;*ok=0;if(!g7c_read_allowed(&s->clocks,base,off)||base>UINT64_MAX-off)return 0;
+ struct zg_state*s=ctx;*ok=0;if(s->checked_clock_phase!=s->clocks.phase){if(!zg_adt_check(s,0)){s->clocks.poison=1;return 0;}s->checked_clock_phase=s->clocks.phase;}if(!g7c_read_allowed(&s->clocks,base,off)||base>UINT64_MAX-off)return 0;
  volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,base+off);if(!p)return 0;
  uint32_t value=*p;zg_barrier(s);*ok=1;return value;
 }
 static void zg_write_clock(void*ctx,uint64_t base,uint32_t off,uint32_t value,int*ok){
- struct zg_state*s=ctx;*ok=0;if(!g7c_write_allowed(base,off)||base>UINT64_MAX-off)return;
+ struct zg_state*s=ctx;*ok=0;if(!zg_adt_check(s,0)){s->clocks.poison=1;return;}if(!g7c_write_allowed(base,off)||base>UINT64_MAX-off)return;
  volatile uint32_t*read=zg_pointer(s->ro,ZG_REGIONS,base+off),*write=zg_pointer(s->rw,s->rw_count,base+off);if(!read||!write)return;
  uint32_t now=*read;zg_barrier(s);for(unsigned i=0;i<G2_NREGS;i++)if(g7c_regs[i].base==base&&g7c_regs[i].offset==off)s->clocks.final[i]=now;
  if(!g7c_store_guard(&s->clocks,base,off,value,now))return;
  *write=value;zg_barrier(s);*ok=1;
 }
 static uint32_t zg_read_probe(void*ctx,uint64_t address,int*ok){
- struct zg_state*s=ctx;*ok=0;if(!g7_read_allowed(&s->probe,address))return 0;
+ struct zg_state*s=ctx;*ok=0;if(s->checked_probe_phase!=s->probe.phase){if(!zg_adt_check(s,0)){s->probe.poison=1;return 0;}s->checked_probe_phase=s->probe.phase;}if(!g7_read_allowed(&s->probe,address))return 0;
  volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,address);if(!p)return 0;uint32_t value=*p;zg_barrier(s);*ok=1;return value;
 }
 static int zg_lease(void*ctx,uint64_t epoch,int acquire){
@@ -100,7 +110,7 @@ static int zg_lease(void*ctx,uint64_t epoch,int acquire){
 static int zg_owned(void*ctx,const void*memory,size_t bytes){struct zg_state*s=ctx;return bytes==G7_TCM_BYTES&&(memory==s->copy0||memory==s->copy1);}
 static void zg_phase(void*ctx,uint32_t phase){(void)ctx;printf("ZIYI GPU clock phase %u\n",phase);}
 static int zg_qualified(void*ctx,struct g7c_record*clocks){
- struct zg_state*s=ctx;if(clocks!=&s->clocks||clocks->flags!=127||clocks->poison||clocks->error)return 0;
+ struct zg_state*s=ctx;if(!zg_adt_check(s,0)){s->clocks.poison=1;return 0;}if(clocks!=&s->clocks||clocks->flags!=127||clocks->poison||clocks->error)return 0;
  struct g7_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,
  .contract_kind=G7_CONTRACT_XNU_SECURE_DT,.handoff_pairs=s->contract.handoff,.mapped_device_io=1,
  .execution_kind=G7_EXEC_KERNEL_ON,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr()};
@@ -113,23 +123,24 @@ static int zg_qualified(void*ctx,struct g7c_record*clocks){
  if(s->probe.poison)clocks->poison=1;return success;
 }
 static void zg_worker(void*arg,wait_result_t result){
- (void)arg;(void)result;bzero(&zg,sizeof(zg));DTEntry entry=0;unsigned delay_seconds=60;int pid=0;
+ (void)arg;(void)result;bzero(&zg,sizeof(zg));unsigned delay_seconds=60;int pid=0;
  PE_parse_boot_argn("ziyi_gpu_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
  printf("ZIYI GPU probe armed opt-in delay%us then await SpringBoard; fw=0 accel=0\n",delay_seconds);zg_sleep(delay_seconds*1000u);
  for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zg_springboard,&pid,NULL,NULL);if(!pid)zg_sleep(5000);}
  if(!pid){printf("ZIYI GPU probe STOP SpringBoard absent after bounded wait; no device maps\n");goto done;}
  zg_sleep(5000);printf("ZIYI GPU probe SpringBoard pid%d alive; starting in-system qualification\n",pid);
- if(!SecureDTIsLockedDown()||!zg_kernel_context(zg_el(),zg_sctlr(),zg_frequency())||SecureDTLookupEntry(NULL,"/arm-io/ziyi-gpu-probe",&entry)!=kSuccess||!zg_contract_read(&zg.contract,zg_get,(void*)entry)){
-  printf("ZIYI GPU probe: kernel/SecureDT contract rejected; no MMIO\n");goto done;
+ if(!zg_kernel_context(zg_el(),zg_sctlr(),zg_frequency())||!zg_adt_check(&zg,1)){
+  printf("ZIYI GPU probe ADT STOP status%u property%u mode%u available%u observed%u; no MMIO\n",zg.adt.status,zg.adt.property,zg.adt.mode,zg.adt.available,zg.adt.observed);goto done;
  }
- if(!zg_map_all(&zg)){printf("ZIYI GPU probe: mapping failed; no transaction\n");goto unmap;}
+ printf("ZIYI GPU ADT binding mode%u available%u observed%u snapshots%u; board-bound, no fabricated lockdown\n",zg.adt.mode,zg.adt.available,zg.adt.observed,zg.adt.passes);
+ if(!zg_adt_check(&zg,0)||!zg_map_all(&zg)){printf("ZIYI GPU probe: mapping failed; no transaction\n");goto unmap;}
  printf("ZIYI GPU probe: XNU EL1/MMU/cache ON; mappedDeviceRO + guarded clockRW pages=%u\n",zg.rw_count);
- zg.clocks.opaque|=G7C_PLATFORM_SCOPE; /* validated locked SecureDT kernel contract */
+ zg.clocks.opaque|=G7C_PLATFORM_SCOPE; /* validated exact board-bound ADT snapshot; no claim of Apple lockdown */
  struct g7c_io io={&zg,zg_read_clock,zg_write_clock,zg_delay,zg_ticks,zg_phase,zg_qualified};
  int success=g7c_run(&zg.clocks,&io);
  printf("ZIYI GPU clocks result=%u flags=%x error=%u poison=%u restore=%u rates=%u/%u/%u/%u\n",success,zg.clocks.flags,zg.clocks.error,zg.clocks.poison,zg.clocks.restore,zg.clocks.measure[0][3],zg.clocks.measure[1][3],zg.clocks.measure[2][3],zg.clocks.measure[3][3]);
  printf("ZIYI GPU probe done: acquisition only, firmware=0 DMA=0 acceleration=0\n");
-unmap:zg_unmap_all(&zg);
+unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);zg_unmap_all(&zg);
 done:thread_terminate(current_thread());
 }
 void ziyi_gpu_probe_start(void){

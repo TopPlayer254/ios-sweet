@@ -173,7 +173,7 @@
   },
   "bsd/dev/ziyi_gpu_probe.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "bf3f448c4b34ef77ed5ad83446e2a3d8454fc5cbbce71e48e0f98f9453461e43"
+    "after": "7afcb1ed313eb08c8f289892dbc5ddf3b2ad33a76ae62730f01ec0d498677eea"
   },
   "bsd/dev/ziyi_gpu_probe.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -193,7 +193,7 @@
   },
   "bsd/dev/ziyi_wifi_probe.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "fdc1d3f4b970d130e4b4fd4fafd43903474bd58a8c5cf8e906215fbcdecd5a30"
+    "after": "8a57f61e65484d68e8450c0cbf7e20ca9206de09bf15ae1a27c75ab8d2e9c44c"
   },
   "bsd/dev/ziyi_wifi_core.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -226,5 +226,25 @@
   "bsd/conf/files.arm64": {
     "before": "d0eedac2688f83bdfab3344eedb07173d59dd344785e715cdb91e208c7926170",
     "after": "a32638b44fd8222cc20c2873722180ffd9e71156ce0df1690b3e884900489d03"
+  },
+  "bsd/dev/ziyi_adt_binding.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "a6f887960dcc0355e5f05285bf6d7fd40e465d637aa80f43dfd90feaeb4281c5"
+  },
+  "bsd/dev/ziyi_gpu_adt_properties.inc": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "1c63460ac04b5e3237ac12b1f5ddd22f98fee8d591fad20a446c6ff50a0309c7"
+  },
+  "bsd/dev/ziyi_wifi_adt_properties.inc": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "d7b88df1a0f8de8d56b7f05e998eb755ec653efea4470530d918b0a0cb467635"
+  },
+  "pexpert/gen/device_tree.c": {
+    "before": "d0bd1085f269fd5e6661836c59e7eb87fd2463deb5bb0ab400590c03ac7a0ca1",
+    "after": "d0bd1085f269fd5e6661836c59e7eb87fd2463deb5bb0ab400590c03ac7a0ca1"
+  },
+  "pexpert/pexpert/device_tree.h": {
+    "before": "a558ceea1bfff5b5d381550db38cba482a6fe67096e2cab89073ab3c9ecb8ccf",
+    "after": "a558ceea1bfff5b5d381550db38cba482a6fe67096e2cab89073ab3c9ecb8ccf"
   }
 }
