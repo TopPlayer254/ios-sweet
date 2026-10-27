@@ -45,7 +45,7 @@ jobs:
   build:
     # Reuse byte-identical generated RPC bindings from successful U4; verify
     # all 1164 captured source/header inputs. Never use the newer IIG ABI.
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
