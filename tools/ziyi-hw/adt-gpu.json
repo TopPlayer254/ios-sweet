@@ -1,0 +1,81 @@
+{
+  "node": "/arm-io/ziyi-gpu-probe",
+  "properties": {
+    "compatible": {
+      "hex": "7a6979692c6770752d70726f62652d763100"
+    },
+    "source-board-id": {
+      "hex": "01020606"
+    },
+    "hlos-context-banks": {
+      "hex": "06000000"
+    },
+    "hlos-smr": {
+      "hex": "06000000"
+    },
+    "gmu-sid": {
+      "hex": "05000000"
+    },
+    "gmu-sid-mask": {
+      "hex": "00040000"
+    },
+    "source-handoff-count": {
+      "hex": "00000000"
+    },
+    "source-gmu-reg-size": {
+      "hex": "00400300"
+    },
+    "source-contract-sha256": {
+      "hex": "dae7ac287322804cfd854a60ced8e8b5be457f0f72cafab2a336a9a11f31918e"
+    },
+    "reg-names": {
+      "hex": "67636300677075636300676d7500736d6d7500"
+    },
+    "reg": {
+      "hex": "000010000000000000000900000000000000d9030000000000a000000000000000a0d6030000000000500200000000000000da03000000000000020000000000"
+    }
+  },
+  "source": {
+    "kind": "normalized SecureDT kernel contract",
+    "sourceDtbSha256": "cc31c7d2d958c6b89b044d5967ee7e9bc7ea695256048909fbe1b1e7ae051e30",
+    "scope": "Artifacts/ziyi/ios-sweet/20261026-gmu-ownership-sources-v1",
+    "sourceNodes": [
+      "/soc/kgsl-smmu@3da0000",
+      "/soc/qcom,gmu@3d69000"
+    ],
+    "sourceBoard": 101057025,
+    "sourceGmuRangeBytes": 212992,
+    "mappedGmuRangeBytes": 151552,
+    "hlosBanks": 6,
+    "hlosSmrs": 6,
+    "sid": 5,
+    "sidMask": 1024,
+    "handoffCount": 0,
+    "resources": [
+      [
+        "gcc",
+        1048576,
+        589824
+      ],
+      [
+        "gpucc",
+        64552960,
+        40960
+      ],
+      [
+        "gmu",
+        64397312,
+        151552
+      ],
+      [
+        "smmu",
+        64618496,
+        131072
+      ]
+    ],
+    "semantics": "Packaged source facts; never raw liveAndroidFDT127 or flatMMUoff flags; actual XNU EL1+MMU/cache-on is measured separately"
+  },
+  "sourceContractSha256": "dae7ac287322804cfd854a60ced8e8b5be457f0f72cafab2a336a9a11f31918e",
+  "firmwareIncluded": false,
+  "normalizedSourceContractNotRuntimeProbeProof": true
+}

@@ -1,0 +1,12 @@
+static unsigned char f0[]={122,105,121,105,44,103,112,117,45,112,114,111,98,101,45,118,49,0};
+static unsigned char f1[]={1,2,6,6};
+static unsigned char f2[]={6,0,0,0};
+static unsigned char f3[]={6,0,0,0};
+static unsigned char f4[]={5,0,0,0};
+static unsigned char f5[]={0,4,0,0};
+static unsigned char f6[]={0,0,0,0};
+static unsigned char f7[]={0,64,3,0};
+static unsigned char f8[]={218,231,172,40,115,34,128,76,253,133,74,96,206,216,232,181,190,69,127,15,114,202,250,178,163,54,169,161,31,49,145,142};
+static unsigned char f9[]={103,99,99,0,103,112,117,99,99,0,103,109,117,0,115,109,109,117,0};
+static unsigned char f10[]={0,0,16,0,0,0,0,0,0,0,9,0,0,0,0,0,0,0,217,3,0,0,0,0,0,160,0,0,0,0,0,0,0,160,214,3,0,0,0,0,0,80,2,0,0,0,0,0,0,0,218,3,0,0,0,0,0,0,2,0,0,0,0,0};
+static struct {const char*name;unsigned char*value;unsigned bytes,hidden;} fixture[]={{"compatible",f0,sizeof(f0),0},{"source-board-id",f1,sizeof(f1),0},{"hlos-context-banks",f2,sizeof(f2),0},{"hlos-smr",f3,sizeof(f3),0},{"gmu-sid",f4,sizeof(f4),0},{"gmu-sid-mask",f5,sizeof(f5),0},{"source-handoff-count",f6,sizeof(f6),0},{"source-gmu-reg-size",f7,sizeof(f7),0},{"source-contract-sha256",f8,sizeof(f8),0},{"reg-names",f9,sizeof(f9),0},{"reg",f10,sizeof(f10),0}};

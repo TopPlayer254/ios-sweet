@@ -1,0 +1,366 @@
+{
+  "version": 1,
+  "baseCommit": "aa2aeeb453c7a46f5907f19d8de129dfc229b2bb",
+  "sources": [
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_engine.c",
+      "target": "bsd/dev/ziyi_g7_engine.c",
+      "sha256": "7a265c1b69623b125c8ddfb3081ec9f3b2d6c80a20477f2f135ea0dce966f423",
+      "bytes": 7729
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_engine.h",
+      "target": "bsd/dev/ziyi_g7_engine.h",
+      "sha256": "3d10d45345d140114c35a05dbff5d96c7942dfacb80505631c6c8983527ad8b7",
+      "bytes": 2449
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_controls.h",
+      "target": "bsd/dev/ziyi_g7_controls.h",
+      "sha256": "f4ffcb649ca1b45e2dbaff83e998fe4cc225a340a9b5f90d5122b947909c0c41",
+      "bytes": 381
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_policy.c",
+      "target": "bsd/dev/ziyi_g7_policy.c",
+      "sha256": "7cd77ca63248b86b378d38e982ac20f5231a5cd59ef36951393ba46e0fe5d71b",
+      "bytes": 2677
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_policy.h",
+      "target": "bsd/dev/ziyi_g7_policy.h",
+      "sha256": "ca8edb0849ae89b104a0cda01bec1919b67c314135a4236398c29d19bb2a059d",
+      "bytes": 1519
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_sha256.c",
+      "target": "bsd/dev/ziyi_g7_sha256.c",
+      "sha256": "217d6db603812503adcd4d035f300b303d3edc2a6ac5c24b67ce82cb5631fb19",
+      "bytes": 2547
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_sha256.h",
+      "target": "bsd/dev/ziyi_g7_sha256.h",
+      "sha256": "61229c05b410801a4a189f82cc3debdbd2c30901154830b7b16ad0881a66ed10",
+      "bytes": 144
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_clock.c",
+      "target": "bsd/dev/ziyi_g7_clock.c",
+      "sha256": "fbcf731b90c45e520f77b7955c568b4ba4b866a53769c90b018a28427e3480ff",
+      "bytes": 17094
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_clock.h",
+      "target": "bsd/dev/ziyi_g7_clock.h",
+      "sha256": "2106c17c49b1223cd9e3f892369fbd9953e3f56c26970047ea3a6763a5b78300",
+      "bytes": 1671
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_clock_profile.h",
+      "target": "bsd/dev/ziyi_g7_clock_profile.h",
+      "sha256": "bc1ae8a9cdc0763bb5e72cfb37e22874b93c40dff81eb4587f90e782cce0963b",
+      "bytes": 3287
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_clock_baseline.h",
+      "target": "bsd/dev/ziyi_g7_clock_baseline.h",
+      "sha256": "9e40fd0092630f2f70cb4d6f290b85a76b88e60a2cc49f7afc74bf68c7350bc4",
+      "bytes": 1063
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_g7_clock_crc.c",
+      "target": "bsd/dev/ziyi_g7_clock_crc.c",
+      "sha256": "85a8e5bb23e93e923ce5c6fe8968f0f77f3795d4615dc15ca491c717dc62d976",
+      "bytes": 226
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
+      "target": "bsd/dev/ziyi_gpu_probe.c",
+      "sha256": "bf3f448c4b34ef77ed5ad83446e2a3d8454fc5cbbce71e48e0f98f9453461e43",
+      "bytes": 10012
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
+      "target": "bsd/dev/ziyi_gpu_probe.h",
+      "sha256": "3dfb2f3a60fe3deece120005af81c256bd0d35c4ea815e2034f498c1b6723112",
+      "bytes": 245
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_gpu_probe_contract.c",
+      "target": "bsd/dev/ziyi_gpu_probe_contract.c",
+      "sha256": "8b969b4b15a5523b356e311089dbfacf2856bb1d229ead6483996b9082644fe9",
+      "bytes": 2798
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_gpu_probe_contract.h",
+      "target": "bsd/dev/ziyi_gpu_probe_contract.h",
+      "sha256": "5f77d20ed9ea10dc0c131a1dd264d22f23256c95d68158705730b54ca4c30484",
+      "bytes": 818
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_gpu_probe_config.h",
+      "target": "bsd/dev/ziyi_gpu_probe_config.h",
+      "sha256": "77753cc60e73edeee37648e26da99cd38c1a6186620d446294b94048056747f7",
+      "bytes": 289
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_wifi_probe.c",
+      "target": "bsd/dev/ziyi_wifi_probe.c",
+      "sha256": "fdc1d3f4b970d130e4b4fd4fafd43903474bd58a8c5cf8e906215fbcdecd5a30",
+      "bytes": 9819
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_wifi_core.h",
+      "target": "bsd/dev/ziyi_wifi_core.h",
+      "sha256": "e58f8177e956d0da88d0897dd3d893c38962fcaeaddcb74c0af287af37bb64b4",
+      "bytes": 3117
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_wifi_contract.h",
+      "target": "bsd/dev/ziyi_wifi_contract.h",
+      "sha256": "94be1137ce5419221362728bf7e1bd9fe7d83e282bfff186c577ac24bbf32898",
+      "bytes": 1783
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_wifi_sha.inc",
+      "target": "bsd/dev/ziyi_wifi_sha.inc",
+      "sha256": "fc9879a0fe9d0951883a19c2321cdd619182c7dfb1b4b272bc9d805e10a7f9be",
+      "bytes": 2528
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_wifi_read_gate.inc",
+      "target": "bsd/dev/ziyi_wifi_read_gate.inc",
+      "sha256": "5f3dcbacb5320efce3214551f3a9444f0e0c99a8170896491753c5d99ffaa6ee",
+      "bytes": 2983
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_wifi_smem.inc",
+      "target": "bsd/dev/ziyi_wifi_smem.inc",
+      "sha256": "b3d68c6bd0dd6712144d4792104b5f1ce84af53908ac424a6c9dfcfffc38cde9",
+      "bytes": 2179
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_wifi_gate.inc",
+      "target": "bsd/dev/ziyi_wifi_gate.inc",
+      "sha256": "752c32f483bb321bacb04641dbc9a7a050c1626515ce34027c058eca765d845b",
+      "bytes": 6632
+    },
+    {
+      "repository": "tools/ziyi-hw/files/ziyi_wifi_survey.inc",
+      "target": "bsd/dev/ziyi_wifi_survey.inc",
+      "sha256": "942f77221c12e8d6a386ddc4d4dcc5ec76a29a5027b2dead5e88a648e8facdf0",
+      "bytes": 6624
+    }
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-hw/adt-gpu.json",
+      "sha256": "c9303e6f14002f73c6f0c935503dd3446370b7e4c214d0b38b2d00e41e56fb10",
+      "bytes": 2100
+    },
+    {
+      "path": "tools/ziyi-hw/adt-wifi.json",
+      "sha256": "929d3bc436e2972afb599d5f8d5cdd97623ea830c88e1ed482d0c1ac5625a33d",
+      "bytes": 983
+    },
+    {
+      "path": "tools/ziyi-hw/audit_ci.py",
+      "sha256": "65a547f9ee9e672d48e5795c85a36320d57ce22fb5aa1b422acfa5cd054819ba",
+      "bytes": 3518
+    },
+    {
+      "path": "tools/ziyi-hw/base-u25-manifest.json",
+      "sha256": "63df031c31e254256ff8cd8cbd9378bb6769644daab1c5cce664667c921fd318",
+      "bytes": 6303
+    },
+    {
+      "path": "tools/ziyi-hw/contract-fixture.h",
+      "sha256": "d548402369ab0b118601e8548e6abf312ddce32c681ec148c1e64819efa89385",
+      "bytes": 1240
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_clock.c",
+      "sha256": "fbcf731b90c45e520f77b7955c568b4ba4b866a53769c90b018a28427e3480ff",
+      "bytes": 17094
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_clock.h",
+      "sha256": "2106c17c49b1223cd9e3f892369fbd9953e3f56c26970047ea3a6763a5b78300",
+      "bytes": 1671
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_clock_baseline.h",
+      "sha256": "9e40fd0092630f2f70cb4d6f290b85a76b88e60a2cc49f7afc74bf68c7350bc4",
+      "bytes": 1063
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_clock_crc.c",
+      "sha256": "85a8e5bb23e93e923ce5c6fe8968f0f77f3795d4615dc15ca491c717dc62d976",
+      "bytes": 226
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_clock_profile.h",
+      "sha256": "bc1ae8a9cdc0763bb5e72cfb37e22874b93c40dff81eb4587f90e782cce0963b",
+      "bytes": 3287
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_controls.h",
+      "sha256": "f4ffcb649ca1b45e2dbaff83e998fe4cc225a340a9b5f90d5122b947909c0c41",
+      "bytes": 381
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_engine.c",
+      "sha256": "7a265c1b69623b125c8ddfb3081ec9f3b2d6c80a20477f2f135ea0dce966f423",
+      "bytes": 7729
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_engine.h",
+      "sha256": "3d10d45345d140114c35a05dbff5d96c7942dfacb80505631c6c8983527ad8b7",
+      "bytes": 2449
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_policy.c",
+      "sha256": "7cd77ca63248b86b378d38e982ac20f5231a5cd59ef36951393ba46e0fe5d71b",
+      "bytes": 2677
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_policy.h",
+      "sha256": "ca8edb0849ae89b104a0cda01bec1919b67c314135a4236398c29d19bb2a059d",
+      "bytes": 1519
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_sha256.c",
+      "sha256": "217d6db603812503adcd4d035f300b303d3edc2a6ac5c24b67ce82cb5631fb19",
+      "bytes": 2547
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_g7_sha256.h",
+      "sha256": "61229c05b410801a4a189f82cc3debdbd2c30901154830b7b16ad0881a66ed10",
+      "bytes": 144
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
+      "sha256": "bf3f448c4b34ef77ed5ad83446e2a3d8454fc5cbbce71e48e0f98f9453461e43",
+      "bytes": 10012
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
+      "sha256": "3dfb2f3a60fe3deece120005af81c256bd0d35c4ea815e2034f498c1b6723112",
+      "bytes": 245
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_gpu_probe_config.h",
+      "sha256": "77753cc60e73edeee37648e26da99cd38c1a6186620d446294b94048056747f7",
+      "bytes": 289
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_gpu_probe_contract.c",
+      "sha256": "8b969b4b15a5523b356e311089dbfacf2856bb1d229ead6483996b9082644fe9",
+      "bytes": 2798
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_gpu_probe_contract.h",
+      "sha256": "5f77d20ed9ea10dc0c131a1dd264d22f23256c95d68158705730b54ca4c30484",
+      "bytes": 818
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_wifi_contract.h",
+      "sha256": "94be1137ce5419221362728bf7e1bd9fe7d83e282bfff186c577ac24bbf32898",
+      "bytes": 1783
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_wifi_core.h",
+      "sha256": "e58f8177e956d0da88d0897dd3d893c38962fcaeaddcb74c0af287af37bb64b4",
+      "bytes": 3117
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_wifi_gate.inc",
+      "sha256": "752c32f483bb321bacb04641dbc9a7a050c1626515ce34027c058eca765d845b",
+      "bytes": 6632
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_wifi_probe.c",
+      "sha256": "fdc1d3f4b970d130e4b4fd4fafd43903474bd58a8c5cf8e906215fbcdecd5a30",
+      "bytes": 9819
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_wifi_read_gate.inc",
+      "sha256": "5f3dcbacb5320efce3214551f3a9444f0e0c99a8170896491753c5d99ffaa6ee",
+      "bytes": 2983
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_wifi_sha.inc",
+      "sha256": "fc9879a0fe9d0951883a19c2321cdd619182c7dfb1b4b272bc9d805e10a7f9be",
+      "bytes": 2528
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_wifi_smem.inc",
+      "sha256": "b3d68c6bd0dd6712144d4792104b5f1ce84af53908ac424a6c9dfcfffc38cde9",
+      "bytes": 2179
+    },
+    {
+      "path": "tools/ziyi-hw/files/ziyi_wifi_survey.inc",
+      "sha256": "942f77221c12e8d6a386ddc4d4dcc5ec76a29a5027b2dead5e88a648e8facdf0",
+      "bytes": 6624
+    },
+    {
+      "path": "tools/ziyi-hw/run_host_tests.py",
+      "sha256": "324625cb31990c0dbca63ba8cc05465e82633ce709e1301ca8e9e7ad9ee7fae3",
+      "bytes": 2190
+    },
+    {
+      "path": "tools/ziyi-hw/test-gpu-clock.c",
+      "sha256": "554a72aa4faa4898c2ac4fb248bd311f27098599ebc71c9c246d25c71ea0e829",
+      "bytes": 17523
+    },
+    {
+      "path": "tools/ziyi-hw/test-gpu-engine.c",
+      "sha256": "284a952c1e12edc9d6f21260cc130f5d32800eb2a9da5ee425d6df58c1fae000",
+      "bytes": 7725
+    },
+    {
+      "path": "tools/ziyi-hw/test_gpu_contract.c",
+      "sha256": "607922da6a6abae86df5d66d1fbf197a7f04b53f09165d649c265f935b064ba9",
+      "bytes": 2257
+    },
+    {
+      "path": "tools/ziyi-hw/test_wifi_probe.c",
+      "sha256": "cb858f37d58d8c265ca4e5c3e20c11287623083b97f84c1206a272ee4166eaaa",
+      "bytes": 11066
+    }
+  ],
+  "startupHook": {
+    "path": "bsd/kern/bsd_init.c",
+    "beforeSHA256": "4e029b498e750aae211456a2d7b5baef33d91b7762a1456280c790c4d8971bf2",
+    "afterSHA256": "784e25e8a2e9bf7701117c13121284c078c6a3ff144e69b28d9e432c8db0975a",
+    "insert": "#if SWEET\n\t/* Opt-in hardware probes run after BSD initialization and await SpringBoard. */\n\textern void ziyi_gpu_probe_start(void);\n\textern void ziyi_wifi_probe_start(void);\n\tziyi_gpu_probe_start();\n\tziyi_wifi_probe_start();\n#endif\n\n"
+  },
+  "fileListBefore": "d0eedac2688f83bdfab3344eedb07173d59dd344785e715cdb91e208c7926170",
+  "fileListAfter": "a32638b44fd8222cc20c2873722180ffd9e71156ce0df1690b3e884900489d03",
+  "compileUnits": [
+    "bsd/dev/ziyi_g7_clock.c",
+    "bsd/dev/ziyi_g7_clock_crc.c",
+    "bsd/dev/ziyi_g7_engine.c",
+    "bsd/dev/ziyi_g7_policy.c",
+    "bsd/dev/ziyi_g7_sha256.c",
+    "bsd/dev/ziyi_gpu_probe.c",
+    "bsd/dev/ziyi_gpu_probe_contract.c",
+    "bsd/dev/ziyi_wifi_probe.c"
+  ],
+  "linkedMarkers": [
+    "ZWIFI RO armed opt-in",
+    "ZWIFI RO DONE crc",
+    "ZIYI GPU probe SpringBoard",
+    "ZIYI GPU probe done: acquisition only"
+  ],
+  "linkedFunctions": [
+    "_ziyi_gpu_probe_start",
+    "_ziyi_wifi_probe_start",
+    "_g7_run_acquire",
+    "_g7c_run"
+  ],
+  "patch": "xnu/patches/0085-ziyi-hw-in-system.patch",
+  "patchSHA256": "21cb6dd39f645a80fc5b5209434a8a75395167ac4371650eb0fa7946eeed2c9d",
+  "featureScope": "GPU clock/RO acquisition and Wi-Fi RO lifecycle sampler inside iOS; no acceleration or radio"
+}

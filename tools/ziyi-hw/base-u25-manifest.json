@@ -1,0 +1,126 @@
+{
+  "bsd/dev/sweet_ufs.c": {
+    "before": "6b538c11f6949b9fe0c61b0267fd75ad578a314154d2da14c4b332d8cb80fc37",
+    "after": "27dc0c04317285c084dbfbf6ec7096e2ba0cc4946e9d3d60e1f5c51f166301cc"
+  },
+  "bsd/kern/bsd_init.c": {
+    "before": "9d18e974fdc02e018b3749b3faefff9ff7049f0ffa01c60d59351c182ce0a3e3",
+    "after": "4e029b498e750aae211456a2d7b5baef33d91b7762a1456280c790c4d8971bf2"
+  },
+  "bsd/dev/ziyi_u1_core.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "9ca5fdafa00a9098c735d8f202923dec63a8e9bdb6394e1ebe871cd70bf61249"
+  },
+  "bsd/dev/ziyi_u1_sha.inc": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "4dccadc752745d402b7c224a26b0bf06259a27de32c7a595eac7d3d9037a6578"
+  },
+  "bsd/dev/ziyi_u3_policy.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "a7daf32a955d15aa73e3fc6c554a53113f1d2eb94b857a529b40a6c2c847e3a2"
+  },
+  "bsd/dev/ziyi_u4_verify.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "c2459d914cadd904c2689cd68c456a5dd2e4c80c0ab784c7ce547b6f957acdda"
+  },
+  "bsd/dev/ziyi_u7_write_policy.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "b23b230cc0e0970d4a1234ddb497dad30dad9f8cdcf9e23491bc6f16967541b6"
+  },
+  "bsd/dev/ziyi_u8_read_policy.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "3f62afad694204ad7a46765307f220714c4357ef2acb791ac675737cb5702433"
+  },
+  "bsd/dev/ziyi_u9_install_policy.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "56c672deb114e19d3d717e9544ee8aa9b33b44685f7af68ab62d80b36d72f6e7"
+  },
+  "osfmk/vm/vm_compressor_backing_store.h": {
+    "before": "3a79a7e8e5af3572ca03aabbdba6e912c37538d400c02cd6967563c40e91d2e4",
+    "after": "178045aadc611da88269c38ad8005ae4da0cd6d76a66187161dadba78b64eed6"
+  },
+  "osfmk/vm/vm_compressor_backing_store.c": {
+    "before": "228691b1d88503b65633f5a22f25b6e2f562c02f110037777313cf761202b4c6",
+    "after": "a076603709ed535c52a219c5c20191493b764462cdfb8a1521f07ec2570f4254"
+  },
+  "pexpert/arm/pe_serial.c": {
+    "before": "305dc2dffaaa5732627d4c613996cb25b6bc1438d6243ad95a32536cd6166665",
+    "after": "f18e9151852f64a12876ecf82f3a22b08d5e3175169b627d3db53c740b5af382"
+  },
+  "osfmk/console/serial_console.c": {
+    "before": "f9be86900a464eb99097506276f66d3233ed4f6022a39c91ba095fc918549d39",
+    "after": "9cb9cb5c047610a9ef74d36e38a18c959fbf3ed0a3889d387790598396e5ad69"
+  },
+  "iokit/Kernel/arm/SweetFramebuffer.cpp": {
+    "before": "aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f",
+    "after": "66176b469e1eacfd0a386db7c087b4615880eac4cd2242c325948adcf079a8c2"
+  },
+  "pexpert/pexpert/arm64/ziyi_log_strip.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "3c01d4f58d3fea57028c227f8f38d53281df5b3717596ac7e8dbed4c2a05a900"
+  },
+  "pexpert/pexpert/arm64/Makefile": {
+    "before": "03465a5e61a07420f0d4631d25e1cd6626698200b6bc13a113aad7ae67907a6b",
+    "after": "b51604f32447cd0110467e052fd0bfb9ff18022fb379f023ccd363378d705b02"
+  },
+  "pexpert/pexpert/arm64/ziyi_u12_ui.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "6c09e2a7591b9e779bc0098718f4bcbb30399fa223312f286cdf36fbaf443e2b"
+  },
+  "iokit/Kernel/arm/hid/SweetHID.cpp": {
+    "before": "cb8afe01c324d084d95e46bfe42575a2e1200f07155326bdd1448ee4c71ccb8a",
+    "after": "330eacf65469f17d73eac782a2b936c36ba6a4766035a08fb4a292551acefd3e"
+  },
+  "bsd/dev/sweet_keys.c": {
+    "before": "1487015c4c87fdbf3fb6b1f6abaa17ae1200b8e22eeaea1b63ab705fb1c2352e",
+    "after": "da53f66759cfb4339561a2d2c1f382a705081c40305a492c64f91c2c2cf5e9a7"
+  },
+  "bsd/dev/sweet_touch.c": {
+    "before": "b758ef31133629311b8b42eb324d1041e5ccaba7807c0f29ccc62793f83b2234",
+    "after": "4448f79c3d8360cd37201d0a3cba416645b5601d05f60cbfd8da6e9da1d465af"
+  },
+  "bsd/dev/ziyi_u12_input.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "e4385efcf3334e5c58d6574094a4d8ad9abe1f5701ff958919646b1dc8bc49a0"
+  },
+  "bsd/dev/ziyi_u13_board.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "f38666c6ba379a36469874878bd823ccd8884eed3c54d51fae507934451d42b7"
+  },
+  "bsd/dev/ziyi_u14_gpi.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "81540a839510c3248a54ba79fcb53a4a656d79e4ef4122eb9007e12bf729daba"
+  },
+  "pexpert/pexpert/arm64/ziyi_u14_timing.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "306f8ac14434c466699b91da8672de0b65de1e84119bdd1e18ae78f6040a05f8"
+  },
+  "bsd/dev/ziyi_u18_gpio_spi.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "46d63579f801c9fe116e59b7a2ed09d0af99d8731dfb72690a218786b6c6df16"
+  },
+  "bsd/dev/ziyi_u21_power.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "e75a3983417501a6ce0740f6a3378ab138c1dc7fcd4e997b2a31369cb22e267b"
+  },
+  "bsd/dev/ziyi_u23_native_touch.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "71bbf21457fb72558483cd4bcee1396a26abcf81e5c3c4ad8c918ff18ded4e86"
+  },
+  "pexpert/pexpert/arm64/SWEET.h": {
+    "before": "f1c0b8a262fb02e9a47b9ca07f3fe17cb59c1d7e43d7d129cee23944e0f6d566",
+    "after": "773536ed23a78d82f97f5bb06a3411b49c2905f87608963666ab1ae26f8e2d4d"
+  },
+  "iokit/Kernel/arm/SweetCPU.cpp": {
+    "before": "73e4e1e0dfb0af5b82581d44d34ec0130b84b7bbcc86198a5e63540df148086d",
+    "after": "0aed0c5cd7a25fdd4a908f5be9334e7e7f30458fc79e595a91680fb6def82902"
+  },
+  "osfmk/arm64/sleh.c": {
+    "before": "ad1d58282a027eb7b4871c62b0c12c27b3f3f3eacb0135ea850db55b68110e60",
+    "after": "cdf673656f8bf52f51754a3cd21ba5331a5f93778087453050c812fde29ffce5"
+  },
+  "pexpert/pexpert/arm64/ziyi_u25_smp_policy.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "44aa3363f663530e7c00e530b9140b1c3efbfafa71798b546ef8ad80bebbf483"
+  }
+}

@@ -5,7 +5,7 @@
   },
   "bsd/kern/bsd_init.c": {
     "before": "9d18e974fdc02e018b3749b3faefff9ff7049f0ffa01c60d59351c182ce0a3e3",
-    "after": "4e029b498e750aae211456a2d7b5baef33d91b7762a1456280c790c4d8971bf2"
+    "after": "784e25e8a2e9bf7701117c13121284c078c6a3ff144e69b28d9e432c8db0975a"
   },
   "bsd/dev/ziyi_u1_core.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -122,5 +122,109 @@
   "pexpert/pexpert/arm64/ziyi_u25_smp_policy.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "after": "44aa3363f663530e7c00e530b9140b1c3efbfafa71798b546ef8ad80bebbf483"
+  },
+  "bsd/dev/ziyi_g7_engine.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "7a265c1b69623b125c8ddfb3081ec9f3b2d6c80a20477f2f135ea0dce966f423"
+  },
+  "bsd/dev/ziyi_g7_engine.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "3d10d45345d140114c35a05dbff5d96c7942dfacb80505631c6c8983527ad8b7"
+  },
+  "bsd/dev/ziyi_g7_controls.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "f4ffcb649ca1b45e2dbaff83e998fe4cc225a340a9b5f90d5122b947909c0c41"
+  },
+  "bsd/dev/ziyi_g7_policy.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "7cd77ca63248b86b378d38e982ac20f5231a5cd59ef36951393ba46e0fe5d71b"
+  },
+  "bsd/dev/ziyi_g7_policy.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "ca8edb0849ae89b104a0cda01bec1919b67c314135a4236398c29d19bb2a059d"
+  },
+  "bsd/dev/ziyi_g7_sha256.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "217d6db603812503adcd4d035f300b303d3edc2a6ac5c24b67ce82cb5631fb19"
+  },
+  "bsd/dev/ziyi_g7_sha256.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "61229c05b410801a4a189f82cc3debdbd2c30901154830b7b16ad0881a66ed10"
+  },
+  "bsd/dev/ziyi_g7_clock.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "fbcf731b90c45e520f77b7955c568b4ba4b866a53769c90b018a28427e3480ff"
+  },
+  "bsd/dev/ziyi_g7_clock.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "2106c17c49b1223cd9e3f892369fbd9953e3f56c26970047ea3a6763a5b78300"
+  },
+  "bsd/dev/ziyi_g7_clock_profile.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "bc1ae8a9cdc0763bb5e72cfb37e22874b93c40dff81eb4587f90e782cce0963b"
+  },
+  "bsd/dev/ziyi_g7_clock_baseline.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "9e40fd0092630f2f70cb4d6f290b85a76b88e60a2cc49f7afc74bf68c7350bc4"
+  },
+  "bsd/dev/ziyi_g7_clock_crc.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "85a8e5bb23e93e923ce5c6fe8968f0f77f3795d4615dc15ca491c717dc62d976"
+  },
+  "bsd/dev/ziyi_gpu_probe.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "bf3f448c4b34ef77ed5ad83446e2a3d8454fc5cbbce71e48e0f98f9453461e43"
+  },
+  "bsd/dev/ziyi_gpu_probe.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "3dfb2f3a60fe3deece120005af81c256bd0d35c4ea815e2034f498c1b6723112"
+  },
+  "bsd/dev/ziyi_gpu_probe_contract.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "8b969b4b15a5523b356e311089dbfacf2856bb1d229ead6483996b9082644fe9"
+  },
+  "bsd/dev/ziyi_gpu_probe_contract.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "5f77d20ed9ea10dc0c131a1dd264d22f23256c95d68158705730b54ca4c30484"
+  },
+  "bsd/dev/ziyi_gpu_probe_config.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "77753cc60e73edeee37648e26da99cd38c1a6186620d446294b94048056747f7"
+  },
+  "bsd/dev/ziyi_wifi_probe.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "fdc1d3f4b970d130e4b4fd4fafd43903474bd58a8c5cf8e906215fbcdecd5a30"
+  },
+  "bsd/dev/ziyi_wifi_core.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "e58f8177e956d0da88d0897dd3d893c38962fcaeaddcb74c0af287af37bb64b4"
+  },
+  "bsd/dev/ziyi_wifi_contract.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "94be1137ce5419221362728bf7e1bd9fe7d83e282bfff186c577ac24bbf32898"
+  },
+  "bsd/dev/ziyi_wifi_sha.inc": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "fc9879a0fe9d0951883a19c2321cdd619182c7dfb1b4b272bc9d805e10a7f9be"
+  },
+  "bsd/dev/ziyi_wifi_read_gate.inc": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "5f3dcbacb5320efce3214551f3a9444f0e0c99a8170896491753c5d99ffaa6ee"
+  },
+  "bsd/dev/ziyi_wifi_smem.inc": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "b3d68c6bd0dd6712144d4792104b5f1ce84af53908ac424a6c9dfcfffc38cde9"
+  },
+  "bsd/dev/ziyi_wifi_gate.inc": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "752c32f483bb321bacb04641dbc9a7a050c1626515ce34027c058eca765d845b"
+  },
+  "bsd/dev/ziyi_wifi_survey.inc": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "942f77221c12e8d6a386ddc4d4dcc5ec76a29a5027b2dead5e88a648e8facdf0"
+  },
+  "bsd/conf/files.arm64": {
+    "before": "d0eedac2688f83bdfab3344eedb07173d59dd344785e715cdb91e208c7926170",
+    "after": "a32638b44fd8222cc20c2873722180ffd9e71156ce0df1690b3e884900489d03"
   }
 }
