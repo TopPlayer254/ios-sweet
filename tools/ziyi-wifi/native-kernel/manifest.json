@@ -1,0 +1,77 @@
+{
+  "result": "ZIYI_WIFI_NATIVE_PUBLIC_SOURCES",
+  "files": [
+    {
+      "path": "binding.c",
+      "sha256": "b823bd8bdf00bb66c7caf1ef0b91008645a96b0d7dbaca17f8cf3c6f7a03d45d",
+      "bytes": 2391
+    },
+    {
+      "path": "scm.c",
+      "sha256": "30b76a5b474c6409ff9e429539615e70653864b8a0baa7f215bba279713ad65f",
+      "bytes": 3757
+    },
+    {
+      "path": "qmp.c",
+      "sha256": "7ee4dbe016563fe840a9b2be9e64b1cdb75d3b5da4b81d142433fe6dbc33add8",
+      "bytes": 5792
+    },
+    {
+      "path": "smmu.c",
+      "sha256": "8f399eeff973780a37c046d542a8b73fd5b0d453f3c24970ef908c0c2a01d8ee",
+      "bytes": 1175
+    },
+    {
+      "path": "native.h",
+      "sha256": "31cb56a5a602c14531a0e8c4af782a4a24a5f73ee535ce93f1db1620a8e80be0",
+      "bytes": 3804
+    },
+    {
+      "path": "smmu.h",
+      "sha256": "1c1fa5f1e6332d3cb4d2de7f07393c67144ce8e2202dce28d1196ae3b0203040",
+      "bytes": 706
+    },
+    {
+      "path": "test_smmu.c",
+      "sha256": "512399db9c535b8af212f68c4453ff3873314b7965933046fdb6075e26d9e045",
+      "bytes": 1960
+    },
+    {
+      "path": "hakios.wifi.c",
+      "sha256": "68ac36f82951a4bca4ded7076c703bbbd67eda5f93313279ba56febd0811060d",
+      "bytes": 183469
+    },
+    {
+      "path": "ziyi_wifi_native_profile.h",
+      "sha256": "021ae96c7c08de66422c3573422014ac48db4459d3edec9038d63d7619a8b78e",
+      "bytes": 1248
+    },
+    {
+      "path": "capsule.c",
+      "sha256": "168d9d7075b158c79ce40d6006d5658982420e84a6017b445f4c983108521a8a",
+      "bytes": 3639
+    },
+    {
+      "path": "capsule.h",
+      "sha256": "157148c3a9cdd692be84edb99064bae5cc95b69c37ac87349e127d2850d08f2d",
+      "bytes": 680
+    },
+    {
+      "path": "kernel.c",
+      "sha256": "3ee9cd4a7c1d3fab5a6354b6910449932babbcd1041fc53e259e500f8493a5e5",
+      "bytes": 1522
+    },
+    {
+      "path": "sha256.h",
+      "sha256": "61229c05b410801a4a189f82cc3debdbd2c30901154830b7b16ad0881a66ed10",
+      "bytes": 144
+    },
+    {
+      "path": "ziyi_adt_binding.h",
+      "sha256": "a6f887960dcc0355e5f05285bf6d7fd40e465d637aa80f43dfd90feaeb4281c5",
+      "bytes": 2359
+    }
+  ],
+  "firmwareIncluded": false,
+  "phoneOperated": false
+}

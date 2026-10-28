@@ -124,7 +124,7 @@
     },
     {
       "path": "station/bsd/dev/hakios.lx.c",
-      "sha256": "fcbda273de029c9f3a6fe7745602079f52dbc8fee0f4a6b8eb3a7dcd70af50a4"
+      "sha256": "6766bb958009387e9de236fdb119197c7c0dcbe441639a39f0769afbfae60d0a"
     },
     {
       "path": "station/bsd/dev/hakios.net.c",

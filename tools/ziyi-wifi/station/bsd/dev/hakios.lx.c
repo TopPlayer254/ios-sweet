@@ -24,6 +24,9 @@
 #include <pexpert/pexpert.h>
 #include <sys/errno.h>
 #include <sys/random.h>
+#include <vm/pmap.h>
+extern void pmap_set_cache_attributes(ppnum_t,unsigned int);
+extern unsigned int pmap_cache_attributes(ppnum_t);
 #include <sys/hakios.input.h>
 #include <sys/hakios.lx.h>
 #include <sys/hakios.net.h>
@@ -60,29 +63,28 @@ lx_os_free(void *memory, unsigned long size)
  * in between (as hakios.adreno.c does with what it shares with the GPU); the first, cached
  * view is written out and never used again.
  */
+/* Normal RAM owned by the allocator. Change attributes through XNU pmap so
+ * existing aliases and TLBs are updated together; do not create a conflicting
+ * cached/noncacheable alias of the same physical pages. Retain the arena until
+ * the DSP is shut down; the donor's allocator never frees in-flight buffers. */
 void *
-lx_os_radio_memory(unsigned long size, unsigned long long *address)
+lx_os_radio_memory(unsigned long size,unsigned long long *address)
 {
-	vm_offset_t cached = 0, uncached;
-	uint64_t physical;
-
-	size = round_page(size);
-	if (kmem_alloc_contig(kernel_map, &cached, size, 0, 0, 0, KMA_KOBJECT | KMA_ZERO | KMA_DATA, VM_KERN_MEMORY_IOKIT) !=
-	    KERN_SUCCESS) {
-		say("lx: no %lu bytes of memory in one piece\n", size);
-		return NULL;
-	}
-	physical = kvtophys(cached);
-	bzero((void *)cached, size);
-	for (vm_offset_t line = cached; line < cached + size; line += 64) {
-		__asm__ volatile ("dc civac, %0" : : "r" (line));
-	}
-	__asm__ volatile ("dsb sy");
-	uncached = ml_io_map_unmappable(physical, size, VM_WIMG_WCOMB);
-	if (uncached == 0 || !hakios_wifi_radio_map(physical, size, address)) {
-		return NULL;
-	}
-	return (void *)uncached;
+ vm_offset_t memory=0;
+ if(!size||!address||size>0x10000000ul-PAGE_MASK)return NULL;
+ size=round_page(size);
+ if(kmem_alloc_contig(kernel_map,&memory,size,PAGE_MASK,0,0,
+    KMA_KOBJECT|KMA_ZERO|KMA_DATA,VM_KERN_MEMORY_IOKIT)!=KERN_SUCCESS)return NULL;
+ uint64_t physical=kvtophys(memory);
+ if(!physical||(physical&PAGE_MASK)||kvtophys(memory+size-1)!=physical+size-1)return NULL;
+ for(unsigned long off=0;off<size;off+=PAGE_SIZE){
+  ppnum_t pn=(ppnum_t)((physical+off)>>PAGE_SHIFT);
+  pmap_set_cache_attributes(pn,VM_WIMG_WCOMB);
+  if(pmap_cache_attributes(pn)!=VM_WIMG_WCOMB)return NULL;
+ }
+ __asm__ volatile("dsb sy; isb":::"memory");
+ if(!hakios_wifi_radio_map(physical,size,address))return NULL;
+ return (void*)memory;
 }
 
 void *
