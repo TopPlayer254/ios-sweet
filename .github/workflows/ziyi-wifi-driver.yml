@@ -1,0 +1,46 @@
+name: ziyi-wifi-driver
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ziyi-hw-in-system]
+    paths:
+      - tools/ziyi-wifi/**
+      - .github/workflows/ziyi-wifi-driver.yml
+permissions:
+  contents: read
+concurrency:
+  group: ziyi-wifi-driver-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ath11k:
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: LLVM inspection tools
+        run: |
+          brew list --versions llvm || brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+      - name: Verify pinned public source bundle and stage host build
+        run: python3 tools/ziyi-wifi/prepare.py --stage "$RUNNER_TEMP/ziyi-wifi"
+      - name: Compile and link actual ARM64 Mach-O ath11k
+        env:
+          ZIYI_STAGE: ${{ runner.temp }}/ziyi-wifi
+        run: |
+          export PATH="$ZIYI_STAGE/host-tools:$PATH"
+          export ZIYI_LD="$(xcrun --find ld)"
+          bash "$ZIYI_STAGE/tools/mk-ath11k.sh" 2>&1 | tee "$ZIYI_STAGE/build.log"
+      - name: Strong ABI and stub inventory
+        run: python3 tools/ziyi-wifi/audit_object.py "$RUNNER_TEMP/ziyi-wifi"
+      - name: Preserve build diagnostics and actual objects
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ziyi-wifi-driver-evidence
+          path: |
+            ${{ runner.temp }}/ziyi-wifi/build-adaptation.json
+            ${{ runner.temp }}/ziyi-wifi/build.log
+            ${{ runner.temp }}/ziyi-wifi/xnu-deps/build/ath11k/obj/*.err
+            ${{ runner.temp }}/ziyi-wifi/xnu-deps/build/ath11k/out/*
+          if-no-files-found: warn
+          retention-days: 14

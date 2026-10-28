@@ -1,0 +1,175 @@
+{
+  "donor": "https://github.com/oosexgang/HakiOS",
+  "revision": "c84b4634277a70beac73921029b1fb6afc2530af",
+  "files": [
+    {
+      "path": "donor/LICENSE",
+      "sha256": "861a70c4175cbd49dc10be7ddb060300728175d353d4fd3b8263823bc28f61a0"
+    },
+    {
+      "path": "donor/tools/mk-ath11k.sh",
+      "sha256": "b4b108a95d5b9005df6c236cc9af45f0a74a10251593a053e0660a39135b8d70"
+    },
+    {
+      "path": "donor/wifi/lx/include/linux/irq.h",
+      "sha256": "f2d7e643431b0dcd8d883523f8be1f43c9f5ceddc6d0cec61439edd857959850"
+    },
+    {
+      "path": "donor/wifi/lx/include/linux/of.h",
+      "sha256": "96e3f2a14aa318fb99c93eee36063ff14fac4fc4de735c0d0bc8a7c4f62c5db7"
+    },
+    {
+      "path": "donor/wifi/lx/include/linux/of_irq.h",
+      "sha256": "68dea4f571a311e6e5b8df65ccfe1fdd8b7c57ab7836beff8570b4ed7e9948df"
+    },
+    {
+      "path": "donor/wifi/lx/include/linux/of_reserved_mem.h",
+      "sha256": "8d6c5f41cf72fb58f3dfb02d2195a4d3b27c376d13f8acc52382e77f0b1e183b"
+    },
+    {
+      "path": "donor/wifi/lx/include/linux/remoteproc.h",
+      "sha256": "87aa76736fccf7bbc516d0710d60fbaa6e9b8b62a8f51a54ed7852bc2441d072"
+    },
+    {
+      "path": "donor/wifi/lx/include/linux/rhashtable.h",
+      "sha256": "f226d85d23ece1677198d513378e1cd700463032b7edbb763811ff144faf0cd3"
+    },
+    {
+      "path": "donor/wifi/lx/include/linux/soc/qcom/qmi.h",
+      "sha256": "8ba5f402a8518c15463cafa78b08f4fe5e4442188bf5a66d1377cb7b1bda0ad5"
+    },
+    {
+      "path": "donor/wifi/lx/include/lx_more.h",
+      "sha256": "8c9db230677a951bf918f21b5985d0784928cc88d939ee7610dd330a998d9db7"
+    },
+    {
+      "path": "donor/wifi/lx/include/lx_os.h",
+      "sha256": "4cf38fc50cc3f176bf18b07028053291c62f50d460bc2e4c326beeb9f6b59f64"
+    },
+    {
+      "path": "donor/wifi/lx/include/lx_prelude.h",
+      "sha256": "a9b5511376c854b8ac3819c83d890d599bbf13eba2bd90f8942fb47fc3780758"
+    },
+    {
+      "path": "donor/wifi/lx/include/machine/pcpu.h",
+      "sha256": "25de37360b4cee9d34d75c700c5a5785507a35f7c903a26de44bd622a52cf9be"
+    },
+    {
+      "path": "donor/wifi/lx/include/stdbool.h",
+      "sha256": "2c9b59e4f9191871e4e6dbcd24bfadb515d578ad454526b7aea25e4ad9347b76"
+    },
+    {
+      "path": "donor/wifi/lx/include/stddef.h",
+      "sha256": "1bc4d75250e298d3b8af8b00ee69395920a0d372349f637edb1a7fe6f537f85c"
+    },
+    {
+      "path": "donor/wifi/lx/include/stdint.h",
+      "sha256": "ca29b3f02141577f4b91ff392f4d5c3085a7386be0e8d6eb80c172923e08050c"
+    },
+    {
+      "path": "donor/wifi/lx/include/sys/cdefs.h",
+      "sha256": "7d030974d1a746e48a9161d52a8e1613bce29bbf430131e7f3f2fe6928b89bf7"
+    },
+    {
+      "path": "donor/wifi/lx/include/sys/linker_set.h",
+      "sha256": "890ea048f619d46e9a0664c55b19c6199cf48bcf974d59a007406e4d24f1804c"
+    },
+    {
+      "path": "donor/wifi/lx/patches/include-linux-device.h.patch",
+      "sha256": "c70ca00174fa8db13c0ceb1d3196b6f847d7aea0cfb03962a87f33bd29c5f773"
+    },
+    {
+      "path": "donor/wifi/lx/patches/include-linux-etherdevice.h.patch",
+      "sha256": "c65ca3a72cbf50036b798588cc151092dcf16a7b110cef3f54ead6711cea7619"
+    },
+    {
+      "path": "donor/wifi/lx/patches/include-linux-io.h.patch",
+      "sha256": "85d1347badaa8f03e6868a7701ccdb88dd647ad0e72fa343230dc1404a87b026"
+    },
+    {
+      "path": "donor/wifi/lx/patches/include-linux-socket.h.patch",
+      "sha256": "7a1d6450ff806bdef12dfb17c2ac1e997c0f7c682ced23fb41d014020b7e2640"
+    },
+    {
+      "path": "donor/wifi/lx/patches/include-net-cfg80211.h.patch",
+      "sha256": "ceafbe2d3579b0ce1e63f037eb4736b68238cff9bbb3b68b1551fd3587856c0a"
+    },
+    {
+      "path": "donor/wifi/lx/patches/include-net-mac80211.h.patch",
+      "sha256": "49a65b1ab58f334194c305c1ba49154b02613ba7c06880944ad62673a500b7fe"
+    },
+    {
+      "path": "donor/wifi/lx/src/lx.h",
+      "sha256": "cea64faa27849193278c7861bf272d0972b254a4e603426342dada2f321f6940"
+    },
+    {
+      "path": "donor/wifi/lx/src/lx_80211.c",
+      "sha256": "9b123253d61f9da9032eebba530e2baaca60f685f5aaa45059be5647d1e068b8"
+    },
+    {
+      "path": "donor/wifi/lx/src/lx_base.c",
+      "sha256": "5ffe3396089d57d40d1d9a90d8100587de00ef9dcdc354765d8c20445c60f796"
+    },
+    {
+      "path": "donor/wifi/lx/src/lx_bus.c",
+      "sha256": "f0fddee641aec18c26d99b5f53e1c70a667477dbf947a86ba5ae6a813b766af9"
+    },
+    {
+      "path": "donor/wifi/lx/src/lx_wpa.c",
+      "sha256": "910217cb3a4dd7b99399589fdc60242893ad1c027a53fc58e7e39ad0e2e79e9a"
+    },
+    {
+      "path": "donor/wifi/lx/src/lx_wpa.h",
+      "sha256": "719feef82ee63a10066cdecd4a7d62ed62d03e4811ae35cc1ecfc956bb0f9f12"
+    },
+    {
+      "path": "station/bsd/dev/hakios.lx.c",
+      "sha256": "fcbda273de029c9f3a6fe7745602079f52dbc8fee0f4a6b8eb3a7dcd70af50a4"
+    },
+    {
+      "path": "station/bsd/dev/hakios.net.c",
+      "sha256": "60115d121957c6175d68b7aa9d7d49580d7a26578456bbd1ad47e97e6ff0225d"
+    },
+    {
+      "path": "station/bsd/dev/hakios.qmi.c",
+      "sha256": "5feb3ddc9c4244701e2f462e77500a732a3fe1f55d43127a2341ca9a55c1c0a1"
+    },
+    {
+      "path": "station/bsd/dev/hakios.sta.c",
+      "sha256": "2387fa7507c2296fb485a445584e9023e85382b2d03494f04303ccdc68ce6f21"
+    },
+    {
+      "path": "station/bsd/dev/hakios.apple80211.c",
+      "sha256": "338cd7246173f328346739de755f96a565baffd4c0932a8819e8de4febe1e8c8"
+    },
+    {
+      "path": "station/bsd/sys/hakios.lx.h",
+      "sha256": "da95675e330be185291f2ecc9e23dc0db1a7c1f83a368438566ff7c6240bdcbf"
+    },
+    {
+      "path": "station/bsd/sys/hakios.net.h",
+      "sha256": "916415785bcd300a92f590b8c047bd9bbdbf9c1c60cd0ff6d0d935babbbfec7a"
+    },
+    {
+      "path": "station/bsd/sys/hakios.qmi.h",
+      "sha256": "bc1e9da6ad96eb93069d20774768c3a003e21e4eb60998920958d90fabd798f0"
+    },
+    {
+      "path": "station/bsd/sys/hakios.qrtr.h",
+      "sha256": "d9658ba4ddbc941cf201edfadbfdb38248c4939641d394eb7fecb50be1180e66"
+    },
+    {
+      "path": "station/bsd/sys/hakios.sta.h",
+      "sha256": "947e98a43fd178a5ad205740615039a8db264ebd57bbabe445aaff2eb97a0486"
+    },
+    {
+      "path": "station/bsd/sys/hakios.input.h",
+      "sha256": "2ed84930046bfb565f2dc327f8eac48e8c62f86c0d12e0e8d576b6bdc3d50628"
+    },
+    {
+      "path": "station/iokit/Kernel/hakios.wlan.cpp",
+      "sha256": "8a8831e8c6deaea9a89de5800de84666d50f9f66bdd1f1089733a866163adcde"
+    }
+  ],
+  "scope": "Public compile-only inputs; no native firmware or radio enable hook"
+}
