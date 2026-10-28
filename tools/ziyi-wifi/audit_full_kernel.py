@@ -4,6 +4,31 @@ import hashlib,json,os,struct,sys
 ROOT=Path.cwd();sys.path.insert(0,str(ROOT/'tools/ziyi-hw'))
 from macho_text import text_symbols,function_bytes
 def sha(b):return hashlib.sha256(b).hexdigest()
+def audited_function(data,parsed,name):
+ if name!='_lx_transmit':return function_bytes(data,parsed,name)
+ # Actual pinned ath11k source is a six-instruction conditional tail call:
+ # driver != NULL ? lx_station_send(frame,length) : ENETDOWN. Qualify those
+ # instructions and the real destination rather than lowering all size gates.
+ entries=parsed['symbols'].get(name,[]);identities={(e['address'],e['section']) for e in entries};assert len(identities)==1
+ address,index=identities.pop();section=parsed['sections'][index]
+ following=[v for v in parsed['addresses'][index] if v>address];stop=min(following) if following else section['address']+section['bytes'];assert stop-address==24
+ offset=section['offset']+address-section['address'];body=data[offset:offset+24];ins=struct.unpack('<6I',body)
+ assert ins[0]&0x9f00001f==0x90000008 and ins[1]&0xffc003ff==0xf9400108
+ assert ins[2]==0xb4000048 and ins[3]&0xfc000000==0x14000000 and ins[4:]==(0x52800640,0xd65f03c0)
+ imm=ins[3]&0x3ffffff;imm=(imm^0x2000000)-0x2000000;target=address+12+4*imm
+ sent=function_bytes(data,parsed,'_lx_station_send');assert sent['address']==target
+ pageimm=((ins[0]>>5)&0x7ffff)<<2|((ins[0]>>29)&3);pageimm=(pageimm^0x100000)-0x100000
+ driver=(address&~4095)+(pageimm<<12)+((ins[1]>>10)&4095)*8
+ at=32;owned=False
+ for _ in range(struct.unpack_from('<I',data,16)[0]):
+  cmd,size=struct.unpack_from('<II',data,at)
+  if cmd==0x19:
+   va,vs=struct.unpack_from('<QQ',data,at+24);prot=struct.unpack_from('<I',data,at+60)[0]
+   if va<=driver and driver+8<=va+vs and prot&3==3 and not prot&4:owned=True
+  at+=size
+ assert owned,'TX wrapper driver pointer outside non-executable writable kernel data'
+ return dict(name=name,address=address,section=index,segment=section['segment'],bytesToNextTextSymbol=24,sample=body,
+  exactConditionalTailCall=True,tailCallTarget='_lx_station_send',tailCallTargetBytes=sent['bytesToNextTextSymbol'])
 def main():
  xnu=ROOT/'dxb/xnu';kit=ROOT/'tools/ziyi-wifi/full-kernel';out=ROOT/'u1-evidence/wifi-native'
  manifest=json.loads((kit/'manifest.json').read_text());baseline=json.loads((out/'base-75-manifest.json').read_text());assert len(baseline)==75
@@ -33,7 +58,7 @@ def main():
   '_lx_os_qmi_target','_zwn_pas_probe','_zwn_pas_start','_zwn_qmp_open','_zws_select','_ziyi_wifi_image_file','_HakiosWLANStart']
  bodies=[]
  for name in names:
-  body=function_bytes(data,parsed,name);body['sampleSHA256']=sha(body.pop('sample'));body['address']=hex(body['address']);bodies.append(body)
+  body=audited_function(data,parsed,name);body['sampleSHA256']=sha(body.pop('sample'));body['address']=hex(body['address']);bodies.append(body)
  # Firmware section must be file-backed, 16 KiB aligned and non-executable.
  at=32;slots=[]
  for _ in range(struct.unpack_from('<I',data,16)[0]):
