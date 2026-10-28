@@ -89,8 +89,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
       "target": "bsd/dev/ziyi_gpu_probe.c",
-      "sha256": "603a351076282eaac459dd1ab98bfc0c2d9fadc3501615d51c6c552c8eb851b7",
-      "bytes": 18676
+      "sha256": "d1bea06b8db75a461f9f414cf3fe118c9b30d5087ff95199b3ac88ae759713e3",
+      "bytes": 18716
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -337,8 +337,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
-      "sha256": "603a351076282eaac459dd1ab98bfc0c2d9fadc3501615d51c6c552c8eb851b7",
-      "bytes": 18676
+      "sha256": "d1bea06b8db75a461f9f414cf3fe118c9b30d5087ff95199b3ac88ae759713e3",
+      "bytes": 18716
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -673,5 +673,5 @@
   "g8Patch": "xnu/patches/0087-ziyi-gmu-fwinit.patch",
   "g8PatchSHA256": "599dd7baa739583087c5f96c91f5cf1321b24756675f6f2836f88bcbe7b1b884",
   "cxEnablePatch": "xnu/patches/0088-ziyi-cx-enable-settle.patch",
-  "cxEnablePatchSHA256": "aaa37d79f86f002441fb845610922a52e321d0946fff7955326e15be37868cb2"
+  "cxEnablePatchSHA256": "c6161532056e5ab7be5f5a05b90a2c3d48e59b160cbb5c24b230cc97c51a99c1"
 }

@@ -199,7 +199,10 @@ static void zg_worker(void*arg,wait_result_t result){
  printf("ZIYI GPU clock evidence events%u reads%llu phase%u CXhw%08x/%08x GX%08x/%08x\n",zg.clocks.events,zg.clocks.base.reads,zg.clocks.phase,zg.clocks.cx_on_status,zg.clocks.cx_off_status,zg.clocks.gx_before,zg.clocks.gx_after);zg_sleep(500);
  for(unsigned i=0;i<G2_NREGS;i++){const struct g7c_reg*d=&g7c_regs[i];printf("ZIYI GPU ctl%u %llx+%x old%08x want%08x actual%08x\n",i,d->base,d->offset,zg.clocks.old[i],zg.clocks.expected[i],zg.clocks.final[i]);zg_sleep(250);}
  for(unsigned i=0;i<zg.clocks.events&&i<192;i++){const struct g7c_event*e=&zg.clocks.trace[i];printf("ZIYI GPU store%u ctl%u phase%x value%08x\n",i,e->index,e->phase,e->value);zg_sleep(100);}
- if(zg.gmu_enabled){struct g8_record*r=&zg.firmware.record;printf("ZIYI GMU last%llx value%llx pending%llx/%u=%llx err%u poison%u writes%u\n",r->last_address,r->last_value,r->pending_address,r->pending_width,r->pending_value,r->error,r->poison,r->writes);zg_sleep(500);}
+ if(zg.gmu_enabled){struct g8_record*r=&zg.firmware.record;
+  printf("ZIYI GMU seen100%u last%llx value%llx pending%llx/%u=%llx err%u poison%u writes%u\n",!!(r->flags&G8_FW100),r->last_address,r->last_value,r->pending_address,r->pending_width,r->pending_value,r->error,r->poison,r->writes);zg_sleep(500);
+  if(r->flags&G8_SAVED)for(unsigned i=0;i<G8_REGS;i++){const struct g8_reg*d=&g8_regs[i];printf("ZIYI GMU saved%u addr%llx width%u old%llx want%llx\n",i,d->address,d->width,r->old[i],r->expected[i]);zg_sleep(150);}
+ }
  printf("ZIYI GPU probe done: opt-in FW100 transaction resets/restores; no persistent GPU or acceleration\n");
 unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);if(zg.firmware.record.retain_allocations||zg.lease){printf("ZIYI GMU retain owned IO maps/private pages and CX; cleanup incomplete\n");}else zg_unmap_all(&zg);
 done:thread_terminate(current_thread());
