@@ -37,7 +37,7 @@ def main():
  for name,row in baseline.items():
   data=(xnu/name).read_bytes();expected=changes[name]['after'] if name in changes else row['after'];assert sha(data)==expected,name
   scopes.append(dict(path=name,sha256=sha(data),unchanged=name not in changes))
- assert sum(r['unchanged'] for r in scopes)==73
+ assert sum(r['unchanged'] for r in scopes)==72
  for row in manifest['files']:
   data=(xnu/row['path']).read_bytes();assert sha(data)==row['after'],row['path']
   dest=out/'sources'/row['path'];dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
@@ -53,12 +53,32 @@ def main():
  hw=json.loads((ROOT/'tools/ziyi-hw/manifest.json').read_text())
  for row in hw['sources']:assert sha((xnu/row['target']).read_bytes())==row['sha256']
  for row in hw['unchangedAPISources']:assert sha((xnu/row['path']).read_bytes())==row['sha256']
+ cache=(xnu/'osfmk/arm/pmap/pmap.c').read_text()
+ assert cache.count('flush_dcache((vm_offset_t)pp << PAGE_SHIFT, PAGE_SIZE, TRUE);')==1
+ assert '(vm_offset_t) (pp << PAGE_SHIFT)' not in cache
+ ufs=(xnu/'bsd/dev/sweet_ufs.c').read_text()
+ assert ufs.count('zws_storage_coexists(&a,&b,u1.owned?&u1.identity:&a)')==1
+ assert 'for(unsigned i=0;i<ZWS_SMRS;i++)' in ufs
  kernel=ROOT/'dxb/fakeroot/System/Library/Kernels/kernel.development.sweet';data=kernel.read_bytes();parsed=text_symbols(data)
  names=hw['linkedFunctions']+['_hakios_wifi_init','_hakios_sta_ask_join_standing','_lx_start','_lx_transmit',
-  '_lx_os_qmi_target','_zwn_pas_probe','_zwn_pas_start','_zwn_qmp_open','_zws_select','_ziyi_wifi_image_file','_HakiosWLANStart']
+  '_lx_os_qmi_target','_zwn_pas_probe','_zwn_pas_start','_zwn_qmp_open','_zws_select','_ziyi_wifi_image_file','_HakiosWLANStart',
+  '_zws_storage_lease','_zws_storage_coexists']
  bodies=[]
  for name in names:
   body=audited_function(data,parsed,name);body['sampleSHA256']=sha(body.pop('sample'));body['address']=hex(body['address']);bodies.append(body)
+ # Inspect the actual compiled cache helper and all straight-line ppnum
+ # argument sequences, including both compiler-inlined copies seen on W5.
+ ce=parsed['symbols']['_pmap_sync_page_attributes_phys'];assert len(ce)==1
+ cs=parsed['sections'][ce[0]['section']];co=cs['offset']+ce[0]['address']-cs['address']
+ assert struct.unpack_from('<3I',data,co)==(0xd3727c00,0x52880001,0x52800022)
+ flush=parsed['symbols']['_flush_dcache'][0]['address'];bad=[]
+ for sec in parsed['sections'].values():
+  for off in range(sec['offset'],sec['offset']+sec['bytes']-15,4):
+   w,a,b,br=struct.unpack_from('<4I',data,off)
+   if w&0xfffffc1f!=0x53124400 or (a,b)!=(0x52880001,0x52800022) or br&0x7c000000!=0x14000000:continue
+   imm=br&0x3ffffff;pc=sec['address']+off-sec['offset']
+   if pc+12+4*((imm^0x2000000)-0x2000000)==flush:bad.append(hex(pc))
+ assert not bad,('Truncated physical cache-flush arguments',bad)
  # Firmware section must be file-backed, 16 KiB aligned and non-executable.
  at=32;slots=[]
  for _ in range(struct.unpack_from('<I',data,16)[0]):
@@ -75,6 +95,6 @@ def main():
   at+=size
  assert len(slots)==1
  report=dict(result='WIFI_NATIVE_FULL_XNU_SOURCE_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),baselineScopes=scopes,
-  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,nativeRadio=False,association=False,phoneOperated=False)
- (out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(dict(result=report['result'],baseline73Unchanged=True,addedFiles=len(new),linkedFunctions=len(bodies))))
+  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
+ (out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(dict(result=report['result'],baseline72Unchanged=True,addedFiles=len(new),linkedFunctions=len(bodies))))
 if __name__=='__main__':main()

@@ -14,3 +14,6 @@ struct zws_choice {uint32_t match,context,page,pages;};
  * translate context is reserved, including one outside the HLOS CB range.
  * An enabled but unreferenced CB is skipped rather than treated as free. */
 int zws_select(const struct zws_snapshot*,const struct zws_snapshot*,struct zws_choice*);
+struct u3_smmu;
+int zws_storage_lease(unsigned match,unsigned context,uint32_t old_smr,uint32_t old_s2cr);
+int zws_storage_coexists(const struct u3_smmu*,const struct u3_smmu*,const struct u3_smmu*);

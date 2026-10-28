@@ -9,7 +9,7 @@ def main():
  objects=list(a.driver.rglob('ath11k.o'));audits=list(a.driver.rglob('ziyi-build-audit.json'));assert len(objects)==len(audits)==1
  audit=json.loads(audits[0].read_text());assert sha(objects[0])==audit['sha256'] and not audit['remainingDonorStubs'] and audit['machoBuildPlatforms']==[1]
  expected=root/'tools/ziyi-ufs/manifest.json';old=expected.read_bytes();(out/'base-75-manifest.json').write_bytes(old);v=json.loads(old)
- # Existing baseline verifier still reads every original scope. Only two
+ # Existing baseline verifier still reads every original scope. Only three
  # original files change, each with an exact inverse and recorded before hash.
  changed=[]
  for row in m['files']:
@@ -17,7 +17,7 @@ def main():
   assert sha(kit/'before'/row['path'])==row['before']
   if row['path'] in v:
    assert v[row['path']]['after']==row['before'];v[row['path']]['after']=row['after'];changed.append(row['path'])
- assert sorted(changed)==['bsd/conf/files.arm64','bsd/kern/bsd_init.c']
+ assert sorted(changed)==['bsd/conf/files.arm64','bsd/dev/sweet_ufs.c','bsd/kern/bsd_init.c']
  expected.write_text(json.dumps(v,indent=2)+'\n')
  # The added built-in WLAN implementation needs one file-list entry, not a
  # new DriverKit RPC ABI. Preserve every cached declaration/header/output;

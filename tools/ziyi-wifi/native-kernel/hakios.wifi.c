@@ -3784,6 +3784,8 @@ radio_space_on(void)
 	    radio_space.old_s2cr, radio_space.old_sctlr);
 	sleep_ms(pause_ms);
 	if (!zws_still_free()) return false;
+	if (!zws_storage_lease(radio_space.match,radio_space.context,
+	    radio_space.old_smr,radio_space.old_s2cr)) return false;
 	zws_touched = true; /* before the first store, including partial failures */
 	put(&apps_smmu_context, "sctlr", SMMU_CB_SCTLR, 0);
 	put(&apps_smmu_second, "cba2r", SMMU_CBA2R(radio_space.context), SMMU_CBA2R_64_BIT);

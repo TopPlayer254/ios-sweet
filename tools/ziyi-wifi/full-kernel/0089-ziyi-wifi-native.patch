@@ -3016,7 +3016,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/hakios.wifi.c
-@@ -0,0 +1,4233 @@
+@@ -0,0 +1,4235 @@
 +/*
 + * The Wi-Fi of the POCO X5 Pro (redwood), from nothing and step by step. Every address below
 + * belongs to this phone, and nothing here is touched unless a boot-arg asks for it.
@@ -6803,6 +6803,8 @@
 +	    radio_space.old_s2cr, radio_space.old_sctlr);
 +	sleep_ms(pause_ms);
 +	if (!zws_still_free()) return false;
++	if (!zws_storage_lease(radio_space.match,radio_space.context,
++	    radio_space.old_smr,radio_space.old_s2cr)) return false;
 +	zws_touched = true; /* before the first store, including partial failures */
 +	put(&apps_smmu_context, "sctlr", SMMU_CB_SCTLR, 0);
 +	put(&apps_smmu_second, "cba2r", SMMU_CBA2R(radio_space.context), SMMU_CBA2R_64_BIT);
@@ -7759,9 +7761,15 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/ziyi_wifi_smmu.c
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,76 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#include "ziyi_wifi_smmu.h"
++#include <stddef.h>
++#ifdef ZWS_HOST
++#include "u3_policy.h"
++#else
++#include "ziyi_u3_policy.h"
++#endif
 +int zws_select(const struct zws_snapshot*a,const struct zws_snapshot*b,struct zws_choice*c)
 +{
 + if(!a||!b||!c||a->scr0!=b->scr0||a->idr0!=b->idr0||a->idr1!=b->idr1||
@@ -7788,9 +7796,51 @@
 + if(chosen==ZWS_SMRS||cb==ZWS_CBS)return 0;
 + *c=(struct zws_choice){chosen,cb,page,pages};return 1;
 +}
++
++/* Publish one immutable lease before the first SMMU store. UFS can then
++ * distinguish this exact disjoint stream from changes to its own mapping.
++ * No callbacks, allocations, or storage locks occur under the Wi-Fi mutex. */
++static struct {unsigned match,context;uint32_t old_smr,old_s2cr;} storage_lease;
++static unsigned storage_lease_state;
++int zws_storage_lease(unsigned match,unsigned context,uint32_t old_smr,uint32_t old_s2cr)
++{
++ if(!match||match>=ZWS_SMRS||!context||context>=ZWS_CBS||(old_smr&0x80000000u))return 0;
++ unsigned state=__atomic_load_n(&storage_lease_state,__ATOMIC_ACQUIRE);
++ if(state==2)return storage_lease.match==match&&storage_lease.context==context&&
++  storage_lease.old_smr==old_smr&&storage_lease.old_s2cr==old_s2cr;
++ unsigned zero=0;
++ if(!__atomic_compare_exchange_n(&storage_lease_state,&zero,1,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return 0;
++ storage_lease.match=match;storage_lease.context=context;
++ storage_lease.old_smr=old_smr;storage_lease.old_s2cr=old_s2cr;
++ __atomic_store_n(&storage_lease_state,2,__ATOMIC_RELEASE);return 1;
++}
++static int storage_pair(const struct u3_smmu*s)
++{
++ unsigned n=storage_lease.match;
++ /* Stream-last installation and stream-first restoration have safe prefixes.
++  * Never accept an enabled Wi-Fi stream routed to the original context. */
++ return (s->smr[n]==storage_lease.old_smr&&
++   (s->s2cr[n]==storage_lease.old_s2cr||s->s2cr[n]==storage_lease.context))||
++  (s->smr[n]==0x80011c00u&&s->s2cr[n]==storage_lease.context);
++}
++int zws_storage_coexists(const struct u3_smmu*a,const struct u3_smmu*b,const struct u3_smmu*base)
++{
++ if(!a||!b||!base||!u3_identity(a)||!u3_identity(b)||!u3_identity(base))return 0;
++ if(u1_equal(a,b,sizeof(*a))&&u1_equal(a,base,sizeof(*a)))return 1;
++ if(__atomic_load_n(&storage_lease_state,__ATOMIC_ACQUIRE)!=2)return 0;
++ if(!storage_pair(a)||!storage_pair(b)||!storage_pair(base))return 0;
++ const uint8_t *av=(const uint8_t*)a,*bv=(const uint8_t*)b,*cv=(const uint8_t*)base;
++ size_t sm=offsetof(struct u3_smmu,smr)+4*storage_lease.match;
++ size_t sc=offsetof(struct u3_smmu,s2cr)+4*storage_lease.match;
++ for(size_t i=0;i<sizeof(*a);i++){
++  if((i>=sm&&i<sm+4)||(i>=sc&&i<sc+4))continue;
++  if(av[i]!=cv[i]||bv[i]!=cv[i])return 0;
++ }
++ return 1;
++}
 --- /dev/null
 +++ b/bsd/dev/ziyi_wifi_smmu.h
-@@ -0,0 +1,16 @@
+@@ -0,0 +1,19 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#pragma once
 +#include <stdint.h>
@@ -7807,6 +7857,9 @@
 + * translate context is reserved, including one outside the HLOS CB range.
 + * An enabled but unreferenced CB is skipped rather than treated as free. */
 +int zws_select(const struct zws_snapshot*,const struct zws_snapshot*,struct zws_choice*);
++struct u3_smmu;
++int zws_storage_lease(unsigned match,unsigned context,uint32_t old_smr,uint32_t old_s2cr);
++int zws_storage_coexists(const struct u3_smmu*,const struct u3_smmu*,const struct u3_smmu*);
 --- /dev/null
 +++ b/bsd/sys/hakios.input.h
 @@ -0,0 +1,125 @@
@@ -8651,3 +8704,42 @@
 +	}
 +	controller->release();
 +}
+--- a/osfmk/arm/pmap/pmap.c
++++ b/osfmk/arm/pmap/pmap.c
+@@ -6881,7 +6881,7 @@
+ pmap_sync_page_attributes_phys(
+ 	ppnum_t pp)
+ {
+-	flush_dcache((vm_offset_t) (pp << PAGE_SHIFT), PAGE_SIZE, TRUE);
++	flush_dcache((vm_offset_t)pp << PAGE_SHIFT, PAGE_SIZE, TRUE);
+ }
+ 
+ #if CONFIG_COREDUMP
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -20,6 +20,7 @@
+ #include <pexpert/pexpert.h>
+ #include "ziyi_u1_core.h"
+ #include "ziyi_u3_policy.h"
++#include "ziyi_wifi_smmu.h"
+ #include "ziyi_u1_sha.inc"
+ #include "ziyi_u4_verify.h"
+ #include "ziyi_u7_write_policy.h"
+@@ -82,14 +83,14 @@
+     for(unsigned pass=0;pass<2;pass++,s=&b) {
+         bzero(s,sizeof(*s));s->cr0=sr(0);s->cr2=sr(8);s->id0=sr(0x20);
+         s->id1=sr(0x24);s->id2=sr(0x28);s->id7=sr(0x3c);
+-        for(unsigned i=0;i<U3_MATCHES;i++) {s->smr[i]=sr(0x800+4*i);s->s2cr[i]=sr(0xc00+4*i);}
++        /* Same runtime-DT HLOS scope as Wi-Fi; remaining snapshot cells stay zero. */
++        for(unsigned i=0;i<ZWS_SMRS;i++) {s->smr[i]=sr(0x800+4*i);s->s2cr[i]=sr(0xc00+4*i);}
+         s->cbar=sr(0x1000);s->cba2r=sr(0x1800);s->sctlr=sr(0x80000);s->tcr2=sr(0x80010);
+         s->ttbr0lo=sr(0x80020);s->ttbr0hi=sr(0x80024);s->ttbr1lo=sr(0x80028);
+         s->ttbr1hi=sr(0x8002c);s->tcr=sr(0x80030);__builtin_arm_dsb(0xf);
+     }
+     u1.cr0=a.cr0;u1.id0=a.id0;
+-    if(!u1_equal(&a,&b,sizeof(a))||!u3_identity(&a)) return 0;
+-    if(u1.owned&&!u1_equal(&a,&u1.identity,sizeof(a))) return 0;
++    if(!zws_storage_coexists(&a,&b,u1.owned?&u1.identity:&a)) return 0;
+     u1.identity=a;return 1;
+ }
+ static int old_queue_readonly(void) {

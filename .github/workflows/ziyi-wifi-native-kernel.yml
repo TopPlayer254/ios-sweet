@@ -159,6 +159,11 @@ jobs:
       - name: G8 exact-source public firmware transaction tests
         run: python3 tools/ziyi-g8/run_host_tests.py --out u1-evidence/g8-public-host
 
+      - name: UFS and Wi-Fi exact disjoint SMMU lease
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -DZWS_HOST -Itools/ziyi-wifi/native-kernel -Itools/ziyi-ufs tools/ziyi-wifi/native-kernel/smmu.c tools/ziyi-wifi/native-kernel/test_coexist.c -o u1-evidence/test-wifi-ufs-coexist
+          ./u1-evidence/test-wifi-ufs-coexist | tee u1-evidence/wifi-ufs-coexist-tests.txt
+
       - name: Fetch build script
         run: |
           git init -q dxb
