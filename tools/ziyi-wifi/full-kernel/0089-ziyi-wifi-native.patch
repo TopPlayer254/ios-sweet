@@ -3016,7 +3016,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/hakios.wifi.c
-@@ -0,0 +1,4229 @@
+@@ -0,0 +1,4236 @@
 +/*
 + * The Wi-Fi of the POCO X5 Pro (redwood), from nothing and step by step. Every address below
 + * belongs to this phone, and nothing here is touched unless a boot-arg asks for it.
@@ -6826,12 +6826,19 @@
 + put(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR,SMMU_SCTLR_ON);
 + put(&apps_smmu,"s2cr",s2cr,radio_space.context);
 + put(&apps_smmu,"smr",smr,sees);
++ const uint32_t wanted[ZWS_CB_WORDS]={SMMU_SCTLR_ON,SMMU_TCR2,(uint32_t)root,
++  (uint32_t)(root>>32),0,0,SMMU_TCR_39_BITS,SMMU_MAIR0,0,SMMU_CBAR_STAGE_1,SMMU_CBA2R_64_BIT};
++ uint32_t actual[ZWS_CB_WORDS];
++ for(unsigned n=0;n<ZWS_CB_WORDS;n++)
++  actual[n]=n==9?get(&apps_smmu_second,"new cbar",SMMU_CBAR(radio_space.context)):
++   n==10?get(&apps_smmu_second,"new cba2r",SMMU_CBA2R(radio_space.context)):
++   get(&apps_smmu_context,"new context",zws_offsets[n]);
++ if(!zws_context_matches(actual,wanted)){
++  for(unsigned n=0;n<ZWS_CB_WORDS;n++)tell("wifi: context%u control%u got%#x want%#x\n",radio_space.context,n,actual[n],wanted[n]);
++  goto done;
++ }
 + if(get(&apps_smmu,"smr",smr)!=sees||
-+    (get(&apps_smmu,"s2cr",s2cr)&0x300ff)!=radio_space.context||
-+    (get(&apps_smmu_second,"cbar",SMMU_CBAR(radio_space.context))&0x30000)!=(SMMU_CBAR_STAGE_1&0x30000)||
-+    !(get(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR)&1)||
-+    get(&apps_smmu_context,"ttbr0, low",SMMU_CB_TTBR0)!=(uint32_t)root||
-+    get(&apps_smmu_context,"ttbr0, high",SMMU_CB_TTBR0+4)!=(uint32_t)(root>>32)||
++    get(&apps_smmu,"s2cr",s2cr)!=radio_space.context||
 +    get(&apps_smmu_context,"fault",SMMU_CB_FSR))goto done;
 + radio_space.on=true;ok=true;
 +done:
@@ -7755,7 +7762,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/ziyi_wifi_smmu.c
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,106 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#include "ziyi_wifi_smmu.h"
 +#include <stddef.h>
@@ -7796,6 +7803,21 @@
 + * No callbacks, allocations, or storage locks occur under the Wi-Fi mutex. */
 +static struct {unsigned match,context;uint32_t old_smr,old_s2cr;} storage_lease;
 +static unsigned storage_lease_state;
++/* ARM IHI0062D.c16-320: AFE/TRE[2:1] are UNKNOWN/SBOP for effective EAE1.
++ * Prove AArch64 VA64 first; every other written control bit remains exact. */
++int zws_context_matches(const uint32_t a[ZWS_CB_WORDS],const uint32_t w[ZWS_CB_WORDS])
++{
++ if(!a||!w||w[10]!=1||a[10]!=1||w[0]!=0x1127u||w[6]!=0x803519u||w[9]!=0x1f300u)return 0;
++ for(unsigned i=0;i<ZWS_CB_WORDS;i++){
++  /* IHI0062D.c16-333: reserved TG1=00 may read an implementation-selected
++   * granule. TTBR1 stays disabled by exact EPD1=1, all other TCR bits exact.
++   * CBAR.BPSHCFG is optionally RAZ/WI; accept written3 or RAZ0 only. */
++  if(i==9&&(a[i]&0x300u)!=0&&(a[i]&0x300u)!=0x300u)return 0;
++  uint32_t mask=i==0?~6u:i==6?~(3u<<30):i==9?~0x300u:UINT32_MAX;
++  if((a[i]&mask)!=(w[i]&mask))return 0;
++ }
++ return 1;
++}
 +static uint64_t storage_generation;
 +uint64_t zws_storage_epoch(void){return __atomic_load_n(&storage_generation,__ATOMIC_ACQUIRE);}
 +uint64_t zws_storage_write_begin(void)
@@ -7849,7 +7871,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/ziyi_wifi_smmu.h
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,23 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#pragma once
 +#include <stdint.h>
@@ -7872,6 +7894,7 @@
 +uint64_t zws_storage_epoch(void);
 +uint64_t zws_storage_write_begin(void);
 +int zws_storage_write_end(uint64_t);
++int zws_context_matches(const uint32_t actual[ZWS_CB_WORDS],const uint32_t wanted[ZWS_CB_WORDS]);
 --- /dev/null
 +++ b/bsd/sys/hakios.input.h
 @@ -0,0 +1,125 @@

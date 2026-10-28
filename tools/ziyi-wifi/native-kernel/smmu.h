@@ -20,3 +20,4 @@ int zws_storage_coexists(const struct u3_smmu*,const struct u3_smmu*,const struc
 uint64_t zws_storage_epoch(void);
 uint64_t zws_storage_write_begin(void);
 int zws_storage_write_end(uint64_t);
+int zws_context_matches(const uint32_t actual[ZWS_CB_WORDS],const uint32_t wanted[ZWS_CB_WORDS]);

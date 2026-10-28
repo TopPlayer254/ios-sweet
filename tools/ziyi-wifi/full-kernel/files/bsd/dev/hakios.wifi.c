@@ -3807,12 +3807,19 @@ radio_space_on(void)
  put(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR,SMMU_SCTLR_ON);
  put(&apps_smmu,"s2cr",s2cr,radio_space.context);
  put(&apps_smmu,"smr",smr,sees);
+ const uint32_t wanted[ZWS_CB_WORDS]={SMMU_SCTLR_ON,SMMU_TCR2,(uint32_t)root,
+  (uint32_t)(root>>32),0,0,SMMU_TCR_39_BITS,SMMU_MAIR0,0,SMMU_CBAR_STAGE_1,SMMU_CBA2R_64_BIT};
+ uint32_t actual[ZWS_CB_WORDS];
+ for(unsigned n=0;n<ZWS_CB_WORDS;n++)
+  actual[n]=n==9?get(&apps_smmu_second,"new cbar",SMMU_CBAR(radio_space.context)):
+   n==10?get(&apps_smmu_second,"new cba2r",SMMU_CBA2R(radio_space.context)):
+   get(&apps_smmu_context,"new context",zws_offsets[n]);
+ if(!zws_context_matches(actual,wanted)){
+  for(unsigned n=0;n<ZWS_CB_WORDS;n++)tell("wifi: context%u control%u got%#x want%#x\n",radio_space.context,n,actual[n],wanted[n]);
+  goto done;
+ }
  if(get(&apps_smmu,"smr",smr)!=sees||
-    (get(&apps_smmu,"s2cr",s2cr)&0x300ff)!=radio_space.context||
-    (get(&apps_smmu_second,"cbar",SMMU_CBAR(radio_space.context))&0x30000)!=(SMMU_CBAR_STAGE_1&0x30000)||
-    !(get(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR)&1)||
-    get(&apps_smmu_context,"ttbr0, low",SMMU_CB_TTBR0)!=(uint32_t)root||
-    get(&apps_smmu_context,"ttbr0, high",SMMU_CB_TTBR0+4)!=(uint32_t)(root>>32)||
+    get(&apps_smmu,"s2cr",s2cr)!=radio_space.context||
     get(&apps_smmu_context,"fault",SMMU_CB_FSR))goto done;
  radio_space.on=true;ok=true;
 done:

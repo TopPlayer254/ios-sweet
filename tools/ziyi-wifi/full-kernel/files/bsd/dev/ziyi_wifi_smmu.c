@@ -38,6 +38,21 @@ int zws_select(const struct zws_snapshot*a,const struct zws_snapshot*b,struct zw
  * No callbacks, allocations, or storage locks occur under the Wi-Fi mutex. */
 static struct {unsigned match,context;uint32_t old_smr,old_s2cr;} storage_lease;
 static unsigned storage_lease_state;
+/* ARM IHI0062D.c16-320: AFE/TRE[2:1] are UNKNOWN/SBOP for effective EAE1.
+ * Prove AArch64 VA64 first; every other written control bit remains exact. */
+int zws_context_matches(const uint32_t a[ZWS_CB_WORDS],const uint32_t w[ZWS_CB_WORDS])
+{
+ if(!a||!w||w[10]!=1||a[10]!=1||w[0]!=0x1127u||w[6]!=0x803519u||w[9]!=0x1f300u)return 0;
+ for(unsigned i=0;i<ZWS_CB_WORDS;i++){
+  /* IHI0062D.c16-333: reserved TG1=00 may read an implementation-selected
+   * granule. TTBR1 stays disabled by exact EPD1=1, all other TCR bits exact.
+   * CBAR.BPSHCFG is optionally RAZ/WI; accept written3 or RAZ0 only. */
+  if(i==9&&(a[i]&0x300u)!=0&&(a[i]&0x300u)!=0x300u)return 0;
+  uint32_t mask=i==0?~6u:i==6?~(3u<<30):i==9?~0x300u:UINT32_MAX;
+  if((a[i]&mask)!=(w[i]&mask))return 0;
+ }
+ return 1;
+}
 static uint64_t storage_generation;
 uint64_t zws_storage_epoch(void){return __atomic_load_n(&storage_generation,__ATOMIC_ACQUIRE);}
 uint64_t zws_storage_write_begin(void)

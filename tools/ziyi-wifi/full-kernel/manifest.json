@@ -52,7 +52,7 @@
     },
     {
       "path": "bsd/dev/hakios.wifi.c",
-      "after": "7f3d9efba9889d70f49d18b10467cd9ee603d9ba117949e5a66e70556630281e",
+      "after": "eb86874f8e1e284e4393561187568f4fd5921ab299534d94bd8a5d4e3eeb8697",
       "new": true
     },
     {
@@ -112,12 +112,12 @@
     },
     {
       "path": "bsd/dev/ziyi_wifi_smmu.c",
-      "after": "6bedb704ccbc5a1a4cc200a74ff117528d129c6c168a263be7833f6841dc63a2",
+      "after": "e36d2dc9de340c422b1e02a2fb53bc437686054dc2cfca4fb593044d19db7eda",
       "new": true
     },
     {
       "path": "bsd/dev/ziyi_wifi_smmu.h",
-      "after": "1b43a0a4bf77c957f16fe49bc371141a12ed444c6395c02c69e414af69ad3569",
+      "after": "04748bfd911bfe76b7c3bf55a611f1c86383df175948e8f89398dd72f1291be8",
       "new": true
     },
     {
