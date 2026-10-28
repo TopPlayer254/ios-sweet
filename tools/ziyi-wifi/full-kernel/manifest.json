@@ -1,0 +1,181 @@
+{
+  "result": "ZIYI_WIFI_FULL_KERNEL_PATCH",
+  "files": [
+    {
+      "path": "bsd/kern/bsd_init.c",
+      "before": "784e25e8a2e9bf7701117c13121284c078c6a3ff144e69b28d9e432c8db0975a",
+      "after": "13fac8996084b6085718a10cb8901f301fb892f316c79beeaa4d9e9995380977",
+      "new": false
+    },
+    {
+      "path": "bsd/conf/files.arm64",
+      "before": "5665bf5ca9a3dd2aaa28c9656af547053d7751dc463079435160f819e686e90c",
+      "after": "b9d9e3866aae9ecd173c5d1300a51ab3d3d4bb10b36215423f182f2350106624",
+      "new": false
+    },
+    {
+      "path": "iokit/conf/files.arm64",
+      "before": "015c8b1c995a42ecff096b1d712d6f23712929a5a6452ff6d2c02848372f45a3",
+      "after": "28da1bbbdd47351c8d20f749d87d9c6499714908bab99efded7f9c8c9b4ba50b",
+      "new": false
+    },
+    {
+      "path": "makedefs/MakeInc.def",
+      "before": "793d5d4f1319b22e6532adfa6264f4e373d819b24794478a97ee297cde419ddb",
+      "after": "ee3fbf2b4ae093d071887dbb15aa59728320af52ab20bfa1801734956b887e8c",
+      "new": false
+    },
+    {
+      "path": "bsd/dev/hakios.apple80211.c",
+      "after": "338cd7246173f328346739de755f96a565baffd4c0932a8819e8de4febe1e8c8",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/hakios.lx.c",
+      "after": "6766bb958009387e9de236fdb119197c7c0dcbe441639a39f0769afbfae60d0a",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/hakios.net.c",
+      "after": "60115d121957c6175d68b7aa9d7d49580d7a26578456bbd1ad47e97e6ff0225d",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/hakios.qmi.c",
+      "after": "5feb3ddc9c4244701e2f462e77500a732a3fe1f55d43127a2341ca9a55c1c0a1",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/hakios.sta.c",
+      "after": "2387fa7507c2296fb485a445584e9023e85382b2d03494f04303ccdc68ce6f21",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/hakios.wifi.c",
+      "after": "5ad6d321f52a57add8621fbd4f0786626d2c43efc42888bda48f9ee327b2cab0",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_bdf.c",
+      "after": "c4e6ccde7ec52c3e20411b0d6d9625960e5db2f238efd1f0be333703ca0fe916",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_bdf.h",
+      "after": "d648826e74fe5ceb5bcdc43a020d05fba89e3e748be2dd69aed90801ecb7493a",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_bdf_kernel.c",
+      "after": "18d6c5462b81ea7fb4242be492035dda5daaef44b09072838ac6988c7316a86d",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_binding.c",
+      "after": "b823bd8bdf00bb66c7caf1ef0b91008645a96b0d7dbaca17f8cf3c6f7a03d45d",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_capsule.c",
+      "after": "a96cf96f183284f5413b94529cb6ad5febadb766aabe5a3a2190184a70a32d94",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_capsule.h",
+      "after": "157148c3a9cdd692be84edb99064bae5cc95b69c37ac87349e127d2850d08f2d",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_capsule_kernel.c",
+      "after": "f172974b58a89c3e6726d5cec6cfd846b6cf09b001351fa7553c0b07cf08ee4f",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_native.h",
+      "after": "31cb56a5a602c14531a0e8c4af782a4a24a5f73ee535ce93f1db1620a8e80be0",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_native_profile.h",
+      "after": "021ae96c7c08de66422c3573422014ac48db4459d3edec9038d63d7619a8b78e",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_pas.c",
+      "after": "9238205a4ea30ee26bb30da2b535c68a6cfa764519c391057919a0dc46e63a97",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_qmp.c",
+      "after": "f18d3587190af5e217218b06c01d15eafe4e06a0c02eb403fc2483dd7e79e41a",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_smmu.c",
+      "after": "b74858a989e7be62d3c5b6fb091c3d4e9d5c58fc924d7c3f7d5650d40e6d8616",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_smmu.h",
+      "after": "1c1fa5f1e6332d3cb4d2de7f07393c67144ce8e2202dce28d1196ae3b0203040",
+      "new": true
+    },
+    {
+      "path": "bsd/sys/hakios.input.h",
+      "after": "2ed84930046bfb565f2dc327f8eac48e8c62f86c0d12e0e8d576b6bdc3d50628",
+      "new": true
+    },
+    {
+      "path": "bsd/sys/hakios.lx.h",
+      "after": "da95675e330be185291f2ecc9e23dc0db1a7c1f83a368438566ff7c6240bdcbf",
+      "new": true
+    },
+    {
+      "path": "bsd/sys/hakios.net.h",
+      "after": "916415785bcd300a92f590b8c047bd9bbdbf9c1c60cd0ff6d0d935babbbfec7a",
+      "new": true
+    },
+    {
+      "path": "bsd/sys/hakios.qmi.h",
+      "after": "bc1e9da6ad96eb93069d20774768c3a003e21e4eb60998920958d90fabd798f0",
+      "new": true
+    },
+    {
+      "path": "bsd/sys/hakios.qrtr.h",
+      "after": "d9658ba4ddbc941cf201edfadbfdb38248c4939641d394eb7fecb50be1180e66",
+      "new": true
+    },
+    {
+      "path": "bsd/sys/hakios.sta.h",
+      "after": "947e98a43fd178a5ad205740615039a8db264ebd57bbabe445aaff2eb97a0486",
+      "new": true
+    },
+    {
+      "path": "iokit/Kernel/hakios.wlan.cpp",
+      "after": "8a8831e8c6deaea9a89de5800de84666d50f9f66bdd1f1089733a866163adcde",
+      "new": true
+    }
+  ],
+  "cUnits": [
+    "bsd/dev/hakios.apple80211.c",
+    "bsd/dev/hakios.lx.c",
+    "bsd/dev/hakios.net.c",
+    "bsd/dev/hakios.qmi.c",
+    "bsd/dev/hakios.sta.c",
+    "bsd/dev/hakios.wifi.c",
+    "bsd/dev/ziyi_wifi_binding.c",
+    "bsd/dev/ziyi_wifi_pas.c",
+    "bsd/dev/ziyi_wifi_qmp.c",
+    "bsd/dev/ziyi_wifi_smmu.c",
+    "bsd/dev/ziyi_wifi_capsule.c",
+    "bsd/dev/ziyi_wifi_capsule_kernel.c",
+    "bsd/dev/ziyi_wifi_bdf.c",
+    "bsd/dev/ziyi_wifi_bdf_kernel.c"
+  ],
+  "cppUnits": [
+    "iokit/Kernel/hakios.wlan.cpp"
+  ],
+  "startupHook": "\n#if SWEET\n\t/* Full Wi-Fi is opt-in; observers remain separate from radio ownership. */\n\tunsigned ziyi_wifi_native = 0;\n\tif (PE_parse_boot_argn(\"wifi\", &ziyi_wifi_native, sizeof(ziyi_wifi_native)) && ziyi_wifi_native == 1) {\n\t\textern void hakios_net_init(void);\n\t\textern void hakios_wifi_init(void);\n\t\thakios_net_init();\n\t\thakios_wifi_init();\n\t}\n#endif\n",
+  "privateFirmwareIncluded": false,
+  "phoneOperated": false
+}
