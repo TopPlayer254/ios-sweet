@@ -11,8 +11,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_g7_clock.c",
       "target": "bsd/dev/ziyi_g7_clock.c",
-      "sha256": "3f4bbef277c8b13ef30abfffe8fd5f46a6d012fcf1733a167ff6895bae4fe46a",
-      "bytes": 17273
+      "sha256": "7025e7abe40ef82a7abff249b0503e737a330993b0610e782416b56a97ec6155",
+      "bytes": 17602
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g7_clock.h",
@@ -277,8 +277,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g7_clock.c",
-      "sha256": "3f4bbef277c8b13ef30abfffe8fd5f46a6d012fcf1733a167ff6895bae4fe46a",
-      "bytes": 17273
+      "sha256": "7025e7abe40ef82a7abff249b0503e737a330993b0610e782416b56a97ec6155",
+      "bytes": 17602
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g7_clock.h",
@@ -407,8 +407,8 @@
     },
     {
       "path": "tools/ziyi-hw/test-gpu-clock.c",
-      "sha256": "1101df47ce580b150bbc67d6dbe29f2d0e4061a22181b1a3a1d865025b5262fe",
-      "bytes": 18095
+      "sha256": "1b9e13b82a253159d248c8f99097189d6cfba486e1f8d9f4dfa13792eb2ca254",
+      "bytes": 18458
     },
     {
       "path": "tools/ziyi-hw/test-gpu-engine.c",
@@ -656,7 +656,7 @@
   ],
   "patch": "xnu/patches/0085-ziyi-hw-in-system.patch",
   "patchSHA256": "21cb6dd39f645a80fc5b5209434a8a75395167ac4371650eb0fa7946eeed2c9d",
-  "featureScope": "Source-required8XO-cycle enable wait before first readback; full retained-control diagnostics; G8 FW100 opt-in",
+  "featureScope": "Vendor CX enable:8XO delay, bounded HW_CTRL PWR_ON, stable GDSCR qualification; G8 firmware and exact diagnostics",
   "unchangedAPISources": [
     {
       "path": "pexpert/gen/device_tree.c",
@@ -673,5 +673,5 @@
   "g8Patch": "xnu/patches/0087-ziyi-gmu-fwinit.patch",
   "g8PatchSHA256": "599dd7baa739583087c5f96c91f5cf1321b24756675f6f2836f88bcbe7b1b884",
   "cxEnablePatch": "xnu/patches/0088-ziyi-cx-enable-settle.patch",
-  "cxEnablePatchSHA256": "2de263aafd91e723eb19993af9f24bf19eb8f57b25d917dc9b1df477d8b359af"
+  "cxEnablePatchSHA256": "aaa37d79f86f002441fb845610922a52e321d0946fff7955326e15be37868cb2"
 }

@@ -14,8 +14,8 @@ struct model {
  unsigned dirty_missing,dirty_stuck,clear_immediate,cmd_owner_poll,transient_clear,cmd_samples,dirty_forge_checks;
  unsigned dirty_delayed,dirty_delay[G2_NREGS],dirty_store_race,dirty_late;
  unsigned clock_never,unrequested_stores;
- uint64_t cx_settle_at,cx_enable_at;
- unsigned early_enable_reads,enable_settles,skip_enable_wait;
+ uint64_t cx_settle_at,cx_enable_at,cx_hw_ready_at;
+ unsigned early_enable_reads,enable_settles,skip_enable_wait,power_delay;
  unsigned early_collapse_reads,early_collapse_writes,collapse_settles,collapse_unknown,collapse_never_off,collapse_preunknown;
  unsigned physical_matches,physical_contexts;
  unsigned hook_calls,hook_fail,hook_writes;
@@ -46,6 +46,7 @@ static uint32_t rd(void *arg,uint64_t b,uint32_t o,int *ok) {
  struct model *m=arg;m->reads++;*ok=1;
  if(m->cx_settle_at&&m->us<m->cx_settle_at){m->early_collapse_reads++;*ok=0;return 0x5022f001;}
  if(m->cx_enable_at&&m->us<m->cx_enable_at){m->early_enable_reads++;return 0x5022f000;}
+ if(b==G2_GPUCC&&o==0x9108&&m->cx_hw_ready_at&&m->us<m->cx_hw_ready_at){m->early_enable_reads++;return 0x5022f000;}
  if(m->r->phase<100&&!m->phase_reads[m->r->phase])m->phase_reads[m->r->phase]=m->reads;
  if(!g7c_read_allowed(m->r,b,o)){m->forbidden++;*ok=0;return 0;}
  if(m->fail_read==m->reads){*ok=0;return 0;}
@@ -74,7 +75,7 @@ static uint32_t rd(void *arg,uint64_t b,uint32_t o,int *ok) {
   if(m->clock_never==(unsigned)i+1&&m->r->phase==3)v=(v&~0x70000000u)|G2_OFF;
   return v;
  }
- if(b==G2_GPUCC&&o==G2_CX_HW_STATUS)return ((m->values[G2_CX_POWER]&1)&&!(m->collapse_never_off&&m->cx_settle_at))||m->power_timeout?0x5ff4:0x80005ff4;
+ if(b==G2_GPUCC&&o==G2_CX_HW_STATUS)return ((m->values[G2_CX_POWER]&1)&&!(m->collapse_never_off&&m->cx_settle_at))||m->power_timeout||m->us<m->cx_hw_ready_at?0x5ff4:0x80005ff4;
  if(b==G2_GPUCC&&o==G2_GX_POWER)return 0x22f001|(m->gx_active&&(m->r->flags&G2_RATES)?G2_PWR_ON:0);
  if(b==G2_GCC&&o==G2_GCC_MEASURE_STATUS) {
   if(m->stale)return G2_MEASURE_DONE|m->count;
@@ -119,7 +120,7 @@ static void wr(void *arg,uint64_t b,uint32_t o,uint32_t v,int *ok) {
  if(!g7c_store_guard(m->r,b,o,v,live)){m->guard_reject++;*ok=0;return;}
  if((v^m->values[i])&~(g7c_regs[i].mask|g7c_regs[i].ro_mask)){m->forbidden++;*ok=0;return;}
  uint32_t was=m->values[i];m->values[i]=(was&~g7c_regs[i].mask)|(v&g7c_regs[i].mask);
- if(i==G2_CX_POWER&&!(v&G2_COLLAPSE)&&(was&G2_COLLAPSE)){m->cx_enable_at=m->us+1u;m->enable_settles++;}
+ if(i==G2_CX_POWER&&!(v&G2_COLLAPSE)&&(was&G2_COLLAPSE)){m->cx_enable_at=m->us+1u;m->cx_hw_ready_at=m->us+(m->power_delay?m->power_delay:1u);m->enable_settles++;}
  if(i==G2_CX_POWER&&(v&G2_COLLAPSE)&&!(was&G2_COLLAPSE)) {
   m->cx_settle_at=m->us+101u;m->collapse_settles++;
  }
@@ -220,7 +221,8 @@ int main(void) {
  setup(&m,&r);m.active_gmu=1;test=1005;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_ACTIVE&&r.poison&&!m.smmu_reads);
  setup(&m,&r);m.gx_active=1;test=1006;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_ACTIVE&&r.poison&&!m.smmu_reads);
  setup(&m,&r);m.bad_counter=1;test=1007;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_COUNTER&&r.restore&&!r.poison&&same_rw(&m)&&!m.smmu_reads);
- setup(&m,&r);m.skip_enable_wait=1;test=1007;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_OWNER&&r.poison&&m.writes==2&&m.early_enable_reads==1&&!r.restore&&!m.smmu_reads);
+ setup(&m,&r);m.power_delay=37;test=1006;CHECK(g7c_run(&r,&io));CHECK(m.enable_settles==1&&!m.early_enable_reads&&r.restore&&!r.poison);
+ setup(&m,&r);m.skip_enable_wait=1;test=1007;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_POWER&&r.poison&&m.writes==2&&m.early_enable_reads&&!r.restore&&!m.smmu_reads);
  setup(&m,&r);m.power_timeout=1;test=1008;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_POWER&&r.poison&&m.writes==2&&!m.smmu_reads);
  setup(&m,&r);m.update_stuck=1;test=1009;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_UPDATE&&r.poison&&!m.smmu_reads);
  setup(&m,&r);m.corrupt_backup=1;test=1010;CHECK(!g7c_run(&r,&io));CHECK(m.guard_reject==1&&m.writes==1&&r.poison&&!m.smmu_reads);

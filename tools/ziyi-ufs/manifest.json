@@ -153,7 +153,7 @@
   },
   "bsd/dev/ziyi_g7_clock.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "3f4bbef277c8b13ef30abfffe8fd5f46a6d012fcf1733a167ff6895bae4fe46a"
+    "after": "7025e7abe40ef82a7abff249b0503e737a330993b0610e782416b56a97ec6155"
   },
   "bsd/dev/ziyi_g7_clock.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

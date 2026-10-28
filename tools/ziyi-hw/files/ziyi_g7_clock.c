@@ -75,6 +75,7 @@ static uint32_t reg(struct g7c_record *r,const struct g7c_io *io,unsigned i) {
  if(!r->poison) {r->final[i]=value;if(i==G2_CX_POWER&&!cx_status_valid(value))fail(r,G2_E_OWNER,1);}
  return value;
 }
+static int wait_mask(struct g7c_record *,const struct g7c_io *,uint64_t,uint32_t,uint32_t,uint32_t,unsigned);
 /* Every store is a preserved masked update to a fixed control register.
  * RO status bits and the documented AHB opaque bit are treated explicitly. */
 static int put(struct g7c_record *r,const struct g7c_io *io,unsigned i,uint32_t bits,int pulse) {
@@ -95,7 +96,12 @@ static int put(struct g7c_record *r,const struct g7c_io *io,unsigned i,uint32_t 
   * bits. Do not add transient states to its authority/envelope. Only the
   * first stable read after 1us+100us can qualify this store. */
  if(i==G2_CX_POWER&&(bits&G2_COLLAPSE))io->delay(io->ctx,G6_COLLAPSE_SETTLE_US);
- else if(i==G2_CX_POWER&&((now^value)&G2_COLLAPSE))io->delay(io->ctx,1); /* vendor8XO cycles before first status read */
+ else if(i==G2_CX_POWER&&((now^value)&G2_COLLAPSE)) {
+  /* Vendor enable: barrier, >=8XO cycles, actual HW_CTRL PWR_ON, then
+   * qualify the stable GDSCR. Do not interpret its transition as ownership. */
+  io->delay(io->ctx,1);
+  if(!wait_mask(r,io,G2_GPUCC,G2_CX_HW_STATUS,G2_PWR_ON,G2_PWR_ON,50000))return fail(r,G2_E_POWER,1);
+ }
  uint32_t after=reg(r,io,i);if(r->poison)return 0;
  if(pulse)ackmask&=~G2_UPDATE;
  if(((after^now)&~(d->mask|d->ro_mask))||((after^value)&ackmask))return fail(r,G2_E_OWNER,1);
