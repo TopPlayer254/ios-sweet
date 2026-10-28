@@ -1,0 +1,45 @@
+name: ziyi-wifi-station
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ziyi-hw-in-system]
+    paths:
+      - tools/ziyi-wifi/compile_station.py
+      - tools/ziyi-wifi/xnu-compile-flags.json
+      - tools/ziyi-wifi/native/bdf_kernel.c
+      - .github/workflows/ziyi-wifi-station.yml
+permissions:
+  contents: read
+  actions: read
+jobs:
+  station:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exact successful XNU kernel headers and generated files
+        uses: actions/download-artifact@v4
+        with:
+          name: xnu-buildtree
+          run-id: 40688338613
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: xnu-input
+      - name: Exact successful ath11k with target-capabilities hook
+        uses: actions/download-artifact@v4
+        with:
+          name: ziyi-wifi-driver-evidence
+          run-id: 40733072428
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: driver-input
+      - name: Restore compiler inputs in isolated runner directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/ziyi-xnu"
+          tar xzf xnu-input/buildtree.tgz -C "$RUNNER_TEMP/ziyi-xnu"
+      - name: Compile real Apple C++ and resolve station-driver ABI
+        run: python3 tools/ziyi-wifi/compile_station.py --tree "$RUNNER_TEMP/ziyi-xnu" --driver driver-input --out wifi-station-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ziyi-wifi-station-evidence
+          path: wifi-station-evidence/
+          retention-days: 14
