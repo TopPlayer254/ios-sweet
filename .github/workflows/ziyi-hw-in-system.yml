@@ -26,6 +26,8 @@ on:
       - "tools/ziyi-hw/**"
       - "xnu/patches/0085-ziyi-hw-in-system.patch"
       - "xnu/patches/0086-ziyi-actual-adt-api.patch"
+      - "xnu/patches/0087-ziyi-gmu-fwinit.patch"
+      - "tools/ziyi-g8/**"
 
 permissions:
   contents: read
@@ -159,6 +161,9 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
           ASAN_OPTIONS: abort_on_error=1
         run: python3 tools/ziyi-hw/run_host_tests.py --out u1-evidence/hw-public-host
+
+      - name: G8 exact-source public firmware transaction tests
+        run: python3 tools/ziyi-g8/run_host_tests.py --out u1-evidence/g8-public-host
 
       - name: Fetch build script
         run: |

@@ -6,7 +6,7 @@ ROOT=Path.cwd();KIT=ROOT/'tools/ziyi-hw';XNU=ROOT/'dxb/xnu';OUT=ROOT/'u1-evidenc
 OUT.mkdir(parents=True,exist_ok=True)
 manifest=json.loads((KIT/'manifest.json').read_text());base=json.loads((KIT/'base-u25-manifest.json').read_text());full=json.loads((ROOT/'tools/ziyi-ufs/manifest.json').read_text())
 sha=lambda b:hashlib.sha256(b).hexdigest()
-assert len(base)==31 and len(full)==62
+assert len(base)==31 and len(full)==75
 unchanged=[]
 for name,row in base.items():
     if name=='bsd/kern/bsd_init.c':continue
@@ -23,6 +23,8 @@ for row in manifest['unchangedAPISources']:
     assert sha((XNU/row['path']).read_bytes())==row['sha256'],row['path']
 api_test=json.loads((ROOT/'u1-evidence/hw-public-host/actual-api/audit.json').read_text())
 assert api_test['result']=='HW_ACTUAL_8796_PUBLIC_SECURE_DT_API_PASS' and len(api_test['profiles'])==4
+g8_test=json.loads((ROOT/'u1-evidence/g8-public-host/audit.json').read_text())
+assert g8_test['result']=='G8_EXACT_SOURCE_PUBLIC_HOST_PASS' and len(g8_test['tests'])==2
 hook=manifest['startupHook'];text=(XNU/hook['path']).read_bytes();block=hook['insert'].encode()
 assert text.count(block)==1 and sha(text.replace(block,b'',1))==base[hook['path']]['after']
 for name in ['ziyi_gpu_probe_start','ziyi_wifi_probe_start']:

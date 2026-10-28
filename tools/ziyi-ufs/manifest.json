@@ -173,7 +173,7 @@
   },
   "bsd/dev/ziyi_gpu_probe.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "7afcb1ed313eb08c8f289892dbc5ddf3b2ad33a76ae62730f01ec0d498677eea"
+    "after": "817e017363ea0c33bf9ef0c4f44d7fdfd72af2da7306015bfaf23b0e875cff19"
   },
   "bsd/dev/ziyi_gpu_probe.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -225,7 +225,7 @@
   },
   "bsd/conf/files.arm64": {
     "before": "d0eedac2688f83bdfab3344eedb07173d59dd344785e715cdb91e208c7926170",
-    "after": "a32638b44fd8222cc20c2873722180ffd9e71156ce0df1690b3e884900489d03"
+    "after": "5665bf5ca9a3dd2aaa28c9656af547053d7751dc463079435160f819e686e90c"
   },
   "bsd/dev/ziyi_adt_binding.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -246,5 +246,57 @@
   "pexpert/pexpert/device_tree.h": {
     "before": "a558ceea1bfff5b5d381550db38cba482a6fe67096e2cab89073ab3c9ecb8ccf",
     "after": "a558ceea1bfff5b5d381550db38cba482a6fe67096e2cab89073ab3c9ecb8ccf"
+  },
+  "bsd/dev/ziyi_g8_slot.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "be917071b7a965aa3b04ce1cd9fd8ef6dc18cc2156066b3952817ef9e673d2c7"
+  },
+  "bsd/dev/ziyi_g8_slot.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "21e9f53106ffae3e419cea84940a2ff5d4de9df5eea7a5f9e719b20c74459f13"
+  },
+  "bsd/dev/ziyi_g8_fwinit.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "5a82556d813e90088b777ae4601d330759c65501d3b02d97f913d94d46fb8303"
+  },
+  "bsd/dev/ziyi_g8_engine.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "177f6aa54b17cd96acd634a361764b9aff552f9ff66b40cc0d409ba5a4733070"
+  },
+  "bsd/dev/ziyi_g8_registers.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "44369c93acaf43e6993f1d323df7e072a6d479921df2c5dd014b41ccfd7ad042"
+  },
+  "bsd/dev/ziyi_g8_memory.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "46862f8a6307db3f8bffd5420a29702ceaa7009c54f10abcfcb9999dd88bcc8c"
+  },
+  "bsd/dev/ziyi_g8_memory.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "b66296908485596688fed044fc51da91f70add53f086ed75e3b8108fdcdb767d"
+  },
+  "bsd/dev/ziyi_g8_translation.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "2f275bb880408ff8f6cd6c743272762c3179a93fbe4c293315aaf93477b38d22"
+  },
+  "bsd/dev/ziyi_g8_translation.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "4df12d61ba78c15a218f1f6ac54993916bab5760397e44a0a20ce335151b179b"
+  },
+  "bsd/dev/ziyi_g8_drain.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "5429f576b779283bd4b3e2e2d6b4b1a00a536070b88a06314c2032378cce041e"
+  },
+  "bsd/dev/ziyi_g8_drain.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "f776abc8b3980445d56d7b32ff0de0ede7667be7626d6bf402619040277a7a9d"
+  },
+  "bsd/dev/ziyi_g8_contract.h": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "69f643a36f0e2bed3896f29e679d7f551a05fda354cd6bcd655cb284557b41ee"
+  },
+  "bsd/dev/ziyi_g8_contract.c": {
+    "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "after": "a4759c9506f2b320484418767953573d313151fd2dd608ae2b39e02a78127083"
   }
 }

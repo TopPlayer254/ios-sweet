@@ -1,0 +1,978 @@
+--- a/bsd/conf/files.arm64
++++ b/bsd/conf/files.arm64
+@@ -33,3 +33,17 @@
+ bsd/dev/ziyi_gpu_probe.c standard
+ bsd/dev/ziyi_gpu_probe_contract.c standard
+ bsd/dev/ziyi_wifi_probe.c standard
++
++bsd/dev/ziyi_g8_contract.c standard
++
++bsd/dev/ziyi_g8_drain.c standard
++
++bsd/dev/ziyi_g8_engine.c standard
++
++bsd/dev/ziyi_g8_memory.c standard
++
++bsd/dev/ziyi_g8_registers.c standard
++
++bsd/dev/ziyi_g8_slot.c standard
++
++bsd/dev/ziyi_g8_translation.c standard
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_contract.c
+@@ -0,0 +1,100 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g8_contract.h"
++static uint32_t u32(const uint8_t *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++static void zero(void *p,size_t n){uint8_t *b=p;for(size_t i=0;i<n;i++)b[i]=0;}
++static int contains(uint32_t base,uint32_t extent,uint32_t address,uint32_t size) {
++ return size&&address>=base&&address-base<extent&&size<=extent-(address-base);
++}
++static unsigned kind(uint32_t address,uint32_t bytes) {
++ if(contains(0,0x4000,address,bytes))return GN_ITCM;
++ if(contains(0x10004000,0x4000,address,bytes))return GN_DTCM;
++ if(contains(0x4000,0x1000000-0x4000,address,bytes))return GN_CACHE;
++ if(contains(0x60000000,0x20000000,address,bytes))return GN_NC;
++ return 0;
++}
++static int add_region(struct gn_plan *p,uint32_t address,uint32_t bytes,unsigned k) {
++ if(p->region_count==GN_MAX_REGIONS||!bytes||bytes>0x100000||address&(GN_PAGE-1))return GN_LIMIT;
++ uint32_t size=(bytes+GN_PAGE-1)&~(GN_PAGE-1);
++ if(!kind(address,size)||size>0xffffffffu-address)return GN_ADDRESS;
++ for(unsigned i=0;i<p->region_count;i++) {
++  const struct gn_region *r=&p->regions[i];
++  if(address<r->address+r->size&&r->address<address+size)return GN_OVERLAP;
++ }
++ if(p->backing_bytes>0x1000000-size)return GN_LIMIT;
++ p->regions[p->region_count++]=(struct gn_region){address,size,k};p->backing_bytes+=size;return GN_OK;
++}
++int gn_firmware_plan(const void *source,size_t bytes,struct gn_plan *out) {
++ if(!source||!out||!bytes||bytes>0x1000000)return GN_ARG;
++ const uint8_t *data=source;struct gn_plan p;zero(&p,sizeof(p));size_t at=0;unsigned payload_seen=0;
++ while(at<bytes) {
++  if(bytes-at<16)return GN_TRUNCATED;
++  if(p.block_count==GN_MAX_BLOCKS)return GN_LIMIT;
++  struct gn_block b={u32(data+at),u32(data+at+4),u32(data+at+8),u32(data+at+12),(uint32_t)at+16,0};at+=16;
++  if(b.size>bytes-at)return GN_TRUNCATED;
++  if((b.address|b.size)&3)return GN_ADDRESS;
++  uint32_t span=b.size?b.size:b.value;b.kind=kind(b.address,span);
++  if(!b.size) {
++   if(payload_seen||!b.kind||(b.type!=1&&b.type!=7)||!b.value)return GN_METADATA;
++   p.metadata_blocks++;
++   if(b.kind!=GN_ITCM&&b.kind!=GN_DTCM) {int e=add_region(&p,b.address,b.value,b.kind);if(e)return e;}
++  } else {
++   payload_seen=1;p.data_blocks++;if(!b.kind)return GN_ADDRESS;
++   /* Payload type/value are ignored by the vendor loader: a662 uses sentinels.
++    * They are kept as observations, never interpreted as metadata or commands. */
++   if(b.kind!=GN_ITCM&&b.kind!=GN_DTCM) {
++    unsigned found=0;for(unsigned i=0;i<p.region_count;i++)found+=contains(p.regions[i].address,p.regions[i].size,b.address,b.size);
++    if(found!=1)return GN_BACKING;
++   }
++   for(unsigned i=0;i<p.block_count;i++) {const struct gn_block *old=&p.blocks[i];
++    if(old->size&&b.address<old->address+old->size&&old->address<b.address+b.size)return GN_OVERLAP;
++   }
++  }
++  p.blocks[p.block_count++]=b;at+=b.size;
++ }
++ if(!p.metadata_blocks||!p.data_blocks)return GN_METADATA;
++ uint32_t after=0x60000000;
++ for(unsigned i=0;i<p.region_count;i++)if(p.regions[i].kind==GN_NC&&p.regions[i].address+p.regions[i].size>after)after=p.regions[i].address+p.regions[i].size;
++ if(after>0x80000000-0x8000)return GN_ADDRESS;
++ p.log_address=after;p.hfi_address=after+0x4000;
++ int error=add_region(&p,p.log_address,0x4000,GN_LOG);if(error)return error;
++ error=add_region(&p,p.hfi_address,GN_HFI_BYTES,GN_HFI);if(error)return error;
++ volatile uint8_t *dst=(volatile uint8_t*)out;const uint8_t *src=(const uint8_t*)&p;
++ for(size_t i=0;i<sizeof(p);i++)dst[i]=src[i];return GN_OK;
++}
++int gn_hfi_init(void *memory,size_t bytes,uint32_t address) {
++ if(!memory||bytes<GN_HFI_BYTES||(uintptr_t)memory%4||address%GN_PAGE||!contains(0x60000000,0x20000000,address,GN_HFI_BYTES))return GN_ARG;
++ zero(memory,GN_HFI_BYTES);struct gn_hfi_table *t=memory;
++ t->words=sizeof(*t)/4;t->first_queue=6;t->queue_words=12;t->queues=t->active_queues=GN_HFI_QUEUES;
++ static const uint8_t priority[]={10,10,40};
++ for(unsigned i=0;i<GN_HFI_QUEUES;i++)t->queue[i]=(struct gn_hfi_queue){.status=1,.start=address+GN_HFI_QUEUE0+4096*i,.type=i|(uint32_t)priority[i]<<8,.words=GN_HFI_WORDS};
++ return GN_OK;
++}
++int gn_hfi_sequence(uint32_t *sequence,uint32_t *next) {
++ if(!sequence||!next)return GN_ARG;if(*sequence>=4095)return GN_WRAP;
++ *next=++*sequence;return GN_OK;
++}
++int gn_hfi_header(uint32_t id,uint32_t words,uint32_t sequence,uint32_t *header) {
++ if(!header||id>255||!words||words>255||!sequence||sequence>4095)return GN_ARG;
++ *header=id|words<<8|sequence<<20;return GN_OK;
++}
++static int queue_valid(const struct gn_hfi_queue *q) {
++ return q&&q->status==1&&q->words==GN_HFI_WORDS&&q->read<GN_HFI_WORDS&&q->write<GN_HFI_WORDS&&!(q->read&3)&&!(q->write&3);
++}
++int gn_hfi_enqueue(uint32_t ring[GN_HFI_WORDS],const struct gn_hfi_queue *q,const uint32_t *msg,uint32_t words,uint32_t *next) {
++ if(!ring||!msg||!next||!queue_valid(q)||q->type!=0xa00)return GN_QUEUE;
++ if(!words||words>255||((msg[0]>>8)&255)!=words||((msg[0]>>16)&15)||!(msg[0]>>20))return GN_PACKET;
++ uint32_t aligned=(words+3)&~3u,empty=q->write>=q->read?GN_HFI_WORDS-(q->write-q->read):q->read-q->write;
++ if(empty<=aligned)return GN_FULL;
++ uint32_t staged[255];for(unsigned i=0;i<words;i++)staged[i]=msg[i];
++ uint32_t at=q->write;for(unsigned i=0;i<aligned;i++){ring[at]=i<words?staged[i]:0xfafafafa;at=(at+1)%GN_HFI_WORDS;}
++ *next=at;return GN_OK;
++}
++int gn_hfi_ack(const uint32_t ring[GN_HFI_WORDS],const struct gn_hfi_queue *q,uint32_t sent,uint32_t *verdict,uint32_t *next) {
++ if(!ring||!verdict||!next||!queue_valid(q)||q->type!=0xa01)return GN_QUEUE;
++ if(!((sent>>8)&255)||((sent>>16)&15)||!(sent>>20))return GN_ARG;
++ uint32_t used=(q->write+GN_HFI_WORDS-q->read)%GN_HFI_WORDS;if(!used)return GN_EMPTY;
++ uint32_t h=ring[q->read],words=(h>>8)&255,aligned=(words+3)&~3u;
++ if(words<3||words>19||aligned>used||((h>>16)&15)!=1)return GN_PACKET;
++ if(ring[(q->read+1)%GN_HFI_WORDS]!=sent)return GN_STALE;
++ *verdict=ring[(q->read+2)%GN_HFI_WORDS];*next=(q->read+aligned)%GN_HFI_WORDS;return GN_OK;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_contract.h
+@@ -0,0 +1,44 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stddef.h>
++#include <stdint.h>
++
++/* Pure parsers/builders. This interface has NO MMIO, SMC, DMA or file access. */
++#define GN_PAGE 4096u
++#define GN_MAX_BLOCKS 64u
++#define GN_MAX_REGIONS 16u
++#define GN_HFI_QUEUES 3u
++#define GN_HFI_WORDS 1024u
++#define GN_HFI_BYTES 16384u
++#define GN_HFI_TABLE_BYTES 840u
++#define GN_HFI_QUEUE0 848u
++enum gn_error {GN_OK=0,GN_ARG,GN_TRUNCATED,GN_LIMIT,GN_ADDRESS,GN_METADATA,
++ GN_OVERLAP,GN_BACKING,GN_QUEUE,GN_FULL,GN_EMPTY,GN_PACKET,GN_STALE,GN_WRAP};
++enum gn_region_kind {GN_ITCM=1,GN_DTCM,GN_CACHE,GN_NC,GN_LOG,GN_HFI};
++struct gn_block {uint32_t address,size,type,value,data_offset,kind;};
++struct gn_region {uint32_t address,size,kind;};
++struct gn_plan {
++ uint32_t block_count,region_count,data_blocks,metadata_blocks;
++ uint32_t backing_bytes,log_address,hfi_address;
++ struct gn_block blocks[GN_MAX_BLOCKS];
++ struct gn_region regions[GN_MAX_REGIONS];
++};
++struct gn_hfi_queue {
++ uint32_t status,start,type,words,message_words,unused[5],read,write;
++};
++struct gn_hfi_table {
++ uint32_t version,words,first_queue,queue_words,queues,active_queues;
++ struct gn_hfi_queue queue[17];
++};
++_Static_assert(sizeof(struct gn_hfi_queue)==48,"vendor HFI queue ABI");
++_Static_assert(sizeof(struct gn_hfi_table)==GN_HFI_TABLE_BYTES,"vendor HFI table ABI");
++int gn_firmware_plan(const void *data,size_t bytes,struct gn_plan *out);
++int gn_hfi_init(void *memory,size_t bytes,uint32_t gmu_address);
++int gn_hfi_sequence(uint32_t *sequence,uint32_t *next);
++int gn_hfi_header(uint32_t id,uint32_t words,uint32_t sequence,uint32_t *header);
++/* HFI v2 only. The caller must later publish writes with release/cache maintenance before
++ * a hardware doorbell. Builders never publish a doorbell or shared index. */
++int gn_hfi_enqueue(uint32_t ring[GN_HFI_WORDS],const struct gn_hfi_queue *queue,
++ const uint32_t *message,uint32_t words,uint32_t *new_write);
++int gn_hfi_ack(const uint32_t ring[GN_HFI_WORDS],const struct gn_hfi_queue *queue,
++ uint32_t sent_header,uint32_t *verdict,uint32_t *new_read);
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_drain.c
+@@ -0,0 +1,32 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g8_drain.h"
++static int bad(struct gd_record*r,unsigned code){if(!r->error)r->error=code;r->poison=1;return 0;}
++static uint32_t rd(struct gd_record*r,const struct gd_io*io,uint64_t address){if(r->poison)return 0;int ok=0;r->last_address=address;uint32_t value=io->read(io->ctx,address,&ok);r->reads++;r->last_value=value;if(!ok)bad(r,1);return value;}
++int gd_store_guard(const struct gd_record*r,uint64_t address,uint32_t value,uint32_t now){return r&&r->epoch&&!r->poison&&address==GD_HALT&&((r->phase==1&&value==1&&now==0)||(r->phase==2&&r->client_ack&&value==2&&now==1));}
++static int put(struct gd_record*r,const struct gd_io*io,uint32_t value){
++ if(rd(r,io,GD_RESET)!=1||r->poison)return bad(r,2);
++ uint32_t now=rd(r,io,GD_HALT);if(r->poison)return 0;
++ if(!gd_store_guard(r,GD_HALT,value,now))return bad(r,3);
++ int ok=0;io->write(io->ctx,GD_HALT,value,&ok);r->stores++;if(!ok)return bad(r,1);
++ if(rd(r,io,GD_HALT)!=value||r->poison)return bad(r,3);return 1;
++}
++static int wait_ack(struct gd_record*r,const struct gd_io*io,uint32_t bit,unsigned timeout){
++ for(unsigned i=0;i<timeout;i++){
++  if(rd(r,io,GD_RESET)!=1||r->poison)return bad(r,2);
++  uint32_t ack=rd(r,io,GD_ACK);if(r->poison)return 0;if(ack&~3u)return bad(r,3);
++  if(ack&bit)return 1;io->delay(io->ctx,1);
++ }
++ return bad(r,4);
++}
++int gd_drain(struct gd_record*r,uint64_t epoch,unsigned timeout,const struct gd_io*io){
++ if(!r||!io||!io->read||!io->write||!io->delay||!epoch||!timeout||timeout>100000)return 0;
++ *r=(struct gd_record){.epoch=epoch};
++ if(rd(r,io,GD_RESET)!=1||r->poison)return bad(r,2);
++ if(rd(r,io,GD_HALT)||rd(r,io,GD_ACK)||r->poison)return bad(r,3);
++ r->phase=1;if(!put(r,io,1)||!wait_ack(r,io,1,timeout))return 0;r->client_ack=1;
++ /* Source a6xx_halt_gbif discards its first ret; this implementation never
++  * issues ARB halt after a missing CLIENT acknowledgement. */
++ if(rd(r,io,GD_ACK)&2||r->poison)return bad(r,3);
++ r->phase=2;if(!put(r,io,2)||!wait_ack(r,io,2,timeout))return 0;r->arb_ack=1;r->phase=3;
++ return 1;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_drain.h
+@@ -0,0 +1,13 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stdint.h>
++#define GD_RESET 0x03d7e000ULL
++#define GD_HALT 0x03d0f114ULL
++#define GD_ACK 0x03d0f118ULL
++struct gd_record {uint32_t phase,error,poison,client_ack,arb_ack,reads,stores,last_value;uint64_t epoch,last_address;};
++struct gd_io {void*ctx;uint32_t(*read)(void*,uint64_t,int*);void(*write)(void*,uint64_t,uint32_t,int*);void(*delay)(void*,uint32_t);};
++/* These are guarded IO algorithms, not native access callbacks. A future
++ * transaction must provide owned source-bound mappings and a reset receipt.
++ * No automatic unmap/free/TCM overwrite or HALT release is performed. */
++int gd_store_guard(const struct gd_record *,uint64_t address,uint32_t value,uint32_t now);
++int gd_drain(struct gd_record *,uint64_t same_session_epoch,unsigned timeout_us,const struct gd_io *);
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_engine.c
+@@ -0,0 +1,144 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g8_fwinit.h"
++#include "ziyi_g7_sha256.h"
++#define SYSRESET 0x03d7e000ULL
++#define HFI_CTRL 0x03d7e600ULL
++#define FW_RESULT 0x03d7e070ULL
++#define FSR 0x03db2058ULL
++#define TLB_STATUS 0x03db27f4ULL
++#define TLBI 0x03db2610ULL
++#define TLBSYNC 0x03db27f0ULL
++static const uint64_t irq_status[4]={0x03d7e648,0x03d8ec14,0x03d8ec4c,FSR};
++static const uint64_t irq_clear[4]={0x03d7e644,0x03d8ec10,0x03d8ec50,FSR};
++static const uint32_t irq_mask[4]={0x8006,0x3b,7,0xc00001fe};
++static uint32_t word(const uint8_t*p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++static void bytes(uint8_t*p,uint32_t n){for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(n>>(8*i));}
++static int same(const void*a,const void*b,size_t n){const uint8_t*x=a,*y=b;unsigned different=0;for(size_t i=0;i<n;i++)different|=x[i]^y[i];return !different;}
++static int fail(struct g8_record*r,unsigned code,unsigned poison){if(!r->error)r->error=code;r->poison|=poison;return 0;}
++static uint32_t old_crc(const struct g8_record*r){uint32_t h=2166136261u;for(unsigned i=0;i<G8_REGS;i++)for(unsigned j=0;j<8;j++){h^=(uint8_t)(r->old[i]>>(8*j));h*=16777619u;}return h;}
++static int index_of(uint64_t at,unsigned width){for(unsigned i=0;i<G8_REGS;i++)if(g8_regs[i].address==at&&g8_regs[i].width==width)return (int)i;return -1;}
++static int tcm_offset(uint64_t at){if(!(at&3)&&at>=0x03d6d000&&at<0x03d75000)return (int)(at-0x03d6d000);return -1;}
++static uint64_t tcm_address(unsigned off){return 0x03d6d000ULL+off;}
++static uint64_t target(const struct g8_workspace*w,unsigned i){if(i==5)return w->firmware_plan.hfi_address;if(i==11)return w->firmware_plan.log_address|3u;if(i==30)return w->memory.table_plan.table_physical[0]|(2ULL<<48);return g8_regs[i].literal;}
++static int payload_word(const struct g8_workspace*w,unsigned off,uint32_t*value){
++ uint32_t va=off<0x4000?off:0x10004000u+off-0x4000;
++ for(unsigned i=0;i<w->firmware_plan.block_count;i++){const struct gn_block*b=&w->firmware_plan.blocks[i];if(b->size&&va>=b->address&&va-b->address<=b->size-4&&(b->kind==GN_ITCM||b->kind==GN_DTCM)){*value=word(w->firmware+b->data_offset+va-b->address);return 1;}}
++ return 0;
++}
++int g8_observation_address(uint64_t at,unsigned width,uint64_t*out){
++ if(!out)return -1;if(width==4&&(at==TLBI||at==TLBSYNC)){*out=0;return 0;}
++ if(width==4)for(unsigned i=0;i<4;i++)if(at==irq_clear[i]){*out=irq_status[i];return 1;}
++ if(index_of(at,width)>=0||(width==4&&tcm_offset(at)>=0)){*out=at;return 1;}return -1;
++}
++int g8_read_allowed(const struct g8_workspace*w,uint64_t at,unsigned width){
++ if(!w)return 0;const struct g8_record*r=&w->record;if(!(r->flags&G8_LEASE)||r->lease_released||r->poison||!r->epoch||(width!=4&&width!=8)||(at&(width-1)))return 0;
++ if(width==4&&(at==0x03d9953c||at==0x03d9905c||at==SYSRESET||at==HFI_CTRL||at==FW_RESULT))return 1;
++ if(width==4&&(at==0x03da0000||at==0x03da0020||at==0x03da0024||at==0x03da0028||(at>=0x03da0800&&at<0x03da0818)||(at>=0x03da0c00&&at<0x03da0c18)))return 1;
++ if(!(r->flags&G8_SCOPED))return 0;
++ if(index_of(at,width)>=0)return 1;
++ if(width==4){for(unsigned i=0;i<4;i++)if(at==irq_status[i])return 1;if(at==TLB_STATUS||at==GD_ACK)return 1;int off=tcm_offset(at);if(off>=0&&(r->flags&G8_HELD_RESET)&&(r->phase==G8_SAVE||r->phase==G8_LOAD||r->phase==G8_TCM_RESTORE))return 1;}
++ return 0;
++}
++int g8_store_guard(const struct g8_workspace*w,uint64_t at,unsigned width,uint64_t value,uint64_t now,uint32_t reset,uint32_t pending){
++ if(!w)return 0;const struct g8_record*r=&w->record;
++ if(r->poison||r->lease_released||!r->epoch||(r->flags&(G8_LEASE|G8_SAVED|G8_SCOPED))!=(G8_LEASE|G8_SAVED|G8_SCOPED)||r->saved_crc!=old_crc(r)||r->pending_address!=at||r->pending_value!=value||r->pending_width!=width)return 0;
++ if(at==SYSRESET){if(width!=4||now!=r->expected[19]||now>1)return 0;return (r->phase==G8_START&&value==0&&reset==1&&(r->flags&(G8_PUBLISHED|G8_MAPPED|G8_LOADED))==(G8_PUBLISHED|G8_MAPPED|G8_LOADED))||(r->phase==G8_STOP&&value==1&&reset==0&&(r->flags&G8_RELEASED_RESET));}
++ if(reset!=1)return 0;
++ int off=tcm_offset(at);if(width==4&&off>=0){if((unsigned)off!=r->tcm_cursor)return 0;if(r->phase==G8_LOAD){uint32_t want;return (r->flags&G8_MAPPED)&&payload_word(w,(unsigned)off,&want)&&value==want;}return r->phase==G8_TCM_RESTORE&&(r->flags&G8_BUS_DRAINED)&&word(w->backup[0]+off)==word(w->backup[1]+off)&&value==word(w->backup[0]+off);}
++ if(width==4&&(at==TLBI||at==TLBSYNC))return (r->phase==G8_INSTALL||r->phase==G8_CONTEXT_RESTORE)&&value==(at==TLBI?2u:0u)&&(r->flags&G8_PUBLISHED);
++ if(width==4&&r->phase==G8_CLEAR)for(unsigned i=0;i<4;i++)if(at==irq_clear[i])return (r->flags&G8_BUS_DRAINED)&&value&&value==now&&!(value&~irq_mask[i])&&!(i==3&&(value&0x40000000u));
++ int idx=index_of(at,width);if(idx<0||now!=r->expected[idx])return 0;unsigned i=(unsigned)idx;const struct g8_reg*d=&g8_regs[i];
++ if(d->kind==G8_GBIF){if(r->phase==G8_DRAIN)return gd_store_guard(&r->drain,at,(uint32_t)value,(uint32_t)now);return r->phase==G8_CONFIG_RESTORE&&(r->flags&G8_BUS_DRAINED)&&!(r->flags&G8_MAPPED)&&value==r->old[i];}
++ if(d->kind==G8_FWSTATUS)return value==0&&((r->phase==G8_CONFIG&&now==0)||(r->phase==G8_CONFIG_RESTORE&&(now==0||now==0x100)));
++ if(r->phase==G8_CONFIG_RESTORE){if(i>=24||value!=r->old[i]||(i==20||i==21?pending!=0:0))return 0;return d->kind!=G8_MASK||!((value^now)&~d->mask);}
++ if(r->phase==G8_CONTEXT_RESTORE){if(i<24||i==36)return 0;if(i==26&&value==0)return 1;return value==r->old[i]&&(!(r->flags&G8_MAPPED));}
++ if(r->phase==G8_UNROUTE)return (i==34&&value==0)||(i==35&&value==0x20000&&r->expected[34]==0);
++ if(r->phase==G8_INSTALL){if(i<24||i==36)return 0;if(i==26&&value==0)return 1;if(i==34)return value==0x84000005&&r->expected[26]==0xc01027&&r->expected[35]==0x302;return value==target(w,i);}
++ if(r->phase!=G8_CONFIG||i>=24)return 0;
++ if(d->kind==G8_MASK)return value==(r->old[i]|d->mask)&&!((value^now)&~d->mask);
++ if(d->kind==G8_INTERFRAME)return value==0x9c40400||(value==0x9c40403&&now==0x9c40400)||(value==0x9c40407&&now==0x9c40403);
++ return value==target(w,i);
++}
++static uint64_t read_value(struct g8_workspace*w,const struct g8_io*io,uint64_t at,unsigned width){
++ struct g8_record*r=&w->record;if(r->poison)return 0;r->last_address=at;
++ if(!g8_read_allowed(w,at,width)){fail(r,G8_OWNER,1);return 0;}int ok=0;uint64_t v=io->read(io->ctx,at,width,&ok);r->reads++;r->last_value=v;if(!ok)fail(r,G8_IO,1);return v;
++}
++static int put(struct g8_workspace*w,const struct g8_io*io,uint64_t at,unsigned width,uint64_t value){
++ struct g8_record*r=&w->record;if(r->poison)return 0;uint64_t observe;int mode=g8_observation_address(at,width,&observe);if(mode<0)return fail(r,G8_OWNER,1);
++ uint64_t now=mode?read_value(w,io,observe,width):0;uint32_t reset=(uint32_t)read_value(w,io,SYSRESET,4);if(r->poison)return 0;
++ uint32_t pending=0;if(r->phase==G8_CONFIG_RESTORE&&(at==0x03d7e64c||at==0x03d8ec18))pending=(uint32_t)read_value(w,io,at==0x03d7e64c?irq_status[0]:irq_status[1],4);
++ r->pending_address=at;r->pending_width=width;r->pending_value=value;
++ if(!g8_store_guard(w,at,width,value,now,reset,pending))return fail(r,G8_OWNER,1);
++ int ok=0;io->write(io->ctx,at,width,value,&ok);r->writes++;if(tcm_offset(at)>=0)r->tcmmodified=1;if(!ok)return fail(r,G8_IO,1);io->barrier(io->ctx);
++ if(mode){uint64_t after=read_value(w,io,observe,width);if(r->poison)return 0;uint64_t want=r->phase==G8_CLEAR?0:value;if(after!=want)return fail(r,G8_OWNER,1);}
++ int i=index_of(at,width);if(i>=0)r->expected[i]=r->phase==G8_CLEAR?0:value;return 1;
++}
++static int set_reg(struct g8_workspace*w,const struct g8_io*io,unsigned i,uint64_t value){if(w->record.expected[i]==value)return 1;return put(w,io,g8_regs[i].address,g8_regs[i].width,value);}
++static int quiet(struct g8_workspace*w,const struct g8_io*io){uint64_t cx=read_value(w,io,0x03d9953c,4),gx=read_value(w,io,0x03d9905c,4),reset=read_value(w,io,SYSRESET,4),hfi=read_value(w,io,HFI_CTRL,4);return !w->record.poison&&((cx&0x80000000u)&&!(gx&0x80000000u)&&reset==1&&!hfi)?1:fail(&w->record,G8_PREREQ,1);}
++int g8_kernel_plan(const struct g8_prereq*q,const struct ga_snapshot*s,struct ga_plan*out){
++ if(!q||!s||!out)return 0;*out=(struct ga_plan){0};
++ if(q->board!=0x06060201||q->current_el!=4||(q->sctlr&0x1005)!=0x1005||(q->sctlr&0x3000000)||q->hlos_cb!=6||q->hlos_smr!=6||!q->epoch||s->epoch!=q->epoch||s->dt_cb!=6||s->dt_smr!=6||s->dt_handoff_pairs||s->facts)return 0;
++ for(unsigned i=0;i<4;i++)if(s->gr0[0][i]!=s->gr0[1][i])return 0;
++ uint32_t id0=s->gr0[0][1],id1=s->gr0[0][2],id2=s->gr0[0][3];
++ if(!(id0&(1u<<30))||!(id0&(1u<<27))||(id0&(1u<<8))||(id0&255)<6||(id1&255)<6||((id1>>16)&255)||!(id2&(1u<<12))||(id1&(1u<<31))||((id1>>28)&7)!=3)return 0;
++ for(unsigned i=0;i<6;i++)if(s->smr[0][i]!=s->smr[1][i]||(s->smr[0][i]&(1u<<31))||s->s2cr[0][i]!=0x20000||s->s2cr[1][i]!=0x20000)return 0;
++ out->cb=2;out->smr=0;out->software_context_map=7;out->epoch=s->epoch;return 1;
++}
++static int snapshot(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io){
++ struct ga_snapshot*s=&w->snapshot;s->facts=0;s->dt_cb=s->dt_smr=6;s->epoch=w->record.epoch;const uint64_t ids[]={0x3da0000,0x3da0020,0x3da0024,0x3da0028};
++ for(unsigned pass=0;pass<2;pass++){for(unsigned i=0;i<4;i++)s->gr0[pass][i]=(uint32_t)read_value(w,io,ids[i],4);for(unsigned i=0;i<6;i++){s->smr[pass][i]=(uint32_t)read_value(w,io,0x3da0800+4*i,4);s->s2cr[pass][i]=(uint32_t)read_value(w,io,0x3da0c00+4*i,4);if(s->s2cr[pass][i]!=0x20000)return fail(&w->record,G8_OWNER,1);}}
++ if(w->record.poison||!g8_kernel_plan(q,s,&w->lease_plan)||w->lease_plan.cb!=2||w->lease_plan.smr!=0||w->lease_plan.software_context_map!=7||s->smr[0][0])return fail(&w->record,G8_OWNER,1);return 1;
++}
++static int old_valid(struct g8_workspace*w,unsigned i){uint64_t old=w->record.old[i];const struct g8_reg*d=&g8_regs[i];if(d->kind==G8_RESET)return old==1;if(d->kind==G8_FWSTATUS||d->kind==G8_GBIF||i==36)return old==0;if(i==34)return old==0;if(i==35)return old==0x20000;if(d->kind==G8_ARCH)return !(old&~d->mask)&&!(i==26&&(old&1));if(d->kind==G8_MASK)return old<=0xffffffffu;if(d->kind==G8_INTERFRAME)return old==0||old==0x9c40400||old==0x9c40403||old==0x9c40407;return old==0||old==target(w,i);}
++static int hashes_valid(struct g8_workspace*w){uint8_t h[32];for(unsigned i=0;i<2;i++){g7_sha256(w->backup[i],G8_TCM_BYTES,h);if(!same(h,w->record.tcm_sha[i],32))return 0;}return same(w->backup[0],w->backup[1],G8_TCM_BYTES);}
++static int tlbi(struct g8_workspace*w,const struct g8_io*io){io->barrier(io->ctx);if(!put(w,io,TLBI,4,2)||!put(w,io,TLBSYNC,4,0))return 0;for(unsigned i=0;i<10000;i++){uint64_t v=read_value(w,io,TLB_STATUS,4);if(w->record.poison)return 0;if(v&~1u)return fail(&w->record,G8_OWNER,1);if(!v)return 1;io->delay(io->ctx,1);}return fail(&w->record,G8_TIMEOUT,1);}
++struct g8_drain_ctx {struct g8_workspace*w;const struct g8_io*io;};
++static uint32_t drain_read(void*arg,uint64_t at,int*ok){struct g8_drain_ctx*c=arg;*ok=0;if(at!=GD_HALT&&at!=GD_RESET&&at!=GD_ACK)return 0;uint32_t v=(uint32_t)read_value(c->w,c->io,at,4);*ok=!c->w->record.poison;return v;}
++static void drain_write(void*arg,uint64_t at,uint32_t value,int*ok){struct g8_drain_ctx*c=arg;*ok=put(c->w,c->io,at,4,value);}
++static void drain_delay(void*arg,uint32_t us){struct g8_drain_ctx*c=arg;c->io->delay(c->io->ctx,us);}
++static int cleanup(struct g8_workspace*w,const struct g8_io*io){
++ struct g8_record*r=&w->record;if(r->poison)return 0;
++ if(r->flags&G8_RELEASED_RESET){r->phase=G8_STOP;if(!set_reg(w,io,19,1))return 0;r->flags|=G8_HELD_RESET;if(!quiet(w,io))return 0;r->phase=G8_DRAIN;struct g8_drain_ctx ctx={w,io};struct gd_io d={&ctx,drain_read,drain_write,drain_delay};if(!gd_drain(&r->drain,r->epoch,100000,&d))return fail(r,G8_RESTORE,1);r->flags|=G8_BUS_DRAINED;}
++ else r->flags|=G8_BUS_DRAINED;
++ r->phase=G8_CLEAR;
++ for(unsigned i=0;i<4;i++){uint32_t pending=(uint32_t)read_value(w,io,irq_status[i],4);if(i==0)r->last_host=pending;if(i==1)r->last_ao=pending;if(i==2)r->last_fence=pending;if(i==3)r->last_fsr=pending;if(r->poison)return 0;if(pending&~irq_mask[i]||(i==3&&(pending&0x40000000u)))return fail(r,G8_OWNER,1);if(pending){if(!r->error)r->error=G8_DEVICE_FAULT;if(!put(w,io,irq_clear[i],4,pending))return 0;}}
++ if(r->flags&G8_MAPPED){r->phase=G8_UNROUTE;if(!set_reg(w,io,34,0)||!set_reg(w,io,35,0x20000))return 0;r->flags&=~G8_MAPPED;}
++ r->phase=G8_CONTEXT_RESTORE;if(!set_reg(w,io,26,0)||!tlbi(w,io))return 0;
++ const unsigned order[]={25,24,28,29,30,31,32,33,27,26};for(unsigned n=0;n<sizeof(order)/sizeof(order[0]);n++)if(!set_reg(w,io,order[n],r->old[order[n]]))return 0;if(!tlbi(w,io))return 0;
++ if(r->tcmmodified){if(!hashes_valid(w))return fail(r,G8_BACKUP,1);r->phase=G8_TCM_RESTORE;for(unsigned off=0;off<G8_TCM_BYTES;off+=4){r->tcm_cursor=off;if(!put(w,io,tcm_address(off),4,word(w->backup[0]+off)))return 0;}for(unsigned off=0;off<G8_TCM_BYTES;off+=4)if(read_value(w,io,tcm_address(off),4)!=word(w->backup[1]+off)||r->poison)return fail(r,G8_RESTORE,1);}
++ r->phase=G8_CONFIG_RESTORE;
++ for(unsigned i=0;i<24;i++){if(i==19||i==23)continue;if(!set_reg(w,io,i,r->old[i]))return 0;}
++ if(!set_reg(w,io,23,r->old[23]))return 0;
++ for(unsigned i=0;i<G8_REGS;i++)if(read_value(w,io,g8_regs[i].address,g8_regs[i].width)!=r->old[i]||r->poison)return fail(r,G8_RESTORE,1);
++ if(!hashes_valid(w)||!quiet(w,io))return fail(r,G8_RESTORE,1);r->restored=1;r->flags|=G8_RESTORED;return 1;
++}
++int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io){
++ if(!w||!q||!io||!io->read||!io->write||!io->ticks||!io->delay||!io->barrier||!io->lease||!io->proof||!io->owned||(w->record.flags&G8_LEASE&&!w->record.lease_released)||w->memory.state)return 0;
++ struct g8_record*r=&w->record;*r=(struct g8_record){.epoch=q->epoch,.phase=G8_ACQUIRE};
++ if(!q->epoch||q->board!=0x06060201||q->hlos_cb!=6||q->hlos_smr!=6||q->current_el!=4||(q->sctlr&0x1005)!=0x1005||(q->sctlr&0x3000000)||q->acd_off!=1||q->qdss_off!=1||q->lm_bcl_off!=1||q->hfi_off!=1||q->inherited_ddr_probe!=1||!io->proof(io->ctx,q,&w->blob)||!io->owned(io->ctx,w,sizeof(*w)))return fail(r,G8_PREREQ,0);
++ const uint32_t lo[]={18600000,1000000,180000000,135000000},hi[]={19800000,300000000,220000000,165000000};for(unsigned i=0;i<4;i++)if(q->rates[i]<lo[i]||q->rates[i]>hi[i])return fail(r,G8_PREREQ,0);
++ uint8_t hash[32];g7_sha256(w->firmware,G8_FW_BYTES,hash);if(w->blob.bytes!=G8_FW_BYTES||w->blob.board!=q->board||!same(hash,w->blob.firmware_sha256,32)||gn_firmware_plan(w->firmware,G8_FW_BYTES,&w->firmware_plan)!=GN_OK||w->firmware_plan.block_count!=15||w->firmware_plan.data_blocks!=4||w->firmware_plan.metadata_blocks!=11)return fail(r,G8_FIRMWARE,0);
++ r->start=io->ticks(io->ctx);if(r->start<q->epoch||r->start-q->epoch>19200000||!io->lease(io->ctx,q->epoch,1))return fail(r,G8_PREREQ,0);r->flags=G8_LEASE|G8_HELD_RESET;
++ if(!quiet(w,io)||!snapshot(w,q,io))goto done;r->flags|=G8_SCOPED;r->phase=G8_SAVE;
++ for(unsigned pass=0;pass<2;pass++)for(unsigned i=0;i<G8_REGS;i++){uint64_t value=read_value(w,io,g8_regs[i].address,g8_regs[i].width);if(r->poison)goto done;if(pass&&r->old[i]!=value){fail(r,G8_OWNER,1);goto done;}r->old[i]=r->expected[i]=value;}
++ for(unsigned i=0;i<4;i++)if(read_value(w,io,irq_status[i],4)||r->poison){fail(r,G8_OWNER,1);goto done;}
++ if(read_value(w,io,GD_ACK,4)||read_value(w,io,TLB_STATUS,4)||r->poison){fail(r,G8_OWNER,1);goto done;}
++ for(unsigned pass=0;pass<2;pass++){for(unsigned off=0;off<G8_TCM_BYTES;off+=4){if(!(off&0xfff)&&!quiet(w,io))goto done;bytes(w->backup[pass]+off,(uint32_t)read_value(w,io,tcm_address(off),4));if(r->poison)goto done;}g7_sha256(w->backup[pass],G8_TCM_BYTES,r->tcm_sha[pass]);}
++ if(!hashes_valid(w)){fail(r,G8_BACKUP,1);goto done;}r->saved_crc=old_crc(r);r->flags|=G8_SAVED;r->phase=G8_MEMORY;
++ if(!gm_memory_prepare(&w->memory,&w->firmware_plan,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_MEMORY_READY;
++ for(unsigned i=0;i<G8_REGS;i++)if(!old_valid(w,i)){fail(r,G8_PREREQ,0);goto done;}
++ for(unsigned i=0;i<w->firmware_plan.block_count;i++){const struct gn_block*b=&w->firmware_plan.blocks[i];if(b->size&&b->kind!=GN_ITCM&&b->kind!=GN_DTCM){uint8_t*dst=gm_memory_owned_va(&w->memory,b->address,b->size);if(!dst){fail(r,G8_MEMORY_ERROR,0);goto done;}for(unsigned j=0;j<b->size;j++)dst[j]=w->firmware[b->data_offset+j];if(!same(dst,w->firmware+b->data_offset,b->size)){fail(r,G8_BACKUP,1);goto done;}}}
++ if(gn_hfi_init(gm_memory_owned_va(&w->memory,w->firmware_plan.hfi_address,GN_HFI_BYTES),GN_HFI_BYTES,w->firmware_plan.hfi_address)!=GN_OK||!gm_memory_publish(&w->memory,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_PUBLISHED;r->phase=G8_INSTALL;
++ if(!set_reg(w,io,26,0)||!set_reg(w,io,27,target(w,27))||!tlbi(w,io))goto done;
++ const unsigned setup[]={25,24,28,29,30,31,32,33,26,35,34};for(unsigned n=0;n<sizeof(setup)/sizeof(setup[0]);n++)if(!set_reg(w,io,setup[n],target(w,setup[n])))goto done;r->flags|=G8_MAPPED;
++ if(!hashes_valid(w)){fail(r,G8_BACKUP,1);goto done;}r->phase=G8_LOAD;for(unsigned off=0;off<G8_TCM_BYTES;off+=4){uint32_t value;if(payload_word(w,off,&value)){r->tcm_cursor=off;if(!put(w,io,tcm_address(off),4,value))goto done;}}
++ const uint32_t version[]={0x30020004,0xffffffff,0x30010002,0,0x20010000};for(unsigned i=0;i<5;i++)if(read_value(w,io,0x3d74fe0+4*i,4)!=version[i]||r->poison){fail(r,G8_FIRMWARE,0);goto restore;}r->flags|=G8_LOADED;r->phase=G8_CONFIG;
++ for(unsigned i=0;i<23;i++){if(i==19)continue;uint64_t value=g8_regs[i].kind==G8_MASK?r->old[i]|g8_regs[i].mask:target(w,i);if(!set_reg(w,io,i,value))goto done;if(i==15&&(!set_reg(w,io,15,0x9c40403)||!set_reg(w,io,15,0x9c40407)))goto done;}
++ g7_sha256(w->firmware,G8_FW_BYTES,hash);if(!same(hash,w->blob.firmware_sha256,32)){fail(r,G8_FIRMWARE,0);goto restore;}
++ if(read_value(w,io,FW_RESULT,4)||r->poison){fail(r,G8_FIRMWARE,0);goto restore;}
++ r->phase=G8_START;if(!set_reg(w,io,19,0))goto done;r->flags&=~G8_HELD_RESET;r->flags|=G8_RELEASED_RESET;r->phase=G8_WAIT;
++ for(unsigned i=0;i<100000;i++){uint32_t value=(uint32_t)read_value(w,io,FW_RESULT,4);if(r->poison)goto done;r->expected[3]=value;if((value&0x1ff)==0x100){r->flags|=G8_FW100;break;}if(i==99999)fail(r,G8_TIMEOUT,0);io->delay(io->ctx,1);}
++restore:if(!r->poison)cleanup(w,io);
++done:r->end=io->ticks(io->ctx);if(!r->writes||r->restored){if(io->lease(io->ctx,q->epoch,0)){r->lease_released=1;r->flags|=G8_LEASE_RELEASED;}else fail(r,G8_OWNER,1);}r->retain_allocations=!r->restored&&r->writes;return g8_transaction_complete(w);
++}
++int g8_transaction_complete(const struct g8_workspace*w){return w&&!w->record.error&&!w->record.poison&&w->record.restored&&w->record.lease_released&&(w->record.flags&G8_FW100);}
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_fwinit.h
+@@ -0,0 +1,28 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_g8_slot.h"
++#include "ziyi_g7_policy.h"
++#include "ziyi_g8_memory.h"
++#include "ziyi_g8_drain.h"
++#define G8_REGS 37u
++#define G8_TCM_BYTES 32768u
++enum g8_phase {G8_ACQUIRE=1,G8_SAVE,G8_MEMORY,G8_INSTALL,G8_LOAD,G8_CONFIG,G8_START,G8_WAIT,G8_STOP,G8_DRAIN,G8_CLEAR,G8_UNROUTE,G8_CONTEXT_RESTORE,G8_TCM_RESTORE,G8_CONFIG_RESTORE,G8_DONE};
++enum g8_flags {G8_LEASE=1,G8_SAVED=2,G8_MEMORY_READY=4,G8_PUBLISHED=8,G8_MAPPED=16,G8_LOADED=32,G8_RELEASED_RESET=64,G8_FW100=128,G8_HELD_RESET=256,G8_BUS_DRAINED=512,G8_RESTORED=1024,G8_LEASE_RELEASED=2048,G8_SCOPED=4096};
++enum g8_error {G8_OK=0,G8_ARGUMENT,G8_PREREQ,G8_IO,G8_OWNER,G8_BACKUP,G8_MEMORY_ERROR,G8_FIRMWARE,G8_TIMEOUT,G8_DEVICE_FAULT,G8_RESTORE};
++enum g8_kind {G8_LITERAL=1,G8_MASK,G8_INTERFRAME,G8_RESET,G8_FWSTATUS,G8_ARCH,G8_ROUTE,G8_GBIF};
++struct g8_reg {uint64_t address,mask,literal;uint32_t width,kind;};
++extern const struct g8_reg g8_regs[G8_REGS];
++struct g8_prereq {uint64_t epoch;uint32_t board,hlos_cb,hlos_smr,rates[4],current_el;uint64_t sctlr;uint32_t acd_off,qdss_off,lm_bcl_off,hfi_off,inherited_ddr_probe;};
++struct g8_record {uint32_t flags,phase,error,poison,reads,writes,tcmmodified,restored,lease_released,retain_allocations,pending_width,tcm_cursor,saved_crc;uint64_t epoch,start,end,pending_address,pending_value,last_address,last_value,old[G8_REGS],expected[G8_REGS];uint32_t pending_clear,last_fsr,last_host,last_ao,last_fence;uint8_t tcm_sha[2][32];struct gd_record drain;};
++struct g8_workspace {struct g8_record record;struct ga_snapshot snapshot;struct ga_plan lease_plan;struct gn_plan firmware_plan;struct g8_blob blob;uint8_t firmware[G8_FW_BYTES] __attribute__((aligned(4096)));uint8_t backup[2][G8_TCM_BYTES] __attribute__((aligned(4096)));struct gm_xnu_memory memory;};
++struct g8_io {void*ctx;uint64_t(*read)(void*,uint64_t,unsigned,int*);void(*write)(void*,uint64_t,unsigned,uint64_t,int*);uint64_t(*ticks)(void*);void(*delay)(void*,uint32_t);void(*barrier)(void*);int(*lease)(void*,uint64_t,int);int(*proof)(void*,const struct g8_prereq*,const struct g8_blob*);int(*owned)(void*,const void*,size_t);struct gm_memory_io memory_io;};
++/* Native callback MUST use observation_address then repeat store_guard with
++ * a fresh reset value immediately before actual 32/64-bit device store. */
++int g8_observation_address(uint64_t,unsigned,uint64_t*);
++int g8_read_allowed(const struct g8_workspace*,uint64_t,unsigned);
++int g8_store_guard(const struct g8_workspace*,uint64_t,unsigned,uint64_t,uint64_t,uint32_t,uint32_t);
++int g8_run(struct g8_workspace*,const struct g8_prereq*,const struct g8_io*);
++int g8_transaction_complete(const struct g8_workspace*);
++/* Structural selection for the proven EL1/MMU-on contract. No legacy offline
++ * GA_REQUIRED_FACTS assertion and no hardware write authority is returned. */
++int g8_kernel_plan(const struct g8_prereq*,const struct ga_snapshot*,struct ga_plan*);
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_memory.c
+@@ -0,0 +1,35 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g8_memory.h"
++static int overlap(const void*a,size_t an,const void*b,size_t bn){uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;if(an>UINTPTR_MAX-x||bn>UINTPTR_MAX-y)return 1;return x<y+bn&&y<x+an;}
++static int physical_page(const struct gm_memory_io*io,const void*va,uint64_t*out){uint64_t pa=io->physical(io->ctx,va);if(!pa||(pa&4095)||pa>GT_OAS_END-4096)return 0;*out=pa;return 1;}
++int gm_memory_prepare(struct gm_xnu_memory*s,const struct gn_plan*fw,const struct gm_memory_io*io){
++ if(!s||!fw||!io||!io->physical||((uintptr_t)s&4095)||s->state||!fw->region_count||fw->region_count>GN_MAX_REGIONS||fw->backing_bytes>GM_BACKING_CAPACITY||overlap(s,sizeof(*s),fw,sizeof(*fw))||overlap(s,sizeof(*s),io,sizeof(*io)))return 0;
++ s->state=4;unsigned used=0,n=0;
++ for(unsigned i=0;i<fw->region_count;i++){
++  const struct gn_region*r=&fw->regions[i];
++  if(!r->size||(r->address|r->size)&4095||r->size>GM_BACKING_CAPACITY-used||r->kind<GN_CACHE||r->kind>GN_HFI)return 0;
++  s->regions[i]=*r;s->region_offset[i]=used;
++  for(unsigned off=0;off<r->size;off+=4096){
++   if(n==GT_MAX_MAPPINGS||r->address>UINT32_MAX-off||!physical_page(io,s->backing+used+off,&s->mappings[n].physical))return 0;
++   s->mappings[n].iova=r->address+off;s->mappings[n].reserved=0;n++;
++  }
++  used+=r->size;
++ }
++ if(!used||used!=fw->backing_bytes)return 0;
++ for(unsigned i=0;i<GT_MAX_TABLES;i++)if(!physical_page(io,s->tables[i],&s->table_physical[i]))return 0;
++ if(gt_build(&s->table_plan,s->tables,s->table_physical,GT_MAX_TABLES,s->mappings,n)!=GT_OK)return 0;
++ for(unsigned i=0;i<used;i++)s->backing[i]=0;
++ s->backing_bytes=used;s->region_count=fw->region_count;s->state=1;return 1;
++}
++void*gm_memory_owned_va(struct gm_xnu_memory*s,uint32_t address,size_t bytes){
++ if(!s||s->state!=1||!bytes)return 0;
++ for(unsigned i=0;i<s->region_count;i++){const struct gn_region*r=&s->regions[i];if(address>=r->address&&address-r->address<r->size&&bytes<=r->size-(address-r->address))return s->backing+s->region_offset[i]+address-r->address;}
++ return 0;
++}
++int gm_memory_publish(struct gm_xnu_memory*s,const struct gm_memory_io*io){
++ if(!s||!io||!io->flush||!io->clean||!io->barrier||s->state!=1||!s->table_plan.valid||!s->backing_bytes)return 0;
++ s->state=4;
++ if(!io->flush(io->ctx,s->backing,s->backing_bytes))return 0;
++ for(unsigned i=0;i<s->table_plan.table_count;i++)if(!io->clean(io->ctx,s->tables[i],GT_PAGE))return 0;
++ io->barrier(io->ctx);s->state=2;return 1;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_memory.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_g8_translation.h"
++#include "ziyi_g8_contract.h"
++#define GM_BACKING_CAPACITY 0x40000u
++struct gm_xnu_memory {
++ uint32_t state,backing_bytes,region_count,reserved;
++ struct gt_plan table_plan;
++ struct gt_mapping mappings[GT_MAX_MAPPINGS];
++ struct gn_region regions[GN_MAX_REGIONS];
++ uint32_t region_offset[GN_MAX_REGIONS];
++ uint64_t table_physical[GT_MAX_TABLES];
++ uint8_t backing[GM_BACKING_CAPACITY] __attribute__((aligned(4096)));
++ uint64_t tables[GT_MAX_TABLES][GT_ENTRIES] __attribute__((aligned(4096)));
++};
++struct gm_memory_io {void*ctx;uint64_t(*physical)(void*,const void*);int(*flush)(void*,void*,size_t);int(*clean)(void*,void*,size_t);void(*barrier)(void*);};
++int gm_memory_prepare(struct gm_xnu_memory *,const struct gn_plan *,const struct gm_memory_io *);
++void *gm_memory_owned_va(struct gm_xnu_memory *,uint32_t iova,size_t bytes);
++int gm_memory_publish(struct gm_xnu_memory *,const struct gm_memory_io *);
++/* Caller supplies a freshly zeroed, exclusively owned object. Prepare and
++ * publish must run while CM3 remains held in reset; they grant no MMIO/DMA
++ * authority. No teardown/free API is provided: retain allocation on uncertainty. */
++int gm_xnu_memory_prepare(struct gm_xnu_memory *,const struct gn_plan *);
++void *gm_xnu_memory_owned_va(struct gm_xnu_memory *,uint32_t iova,size_t bytes);
++int gm_xnu_memory_publish(struct gm_xnu_memory *);
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_registers.c
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g8_fwinit.h"
++/* Full literals are FINITE allowed values, never arbitrary writable masks.
++ * ARCH masks come from named ARM-SMMU fields, not vendor constant writes. */
++#define L(a,v) {a,0,v,4,G8_LITERAL}
++#define A(a,m,v,w) {a,m,v,w,G8_ARCH}
++const struct g8_reg g8_regs[G8_REGS]={
++ L(0x3d7e3c4,1),L(0x3d7e3c0,1),L(0x3d7e730,1),
++ {0x3d7e070,0,0,4,G8_FWSTATUS},L(0x3d7e004,2),
++ L(0x3d7e614,0),L(0x3d7e610,1),L(0x3d8ec44,0x80a008a0),L(0x3d7e0b4,0x4052),
++ L(0x3d7e404,0),L(0x3d7e608,0x06062100),L(0x3d7e400,0),
++ L(0x3d7d03c,1),L(0x3d7d000,1),L(0x3d7d004,1),
++ {0x3d7e300,7,0x9c40400,4,G8_INTERFRAME},L(0x3d7e304,0xa1680),L(0x3d7e308,0xa1680),
++ {0x3d7e3a0,0xf11,0xf11,4,G8_MASK},
++ {0x3d7e000,1,0,4,G8_RESET},L(0x3d7e64c,0xffffffff),L(0x3d8ec18,0xffffffff),L(0x3d8ec40,0),
++ {0x3d0f114,3,0,4,G8_GBIF},
++ A(0x3da1008,0x3f3ff,0x1f300,4),A(0x3da1808,1,1,4),
++ A(0x3db2000,0x0fdf11f7,0xc01027,4),L(0x3db2004,0x32b),
++ A(0x3db2010,0x3801f,0x38011,4),A(0x3db2030,0x80c0ffbf,0x803519,4),
++ A(0x3db2020,0xffff000ffffff000ULL,0,8),A(0x3db2028,0xffff000ffffff000ULL,0x2000000000000ULL,8),
++ A(0x3db2038,0xffffffff,0xf404ff44,4),A(0x3db203c,0xffffffff,0xefe4,4),
++ {0x3da0800,0,0x84000005,4,G8_ROUTE},{0x3da0c00,0,0x302,4,G8_ROUTE},
++ A(0x3db2058,0xc00001fe,0,4)
++};
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_slot.c
+@@ -0,0 +1,33 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g8_slot.h"
++#include "ziyi_g7_sha256.h"
++#if defined(__APPLE__)
++#define SLOT_ATTR __attribute__((section("__DATA_CONST,__ziyi_gmu"),used,aligned(16384)))
++#else
++#define SLOT_ATTR __attribute__((used,aligned(4096)))
++#endif
++/* Nonzero public header makes this file-backed, not zero-fill BSS. No vendor
++ * bytes or private digest exist in CI. Root patches only this section locally. */
++static const volatile uint8_t g8_private_slot[G8_SLOT_BYTES] SLOT_ATTR={
++ 'Z','I','Y','I','_','G','M','U','_','S','L','O','T','v','1',0,
++ [16]=1,[22]=1,[24]=128,[28]=1,[29]=2,[30]=6,[31]=6
++};
++static uint32_t word(const uint8_t*p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++static int same(const uint8_t*a,const uint8_t*b,unsigned n){unsigned x=0;for(unsigned i=0;i<n;i++)x|=a[i]^b[i];return !x;}
++static int overlaps(const void*a,size_t an,const void*b,size_t bn){uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;if(an>UINTPTR_MAX-x||bn>UINTPTR_MAX-y)return 1;return x<y+bn&&y<x+an;}
++int g8_slot_decode(const volatile uint8_t*slot,size_t count,uint8_t*owned,size_t capacity,struct g8_blob*out){
++ static const uint8_t magic[16]={'Z','I','Y','I','_','G','M','U','_','S','L','O','T','v','1',0};
++ if(!slot||!owned||!out||count!=G8_SLOT_BYTES||capacity<G8_FW_BYTES||overlaps((const void*)slot,count,owned,G8_FW_BYTES)||overlaps((const void*)slot,count,out,sizeof(*out))||overlaps(owned,G8_FW_BYTES,out,sizeof(*out)))return 0;
++ *out=(struct g8_blob){0};uint8_t h[128],header_hash[32],firmware_hash[32];
++ for(unsigned i=0;i<128;i++)h[i]=slot[i];
++ if(!same(h,magic,16)||word(h+16)!=1||word(h+20)!=65536||word(h+24)!=128||word(h+28)!=0x06060201||word(h+32)!=G8_FW_BYTES||word(h+36)!=1)return 0;
++ for(unsigned i=104;i<128;i++)if(h[i])return 0;
++ for(unsigned i=0;i<32;i++){out->firmware_sha256[i]=h[40+i];out->header_sha256[i]=h[72+i];h[72+i]=0;}
++ g7_sha256(h,128,header_hash);if(!same(header_hash,out->header_sha256,32))return 0;
++ for(unsigned i=0;i<G8_FW_BYTES;i++)owned[i]=slot[128+i];
++ for(unsigned i=128+G8_FW_BYTES;i<G8_SLOT_BYTES;i++)if(slot[i])return 0;
++ g7_sha256(owned,G8_FW_BYTES,firmware_hash);if(!same(firmware_hash,out->firmware_sha256,32))return 0;
++ for(unsigned i=0;i<128;i++)if((i>=72&&i<104?out->header_sha256[i-72]:h[i])!=slot[i])return 0;
++ out->bytes=G8_FW_BYTES;out->board=0x06060201;return 1;
++}
++int g8_slot_copy(uint8_t*owned,size_t capacity,struct g8_blob*out){return g8_slot_decode(g8_private_slot,sizeof(g8_private_slot),owned,capacity,out);}
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_slot.h
+@@ -0,0 +1,10 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stdint.h>
++#include <stddef.h>
++#define G8_SLOT_BYTES 65536u
++#define G8_SLOT_HEADER 128u
++#define G8_FW_BYTES 55888u
++struct g8_blob {uint32_t bytes,board;uint8_t firmware_sha256[32],header_sha256[32];};
++int g8_slot_decode(const volatile uint8_t *,size_t,uint8_t *,size_t,struct g8_blob *);
++int g8_slot_copy(uint8_t *,size_t,struct g8_blob *);
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_translation.c
+@@ -0,0 +1,52 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g8_translation.h"
++static int overlap(const void*a,size_t an,const void*b,size_t bn){uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;if(an>UINTPTR_MAX-x||bn>UINTPTR_MAX-y)return 1;return x<y+bn&&y<x+an;}
++static int pa_valid(uint64_t pa){return pa&&!(pa&(GT_PAGE-1))&&pa<=GT_OAS_END-GT_PAGE;}
++static int iova_valid(uint32_t va){return !(va&(GT_PAGE-1))&&((va>=0x4000&&va<0x1000000)||(va>=0x60000000&&va<0x80000000));}
++static int table_index(const struct gt_plan*p,uint64_t value){if((value&0xfff)!=3||value>=GT_OAS_END)return -1;for(unsigned i=0;i<p->table_count;i++)if(p->table_physical[i]==(value&~0xfffULL))return (int)i;return -1;}
++int gt_build(struct gt_plan*out,uint64_t (*tables)[GT_ENTRIES],const uint64_t*physical,unsigned count,const struct gt_mapping*maps,unsigned n){
++ if(!out||!tables||!physical||!maps||!count||count>GT_MAX_TABLES||!n||n>GT_MAX_MAPPINGS)return GT_ARGUMENT;
++ size_t tb=(size_t)count*GT_PAGE,pb=(size_t)count*sizeof(*physical),mb=(size_t)n*sizeof(*maps);
++ if(overlap(out,sizeof(*out),tables,tb)||overlap(out,sizeof(*out),physical,pb)||overlap(out,sizeof(*out),maps,mb)||overlap(tables,tb,physical,pb)||overlap(tables,tb,maps,mb))return GT_OVERLAP;
++ *out=(struct gt_plan){0};
++ for(unsigned i=0;i<count;i++){
++  if(!pa_valid(physical[i]))return GT_PHYSICAL;
++  for(unsigned j=0;j<i;j++)if(physical[i]==physical[j])return GT_OVERLAP;
++ }
++ unsigned needed=1;
++ for(unsigned i=0;i<n;i++){
++  if(maps[i].reserved||!iova_valid(maps[i].iova))return GT_IOVA;
++  if(!pa_valid(maps[i].physical))return GT_PHYSICAL;
++  for(unsigned j=0;j<count;j++)if(maps[i].physical==physical[j])return GT_OVERLAP;
++  unsigned same_l1=0,same_l2=0;
++  for(unsigned j=0;j<i;j++){
++   if(maps[i].iova==maps[j].iova||maps[i].physical==maps[j].physical)return GT_OVERLAP;
++   same_l1|=(maps[i].iova>>30)==(maps[j].iova>>30);
++   same_l2|=(maps[i].iova>>21)==(maps[j].iova>>21);
++  }
++  needed+=!same_l1;needed+=!same_l2;
++ }
++ if(needed>count)return GT_CAPACITY;
++ for(unsigned i=0;i<count;i++)for(unsigned j=0;j<GT_ENTRIES;j++)tables[i][j]=0;
++ out->table_count=1;out->mapped_pages=n;
++ for(unsigned i=0;i<count;i++)out->table_physical[i]=physical[i];
++ for(unsigned i=0;i<n;i++){
++  unsigned current=0;const unsigned shifts[]={30,21};
++  for(unsigned level=0;level<2;level++){
++   unsigned index=(maps[i].iova>>shifts[level])&511;uint64_t*entry=&tables[current][index];
++   if(!*entry){unsigned child=out->table_count++;*entry=physical[child]|3;current=child;}
++   else {int child=table_index(out,*entry);if(child<0)return GT_ARGUMENT;current=(unsigned)child;}
++  }
++  tables[current][(maps[i].iova>>12)&511]=maps[i].physical|GT_LEAF_ATTR;
++ }
++ if(out->table_count!=needed)return GT_ARGUMENT;
++ out->valid=1;return GT_OK;
++}
++int gt_lookup(const struct gt_plan*p,const uint64_t (*tables)[GT_ENTRIES],uint32_t va,uint64_t*physical){
++ if(!p||!tables||!physical||p->valid!=1||!p->table_count||p->table_count>GT_MAX_TABLES||p->mapped_pages>GT_MAX_MAPPINGS)return 0;
++ unsigned current=0;const unsigned shifts[]={30,21};
++ for(unsigned level=0;level<2;level++){int index=table_index(p,tables[current][(va>>shifts[level])&511]);if(index<0)return 0;current=(unsigned)index;}
++ uint64_t value=tables[current][(va>>12)&511];
++ if((value&0xfff)!=GT_LEAF_ATTR||value>=GT_OAS_END)return 0;
++ *physical=(value&~0xfffULL)|(va&0xfff);return 1;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g8_translation.h
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stddef.h>
++#include <stdint.h>
++#define GT_PAGE 4096u
++#define GT_ENTRIES 512u
++#define GT_MAX_TABLES 32u
++#define GT_MAX_MAPPINGS 128u
++#define GT_OAS_END (1ULL<<36)
++#define GT_LEAF_ATTR 0xe03ULL /* page,nG,AF,OSH,MAIR0=NormalNC,privilegedRW */
++enum gt_error {GT_OK=0,GT_ARGUMENT,GT_OVERLAP,GT_PHYSICAL,GT_IOVA,GT_CAPACITY};
++struct gt_mapping {uint32_t iova,reserved;uint64_t physical;};
++struct gt_plan {uint32_t valid,table_count,mapped_pages,reserved;uint64_t table_physical[GT_MAX_TABLES];};
++/* Caller owns all arrays. These functions write ONLY caller-provided CPU RAM.
++ * No register, physical address dereference, publication, TLB or DMA operation. */
++int gt_build(struct gt_plan *,uint64_t (*)[GT_ENTRIES],const uint64_t *table_physical,unsigned table_count,const struct gt_mapping *,unsigned mapping_count);
++int gt_lookup(const struct gt_plan *,const uint64_t (*)[GT_ENTRIES],uint32_t iova,uint64_t *physical);
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -1,151 +1,208 @@
+-/* SPDX-License-Identifier: GPL-2.0-only */
+-/* Experimental XNU integration of the guarded G6/G7 acquisition engines.
+- * No framebuffer/GPU service, firmware execution, DMA or acceleration API.
+- * ARM64 ml_probe_read is unimplemented in this XNU. Device loads below may
+- * synchronously abort/panic; no post-fault restoration is asserted. */
+-#include <pexpert/arm64/board_config.h>
+-#if !SWEET
+-#error "ziyi_gpu_probe requires the SWEET kernel profile"
+-#endif
+-#include <stdint.h>
+-#include <stddef.h>
+-#include <stdbool.h>
+-#include <sys/systm.h>
+-#include <sys/proc.h>
+-#include <sys/proc_internal.h>
+-#include <kern/clock.h>
+-#include <kern/thread.h>
+-#include <kern/sched_prim.h>
+-#include <mach/vm_param.h>
+-#include <mach/vm_prot.h>
+-#include <vm/memory_types.h>
+-#include <arm/memory_types.h>
+-#include <machine/machine_routines.h>
+-#include <pexpert/pexpert.h>
+-#include <pexpert/device_tree.h>
+-#include "ziyi_gpu_probe.h"
+-#include "ziyi_gpu_probe_contract.h"
+-#include "ziyi_g7_clock.h"
+-#include "ziyi_g7_engine.h"
+-#include "ziyi_adt_binding.h"
+-#include "ziyi_gpu_adt_properties.inc"
+-extern vm_offset_t io_map(vm_map_offset_t,vm_size_t,unsigned int,vm_prot_t,bool);
+-extern void ml_io_unmap(vm_offset_t,vm_size_t);
+-extern kern_return_t thread_terminate(thread_t);
+-#define ZG_RW_MAPS 25u
+-struct zg_mapping {struct zg_region region;struct zg_geometry geometry;vm_offset_t page_va;};
+-struct zg_state {
+- struct zadt_binding adt;uint32_t checked_clock_phase,checked_probe_phase;
+- struct zg_contract contract;struct zg_mapping ro[ZG_REGIONS],rw[ZG_RW_MAPS];unsigned rw_count;
+- struct g7c_record clocks;struct g7_record probe;uint64_t lease_epoch;uint32_t lease;
+- uint8_t copy0[G7_TCM_BYTES] __attribute__((aligned(64)));
+- uint8_t copy1[G7_TCM_BYTES] __attribute__((aligned(64)));
+-};
+-static struct zg_state zg;
+-static uint32_t zg_started;
+-static int zg_wait_channel;
+-static void zg_sleep(unsigned ms){uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);(void)assert_wait_deadline(&zg_wait_channel,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);}
+-static int zg_springboard(proc_t p,void*ctx){const char*name=proc_best_name(p);if(name&&strcmp(name,"SpringBoard")==0){*(int*)ctx=proc_pid(p);return PROC_RETURNED_DONE;}return PROC_RETURNED;}
+-static void zg_barrier(void*ctx){(void)ctx;__asm__ volatile("dsb sy":::"memory");}
+-static uint64_t zg_ticks(void*ctx){(void)ctx;uint64_t v;__asm__ volatile("mrs %0,cntvct_el0":"=r"(v));return v;}
+-static uint64_t zg_sctlr(void){uint64_t v;__asm__ volatile("mrs %0,sctlr_el1":"=r"(v));return v;}
+-static uint64_t zg_el(void){uint64_t v;__asm__ volatile("mrs %0,CurrentEL":"=r"(v));return v;}
+-static uint64_t zg_frequency(void){uint64_t v;__asm__ volatile("mrs %0,cntfrq_el0":"=r"(v));return v;}
+-static void zg_delay(void*ctx,uint32_t us){uint64_t first=zg_ticks(ctx),ticks=((uint64_t)us*192+9)/10;while(zg_ticks(ctx)-first<ticks)__asm__ volatile("yield");}
+-static int zg_get(void*ctx,const char*name,const void**data,unsigned*bytes){return SecureDTGetProperty((DTEntry)ctx,name,data,bytes)==kSuccess;}
+-static int zg_adt_check(struct zg_state*s,int first){
+- int ok=first?zadt_open(&s->adt,"/arm-io/ziyi-gpu-probe",zg_adt_properties,ZG_ADT_PROPERTY_COUNT):zadt_recheck(&s->adt,"/arm-io/ziyi-gpu-probe",zg_adt_properties,ZG_ADT_PROPERTY_COUNT);
+- if(!ok)return 0;struct zg_contract fresh;
+- if(!zg_contract_read(&fresh,zg_get,(void*)s->adt.entry))return 0;
+- if(first)s->contract=fresh;else if(!zadt_equal(&fresh,&s->contract,sizeof(fresh)))return 0;
+- return 1;
+-}
+-static int zg_map_one(struct zg_mapping*m,struct zg_region region,vm_prot_t prot){
+- struct zg_geometry geometry;if(!zg_map_geometry(region.base,region.bytes,PAGE_SIZE,&geometry))return 0;
+- vm_offset_t va=io_map((vm_map_offset_t)geometry.page_base,(vm_size_t)geometry.page_span,VM_WIMG_IO,prot,true);
+- if(!va)return 0;m->region=region;m->geometry=geometry;m->page_va=va;return 1;
+-}
+-static void zg_unmap_all(struct zg_state*s){
+- for(unsigned i=0;i<s->rw_count;i++)if(s->rw[i].page_va){ml_io_unmap(s->rw[i].page_va,(vm_size_t)s->rw[i].geometry.page_span);s->rw[i].page_va=0;}
+- for(unsigned i=0;i<ZG_REGIONS;i++)if(s->ro[i].page_va){ml_io_unmap(s->ro[i].page_va,(vm_size_t)s->ro[i].geometry.page_span);s->ro[i].page_va=0;}
+-}
+-static int zg_map_all(struct zg_state*s){
+- for(unsigned i=0;i<ZG_REGIONS;i++)if(!zg_map_one(&s->ro[i],s->contract.regions[i],VM_PROT_READ))return 0;
+- for(unsigned i=0;i<G2_NREGS;i++){
+-  const struct g7c_reg*d=&g7c_regs[i];if(!g7c_write_allowed(d->base,d->offset))continue;
+-  uint64_t address=d->base+d->offset;struct zg_geometry g;if(!zg_map_geometry(address,4,PAGE_SIZE,&g))return 0;
+-  unsigned n;for(n=0;n<s->rw_count;n++)if(s->rw[n].geometry.page_base==g.page_base)break;
+-  if(n<s->rw_count)continue;if(s->rw_count==ZG_RW_MAPS)return 0;
+-  if(!zg_map_one(&s->rw[s->rw_count],(struct zg_region){g.page_base,g.page_span},VM_PROT_READ|VM_PROT_WRITE))return 0;
+-  s->rw_count++;
+- }
+- return 1;
+-}
+-static volatile uint32_t*zg_pointer(struct zg_mapping*m,unsigned count,uint64_t address){
+- if(address&3)return 0;
+- for(unsigned i=0;i<count;i++){uint64_t offset;if(m[i].page_va&&zg_region_offset(&m[i].region,address,4,&offset))return (volatile uint32_t*)(uintptr_t)(m[i].page_va+m[i].geometry.bias+offset);}
+- return 0;
+-}
+-static uint32_t zg_read_clock(void*ctx,uint64_t base,uint32_t off,int*ok){
+- struct zg_state*s=ctx;*ok=0;if(s->checked_clock_phase!=s->clocks.phase){if(!zg_adt_check(s,0)){s->clocks.poison=1;return 0;}s->checked_clock_phase=s->clocks.phase;}if(!g7c_read_allowed(&s->clocks,base,off)||base>UINT64_MAX-off)return 0;
+- volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,base+off);if(!p)return 0;
+- uint32_t value=*p;zg_barrier(s);*ok=1;return value;
+-}
+-static void zg_write_clock(void*ctx,uint64_t base,uint32_t off,uint32_t value,int*ok){
+- struct zg_state*s=ctx;*ok=0;if(!zg_adt_check(s,0)){s->clocks.poison=1;return;}if(!g7c_write_allowed(base,off)||base>UINT64_MAX-off)return;
+- volatile uint32_t*read=zg_pointer(s->ro,ZG_REGIONS,base+off),*write=zg_pointer(s->rw,s->rw_count,base+off);if(!read||!write)return;
+- uint32_t now=*read;zg_barrier(s);for(unsigned i=0;i<G2_NREGS;i++)if(g7c_regs[i].base==base&&g7c_regs[i].offset==off)s->clocks.final[i]=now;
+- if(!g7c_store_guard(&s->clocks,base,off,value,now))return;
+- *write=value;zg_barrier(s);*ok=1;
+-}
+-static uint32_t zg_read_probe(void*ctx,uint64_t address,int*ok){
+- struct zg_state*s=ctx;*ok=0;if(s->checked_probe_phase!=s->probe.phase){if(!zg_adt_check(s,0)){s->probe.poison=1;return 0;}s->checked_probe_phase=s->probe.phase;}if(!g7_read_allowed(&s->probe,address))return 0;
+- volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,address);if(!p)return 0;uint32_t value=*p;zg_barrier(s);*ok=1;return value;
+-}
+-static int zg_lease(void*ctx,uint64_t epoch,int acquire){
+- struct zg_state*s=ctx;if(!epoch)return 0;
+- if(acquire){uint32_t expected=0;if(!__atomic_compare_exchange_n(&s->lease,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return 0;s->lease_epoch=epoch;return 1;}
+- if(__atomic_load_n(&s->lease,__ATOMIC_ACQUIRE)!=1||s->lease_epoch!=epoch)return 0;s->lease_epoch=0;__atomic_store_n(&s->lease,0,__ATOMIC_RELEASE);return 1;
+-}
+-static int zg_owned(void*ctx,const void*memory,size_t bytes){struct zg_state*s=ctx;return bytes==G7_TCM_BYTES&&(memory==s->copy0||memory==s->copy1);}
+-static void zg_phase(void*ctx,uint32_t phase){(void)ctx;printf("ZIYI GPU clock phase %u\n",phase);}
+-static int zg_qualified(void*ctx,struct g7c_record*clocks){
+- struct zg_state*s=ctx;if(!zg_adt_check(s,0)){s->clocks.poison=1;return 0;}if(clocks!=&s->clocks||clocks->flags!=127||clocks->poison||clocks->error)return 0;
+- struct g7_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,
+- .contract_kind=G7_CONTRACT_XNU_SECURE_DT,.handoff_pairs=s->contract.handoff,.mapped_device_io=1,
+- .execution_kind=G7_EXEC_KERNEL_ON,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr()};
+- for(unsigned i=0;i<4;i++)q.rates[i]=clocks->measure[i][3];
+- struct g7_buffers buffers={s->copy0,s->copy1,sizeof(s->copy0),sizeof(s->copy1)};
+- struct g7_io io={s,zg_read_probe,zg_ticks,zg_lease,zg_owned,zg_barrier};
+- printf("ZIYI GPU G7 acquire kernel-MMU-on, no firmware/DMA\n");
+- int success=g7_run_acquire(&s->probe,&q,&buffers,&io);
+- printf("ZIYI GPU G7 result flags=%x error=%u poison=%u reads=%u TCM=%u CRC=%08x/%08x fw=0 accel=0\n",s->probe.flags,s->probe.error,s->probe.poison,s->probe.reads,s->probe.tcm_equal,s->probe.tcm_crc[0],s->probe.tcm_crc[1]);
+- if(s->probe.poison)clocks->poison=1;return success;
+-}
+-static void zg_worker(void*arg,wait_result_t result){
+- (void)arg;(void)result;bzero(&zg,sizeof(zg));unsigned delay_seconds=60;int pid=0;
+- PE_parse_boot_argn("ziyi_gpu_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
+- printf("ZIYI GPU probe armed opt-in delay%us then await SpringBoard; fw=0 accel=0\n",delay_seconds);zg_sleep(delay_seconds*1000u);
+- for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zg_springboard,&pid,NULL,NULL);if(!pid)zg_sleep(5000);}
+- if(!pid){printf("ZIYI GPU probe STOP SpringBoard absent after bounded wait; no device maps\n");goto done;}
+- zg_sleep(5000);printf("ZIYI GPU probe SpringBoard pid%d alive; starting in-system qualification\n",pid);
+- if(!zg_kernel_context(zg_el(),zg_sctlr(),zg_frequency())||!zg_adt_check(&zg,1)){
+-  printf("ZIYI GPU probe ADT STOP status%u property%u mode%u available%u observed%u; no MMIO\n",zg.adt.status,zg.adt.property,zg.adt.mode,zg.adt.available,zg.adt.observed);goto done;
+- }
+- printf("ZIYI GPU ADT binding mode%u available%u observed%u snapshots%u; board-bound, no fabricated lockdown\n",zg.adt.mode,zg.adt.available,zg.adt.observed,zg.adt.passes);
+- if(!zg_adt_check(&zg,0)||!zg_map_all(&zg)){printf("ZIYI GPU probe: mapping failed; no transaction\n");goto unmap;}
+- printf("ZIYI GPU probe: XNU EL1/MMU/cache ON; mappedDeviceRO + guarded clockRW pages=%u\n",zg.rw_count);
+- zg.clocks.opaque|=G7C_PLATFORM_SCOPE; /* validated exact board-bound ADT snapshot; no claim of Apple lockdown */
+- struct g7c_io io={&zg,zg_read_clock,zg_write_clock,zg_delay,zg_ticks,zg_phase,zg_qualified};
+- int success=g7c_run(&zg.clocks,&io);
+- printf("ZIYI GPU clocks result=%u flags=%x error=%u poison=%u restore=%u rates=%u/%u/%u/%u\n",success,zg.clocks.flags,zg.clocks.error,zg.clocks.poison,zg.clocks.restore,zg.clocks.measure[0][3],zg.clocks.measure[1][3],zg.clocks.measure[2][3],zg.clocks.measure[3][3]);
+- printf("ZIYI GPU probe done: acquisition only, firmware=0 DMA=0 acceleration=0\n");
+-unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);zg_unmap_all(&zg);
+-done:thread_terminate(current_thread());
+-}
+-void ziyi_gpu_probe_start(void){
+- uint32_t enabled=0;if(!PE_parse_boot_argn("ziyi_gpu_probe",&enabled,sizeof(enabled))||enabled!=1)return;
+- uint32_t expected=0;if(!__atomic_compare_exchange_n(&zg_started,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return;
+- thread_t worker=THREAD_NULL;kern_return_t kr=kernel_thread_start(zg_worker,NULL,&worker);
+- if(kr!=KERN_SUCCESS){printf("ZIYI GPU probe: cannot create worker %d\n",kr);return;}thread_deallocate(worker);
+-}
++/* SPDX-License-Identifier: GPL-2.0-only */
++/* Experimental XNU integration of the guarded G6/G7 acquisition engines.
++ * Opt-in G8 FW_INIT100 transaction; no HFI start, CP or acceleration API.
++ * ARM64 ml_probe_read is unimplemented in this XNU. Device loads below may
++ * synchronously abort/panic; no post-fault restoration is asserted. */
++#include <pexpert/arm64/board_config.h>
++#if !SWEET
++#error "ziyi_gpu_probe requires the SWEET kernel profile"
++#endif
++#include <stdint.h>
++#include <stddef.h>
++#include <stdbool.h>
++#include <sys/systm.h>
++#include <sys/proc.h>
++#include <sys/proc_internal.h>
++#include <kern/clock.h>
++#include <kern/thread.h>
++#include <kern/sched_prim.h>
++#include <mach/vm_param.h>
++#include <mach/vm_prot.h>
++#include <vm/memory_types.h>
++#include <arm/memory_types.h>
++#include <machine/machine_routines.h>
++#include <pexpert/pexpert.h>
++#include <pexpert/device_tree.h>
++#include "ziyi_gpu_probe.h"
++#include "ziyi_gpu_probe_contract.h"
++#include "ziyi_g7_clock.h"
++#include "ziyi_g7_engine.h"
++#include "ziyi_g8_fwinit.h"
++#include <arm/caches_internal.h>
++#include "ziyi_adt_binding.h"
++extern uint64_t kvtophys(vm_offset_t);
++#include "ziyi_gpu_adt_properties.inc"
++extern vm_offset_t io_map(vm_map_offset_t,vm_size_t,unsigned int,vm_prot_t,bool);
++extern void ml_io_unmap(vm_offset_t,vm_size_t);
++extern kern_return_t thread_terminate(thread_t);
++#define ZG_RW_MAPS 64u
++struct zg_mapping {struct zg_region region;struct zg_geometry geometry;vm_offset_t page_va;};
++struct zg_state {
++ struct zadt_binding adt;uint32_t checked_clock_phase,checked_probe_phase,checked_g8_phase,gmu_enabled;
++ struct g8_workspace firmware;
++ struct zg_contract contract;struct zg_mapping ro[ZG_REGIONS],rw[ZG_RW_MAPS];unsigned rw_count;
++ struct g7c_record clocks;struct g7_record probe;uint64_t lease_epoch;uint32_t lease;
++ uint8_t copy0[G7_TCM_BYTES] __attribute__((aligned(64)));
++ uint8_t copy1[G7_TCM_BYTES] __attribute__((aligned(64)));
++};
++static struct zg_state zg;
++static uint32_t zg_started;
++static int zg_wait_channel;
++static void zg_sleep(unsigned ms){uint64_t end;clock_interval_to_deadline(ms,NSEC_PER_MSEC,&end);(void)assert_wait_deadline(&zg_wait_channel,THREAD_UNINT,end);thread_block(THREAD_CONTINUE_NULL);}
++static int zg_springboard(proc_t p,void*ctx){const char*name=proc_best_name(p);if(name&&strcmp(name,"SpringBoard")==0){*(int*)ctx=proc_pid(p);return PROC_RETURNED_DONE;}return PROC_RETURNED;}
++static void zg_barrier(void*ctx){(void)ctx;__asm__ volatile("dsb sy":::"memory");}
++static uint64_t zg_ticks(void*ctx){(void)ctx;uint64_t v;__asm__ volatile("mrs %0,cntvct_el0":"=r"(v));return v;}
++static uint64_t zg_sctlr(void){uint64_t v;__asm__ volatile("mrs %0,sctlr_el1":"=r"(v));return v;}
++static uint64_t zg_el(void){uint64_t v;__asm__ volatile("mrs %0,CurrentEL":"=r"(v));return v;}
++static uint64_t zg_frequency(void){uint64_t v;__asm__ volatile("mrs %0,cntfrq_el0":"=r"(v));return v;}
++static void zg_delay(void*ctx,uint32_t us){uint64_t first=zg_ticks(ctx),ticks=((uint64_t)us*192+9)/10;while(zg_ticks(ctx)-first<ticks)__asm__ volatile("yield");}
++static int zg_get(void*ctx,const char*name,const void**data,unsigned*bytes){return SecureDTGetProperty((DTEntry)ctx,name,data,bytes)==kSuccess;}
++static int zg_adt_check(struct zg_state*s,int first){
++ int ok=first?zadt_open(&s->adt,"/arm-io/ziyi-gpu-probe",zg_adt_properties,ZG_ADT_PROPERTY_COUNT):zadt_recheck(&s->adt,"/arm-io/ziyi-gpu-probe",zg_adt_properties,ZG_ADT_PROPERTY_COUNT);
++ if(!ok)return 0;struct zg_contract fresh;
++ if(!zg_contract_read(&fresh,zg_get,(void*)s->adt.entry))return 0;
++ if(first)s->contract=fresh;else if(!zadt_equal(&fresh,&s->contract,sizeof(fresh)))return 0;
++ return 1;
++}
++static int zg_map_one(struct zg_mapping*m,struct zg_region region,vm_prot_t prot){
++ struct zg_geometry geometry;if(!zg_map_geometry(region.base,region.bytes,PAGE_SIZE,&geometry))return 0;
++ vm_offset_t va=io_map((vm_map_offset_t)geometry.page_base,(vm_size_t)geometry.page_span,VM_WIMG_IO,prot,true);
++ if(!va)return 0;m->region=region;m->geometry=geometry;m->page_va=va;return 1;
++}
++static void zg_unmap_all(struct zg_state*s){
++ for(unsigned i=0;i<s->rw_count;i++)if(s->rw[i].page_va){ml_io_unmap(s->rw[i].page_va,(vm_size_t)s->rw[i].geometry.page_span);s->rw[i].page_va=0;}
++ for(unsigned i=0;i<ZG_REGIONS;i++)if(s->ro[i].page_va){ml_io_unmap(s->ro[i].page_va,(vm_size_t)s->ro[i].geometry.page_span);s->ro[i].page_va=0;}
++}
++static int zg_map_all(struct zg_state*s){
++ for(unsigned i=0;i<ZG_REGIONS;i++)if(!zg_map_one(&s->ro[i],s->contract.regions[i],VM_PROT_READ))return 0;
++ for(unsigned i=0;i<G2_NREGS;i++){
++  const struct g7c_reg*d=&g7c_regs[i];if(!g7c_write_allowed(d->base,d->offset))continue;
++  uint64_t address=d->base+d->offset;struct zg_geometry g;if(!zg_map_geometry(address,4,PAGE_SIZE,&g))return 0;
++  unsigned n;for(n=0;n<s->rw_count;n++)if(s->rw[n].geometry.page_base==g.page_base)break;
++  if(n<s->rw_count)continue;if(s->rw_count==ZG_RW_MAPS)return 0;
++  if(!zg_map_one(&s->rw[s->rw_count],(struct zg_region){g.page_base,g.page_span},VM_PROT_READ|VM_PROT_WRITE))return 0;
++  s->rw_count++;
++ }
++ if(s->gmu_enabled){
++  /* MMIO page coverage is not authorization; native callback independently
++   * gates exact widths/addresses/fields immediately before every store. */
++  for(unsigned i=0;i<G8_REGS+1;i++){
++   struct zg_geometry g;if(!zg_map_geometry(i<G8_REGS?g8_regs[i].address:0x3d6d000,i<G8_REGS?g8_regs[i].width:0x8000,PAGE_SIZE,&g))return 0;
++   /* Full TCM span can cross several 16K pages; keep one owned IO mapping. */
++   if(s->rw_count==ZG_RW_MAPS)return 0;
++   if(!zg_map_one(&s->rw[s->rw_count],(struct zg_region){g.page_base,g.page_span},VM_PROT_READ|VM_PROT_WRITE))return 0;s->rw_count++;
++  }
++ }
++ return 1;
++}
++static volatile uint32_t*zg_pointer(struct zg_mapping*m,unsigned count,uint64_t address){
++ if(address&3)return 0;
++ for(unsigned i=0;i<count;i++){uint64_t offset;if(m[i].page_va&&zg_region_offset(&m[i].region,address,4,&offset))return (volatile uint32_t*)(uintptr_t)(m[i].page_va+m[i].geometry.bias+offset);}
++ return 0;
++}
++static uint32_t zg_read_clock(void*ctx,uint64_t base,uint32_t off,int*ok){
++ struct zg_state*s=ctx;*ok=0;if(s->checked_clock_phase!=s->clocks.phase){if(!zg_adt_check(s,0)){s->clocks.poison=1;return 0;}s->checked_clock_phase=s->clocks.phase;}if(!g7c_read_allowed(&s->clocks,base,off)||base>UINT64_MAX-off)return 0;
++ volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,base+off);if(!p)return 0;
++ uint32_t value=*p;zg_barrier(s);*ok=1;return value;
++}
++static void zg_write_clock(void*ctx,uint64_t base,uint32_t off,uint32_t value,int*ok){
++ struct zg_state*s=ctx;*ok=0;if(!zg_adt_check(s,0)){s->clocks.poison=1;return;}if(!g7c_write_allowed(base,off)||base>UINT64_MAX-off)return;
++ volatile uint32_t*read=zg_pointer(s->ro,ZG_REGIONS,base+off),*write=zg_pointer(s->rw,s->rw_count,base+off);if(!read||!write)return;
++ uint32_t now=*read;zg_barrier(s);for(unsigned i=0;i<G2_NREGS;i++)if(g7c_regs[i].base==base&&g7c_regs[i].offset==off)s->clocks.final[i]=now;
++ if(!g7c_store_guard(&s->clocks,base,off,value,now))return;
++ *write=value;zg_barrier(s);*ok=1;
++}
++static uint32_t zg_read_probe(void*ctx,uint64_t address,int*ok){
++ struct zg_state*s=ctx;*ok=0;if(s->checked_probe_phase!=s->probe.phase){if(!zg_adt_check(s,0)){s->probe.poison=1;return 0;}s->checked_probe_phase=s->probe.phase;}if(!g7_read_allowed(&s->probe,address))return 0;
++ volatile uint32_t*p=zg_pointer(s->ro,ZG_REGIONS,address);if(!p)return 0;uint32_t value=*p;zg_barrier(s);*ok=1;return value;
++}
++static int zg_lease(void*ctx,uint64_t epoch,int acquire){
++ struct zg_state*s=ctx;if(!epoch)return 0;
++ if(acquire){uint32_t expected=0;if(!__atomic_compare_exchange_n(&s->lease,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return 0;s->lease_epoch=epoch;return 1;}
++ if(__atomic_load_n(&s->lease,__ATOMIC_ACQUIRE)!=1||s->lease_epoch!=epoch)return 0;s->lease_epoch=0;__atomic_store_n(&s->lease,0,__ATOMIC_RELEASE);return 1;
++}
++static int zg_owned(void*ctx,const void*memory,size_t bytes){struct zg_state*s=ctx;return bytes==G7_TCM_BYTES&&(memory==s->copy0||memory==s->copy1);}
++static void zg_phase(void*ctx,uint32_t phase){(void)ctx;printf("ZIYI GPU clock phase %u\n",phase);}
++static void*zg_g8_pointer(struct zg_state*s,uint64_t at,unsigned width,int write){
++ if((width!=4&&width!=8)||(at&(width-1)))return NULL;
++ /* MMIO only. Firmware and page-table RAM use ordinary static BSS, never IO aliases. */
++ for(unsigned pass=0;pass<(write?1u:2u);pass++){struct zg_mapping*m=pass?s->ro:s->rw;unsigned n=pass?ZG_REGIONS:s->rw_count;
++  for(unsigned i=0;i<n;i++){uint64_t off;if(m[i].page_va&&zg_region_offset(&m[i].region,at,width,&off))return(void*)(uintptr_t)(m[i].page_va+m[i].geometry.bias+off);}}
++ return NULL;
++}
++static uint64_t zg_g8_load(struct zg_state*s,uint64_t at,unsigned width,int*ok){void*p=zg_g8_pointer(s,at,width,0);*ok=p!=NULL;if(!p)return 0;uint64_t value=width==8?*(volatile uint64_t*)p:*(volatile uint32_t*)p;zg_barrier(s);return value;}
++static uint64_t zg_g8_read(void*ctx,uint64_t at,unsigned width,int*ok){struct zg_state*s=ctx;*ok=0;
++ if(s->checked_g8_phase!=s->firmware.record.phase){if(!zg_adt_check(s,0)){s->firmware.record.poison=1;return 0;}s->checked_g8_phase=s->firmware.record.phase;printf("ZIYI GMU stage%u flags%x writes%u FW%x\n",s->checked_g8_phase,s->firmware.record.flags,s->firmware.record.writes,(unsigned)s->firmware.record.expected[3]);}
++ if(!s->gmu_enabled||!g8_read_allowed(&s->firmware,at,width))return 0;return zg_g8_load(s,at,width,ok);
++}
++static void zg_g8_write(void*ctx,uint64_t at,unsigned width,uint64_t value,int*ok){struct zg_state*s=ctx;*ok=0;
++ if(!s->gmu_enabled||!zg_adt_check(s,0)||__atomic_load_n(&s->lease,__ATOMIC_ACQUIRE)!=1||s->lease_epoch!=s->firmware.record.epoch)return;
++ uint64_t observe=0;int mode=g8_observation_address(at,width,&observe),good=1;if(mode<0)return;uint64_t now=mode?zg_g8_load(s,observe,width,&good):0;if(!good)return;
++ uint32_t reset=(uint32_t)zg_g8_load(s,GD_RESET,4,&good);if(!good)return;uint32_t pending=0;
++ if(s->firmware.record.phase==G8_CONFIG_RESTORE&&(at==0x3d7e64c||at==0x3d8ec18)){pending=(uint32_t)zg_g8_load(s,at==0x3d7e64c?0x3d7e648:0x3d8ec14,4,&good);if(!good)return;}
++ if(!g8_store_guard(&s->firmware,at,width,value,now,reset,pending))return;void*p=zg_g8_pointer(s,at,width,1);if(!p)return;
++ if(width==8)*(volatile uint64_t*)p=value;else *(volatile uint32_t*)p=(uint32_t)value;zg_barrier(s);*ok=1;
++}
++static int zg_g8_owned(void*ctx,const void*memory,size_t n){struct zg_state*s=ctx;return memory==&s->firmware&&n==sizeof(s->firmware);}
++static uint64_t zg_g8_physical(void*ctx,const void*va){struct zg_state*s=ctx;uintptr_t at=(uintptr_t)va,first=(uintptr_t)&s->firmware.memory;
++ if(at<first||at-first>=sizeof(s->firmware.memory)||(at&4095))return 0;return kvtophys((vm_offset_t)va);}
++static int zg_g8_cache_span(struct zg_state*s,void*va,size_t n){uintptr_t at=(uintptr_t)va,first=(uintptr_t)&s->firmware.memory;return n&&at>=first&&at-first<sizeof(s->firmware.memory)&&n<=sizeof(s->firmware.memory)-(at-first);}
++static int zg_g8_flush(void*ctx,void*va,size_t n){struct zg_state*s=ctx;if(!zg_g8_cache_span(s,va,n))return 0;FlushPoC_DcacheRegion((vm_offset_t)va,n);return 1;}
++static int zg_g8_clean(void*ctx,void*va,size_t n){struct zg_state*s=ctx;if(!zg_g8_cache_span(s,va,n))return 0;CleanPoC_DcacheRegion_Force((vm_offset_t)va,n);return 1;}
++static int zg_g8_proof(void*ctx,const struct g8_prereq*q,const struct g8_blob*b){struct zg_state*s=ctx;struct g8_blob actual;
++ if(!s->gmu_enabled||b!=&s->firmware.blob||!zg_adt_check(s,0)||q->board!=s->contract.board||q->hlos_cb!=s->contract.cb||q->hlos_smr!=s->contract.smr||q->current_el!=zg_el()||q->sctlr!=zg_sctlr()||s->clocks.flags!=127||s->clocks.error||s->clocks.poison)return 0;
++ for(unsigned i=0;i<4;i++)if(q->rates[i]!=s->clocks.measure[i][3])return 0;
++ /* Re-decode fixed immutable file-backed section, never a boot pointer/flag. */
++ return g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&actual)&&memcmp(&actual,b,sizeof(actual))==0;
++}
++static int zg_g8_run(struct zg_state*s){
++ if(!g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&s->firmware.blob)){printf("ZIYI GMU STOP private slot absent/invalid; no firmware stores\n");return 0;}
++ struct g8_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr(),.acd_off=1,.qdss_off=1,.lm_bcl_off=1,.hfi_off=1,.inherited_ddr_probe=1};
++ for(unsigned i=0;i<4;i++)q.rates[i]=s->clocks.measure[i][3];
++ struct g8_io io={s,zg_g8_read,zg_g8_write,zg_ticks,zg_delay,zg_barrier,zg_lease,zg_g8_proof,zg_g8_owned,{s,zg_g8_physical,zg_g8_flush,zg_g8_clean,zg_barrier}};
++ printf("ZIYI GMU FW100 begin: ACD/QDSS/LM/BCL/HFI/GX off; inherited DDR bandwidth probe\n");int success=g8_run(&s->firmware,&q,&io);struct g8_record*r=&s->firmware.record;
++ printf("ZIYI GMU result%u phase%u flags%x err%u poison%u reads%u writes%u FW%x reset%u drain%u/%u restore%u lease%u retained%u accel0\n",success,r->phase,r->flags,r->error,r->poison,r->reads,r->writes,(unsigned)r->expected[3],!!(r->flags&G8_HELD_RESET),r->drain.client_ack,r->drain.arb_ack,r->restored,r->lease_released,r->retain_allocations);
++ printf("ZIYI GMU faults HFI%x AO%x fence%x SMMU%x last%llx/%llx\n",r->last_host,r->last_ao,r->last_fence,r->last_fsr,(unsigned long long)r->last_address,(unsigned long long)r->last_value);
++ if(r->poison||r->retain_allocations||!r->lease_released)s->clocks.poison=1;return success;
++}
++static int zg_qualified(void*ctx,struct g7c_record*clocks){
++ struct zg_state*s=ctx;if(!zg_adt_check(s,0)){s->clocks.poison=1;return 0;}if(clocks!=&s->clocks||clocks->flags!=127||clocks->poison||clocks->error)return 0;
++ if(s->gmu_enabled)return zg_g8_run(s);
++ struct g7_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,
++ .contract_kind=G7_CONTRACT_XNU_SECURE_DT,.handoff_pairs=s->contract.handoff,.mapped_device_io=1,
++ .execution_kind=G7_EXEC_KERNEL_ON,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr()};
++ for(unsigned i=0;i<4;i++)q.rates[i]=clocks->measure[i][3];
++ struct g7_buffers buffers={s->copy0,s->copy1,sizeof(s->copy0),sizeof(s->copy1)};
++ struct g7_io io={s,zg_read_probe,zg_ticks,zg_lease,zg_owned,zg_barrier};
++ printf("ZIYI GPU G7 acquire kernel-MMU-on, no firmware/DMA\n");
++ int success=g7_run_acquire(&s->probe,&q,&buffers,&io);
++ printf("ZIYI GPU G7 result flags=%x error=%u poison=%u reads=%u TCM=%u CRC=%08x/%08x fw=0 accel=0\n",s->probe.flags,s->probe.error,s->probe.poison,s->probe.reads,s->probe.tcm_equal,s->probe.tcm_crc[0],s->probe.tcm_crc[1]);
++ if(s->probe.poison)clocks->poison=1;return success;
++}
++static void zg_worker(void*arg,wait_result_t result){
++ (void)arg;(void)result;bzero(&zg,sizeof(zg));PE_parse_boot_argn("ziyi_gmu",&zg.gmu_enabled,sizeof(zg.gmu_enabled));if(zg.gmu_enabled!=1)zg.gmu_enabled=0;unsigned delay_seconds=60;int pid=0;
++ PE_parse_boot_argn("ziyi_gpu_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
++ printf("ZIYI GPU probe armed opt-in delay%us then await SpringBoard; fw=0 accel=0\n",delay_seconds);zg_sleep(delay_seconds*1000u);
++ for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zg_springboard,&pid,NULL,NULL);if(!pid)zg_sleep(5000);}
++ if(!pid){printf("ZIYI GPU probe STOP SpringBoard absent after bounded wait; no device maps\n");goto done;}
++ zg_sleep(5000);printf("ZIYI GPU probe SpringBoard pid%d alive; starting in-system qualification\n",pid);
++ if(!zg_kernel_context(zg_el(),zg_sctlr(),zg_frequency())||!zg_adt_check(&zg,1)){
++  printf("ZIYI GPU probe ADT STOP status%u property%u mode%u available%u observed%u; no MMIO\n",zg.adt.status,zg.adt.property,zg.adt.mode,zg.adt.available,zg.adt.observed);goto done;
++ }
++ printf("ZIYI GPU ADT binding mode%u available%u observed%u snapshots%u; board-bound, no fabricated lockdown\n",zg.adt.mode,zg.adt.available,zg.adt.observed,zg.adt.passes);
++ if(!zg_adt_check(&zg,0)||!zg_map_all(&zg)){printf("ZIYI GPU probe: mapping failed; no transaction\n");goto unmap;}
++ printf("ZIYI GPU probe: XNU EL1/MMU/cache ON; mappedDeviceRO + guarded clockRW pages=%u\n",zg.rw_count);
++ zg.clocks.opaque|=G7C_PLATFORM_SCOPE; /* validated exact board-bound ADT snapshot; no claim of Apple lockdown */
++ struct g7c_io io={&zg,zg_read_clock,zg_write_clock,zg_delay,zg_ticks,zg_phase,zg_qualified};
++ int success=g7c_run(&zg.clocks,&io);
++ printf("ZIYI GPU clocks result=%u flags=%x error=%u poison=%u restore=%u rates=%u/%u/%u/%u\n",success,zg.clocks.flags,zg.clocks.error,zg.clocks.poison,zg.clocks.restore,zg.clocks.measure[0][3],zg.clocks.measure[1][3],zg.clocks.measure[2][3],zg.clocks.measure[3][3]);
++ printf("ZIYI GPU probe done: opt-in FW100 transaction resets/restores; no persistent GPU or acceleration\n");
++unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);if(zg.firmware.record.retain_allocations||zg.lease){printf("ZIYI GMU retain owned IO maps/private pages and CX; cleanup incomplete\n");}else zg_unmap_all(&zg);
++done:thread_terminate(current_thread());
++}
++void ziyi_gpu_probe_start(void){
++ uint32_t enabled=0;if(!PE_parse_boot_argn("ziyi_gpu_probe",&enabled,sizeof(enabled))||enabled!=1)return;
++ uint32_t expected=0;if(!__atomic_compare_exchange_n(&zg_started,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return;
++ thread_t worker=THREAD_NULL;kern_return_t kr=kernel_thread_start(zg_worker,NULL,&worker);
++ if(kr!=KERN_SUCCESS){printf("ZIYI GPU probe: cannot create worker %d\n",kr);return;}thread_deallocate(worker);
++}
