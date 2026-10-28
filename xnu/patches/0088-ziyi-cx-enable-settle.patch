@@ -1,0 +1,32 @@
+--- a/bsd/dev/ziyi_g7_clock.c
++++ b/bsd/dev/ziyi_g7_clock.c
+@@ -95,6 +95,7 @@
+   * bits. Do not add transient states to its authority/envelope. Only the
+   * first stable read after 1us+100us can qualify this store. */
+  if(i==G2_CX_POWER&&(bits&G2_COLLAPSE))io->delay(io->ctx,G6_COLLAPSE_SETTLE_US);
++ else if(i==G2_CX_POWER&&((now^value)&G2_COLLAPSE))io->delay(io->ctx,1); /* vendor8XO cycles before first status read */
+  uint32_t after=reg(r,io,i);if(r->poison)return 0;
+  if(pulse)ackmask&=~G2_UPDATE;
+  if(((after^now)&~(d->mask|d->ro_mask))||((after^value)&ackmask))return fail(r,G2_E_OWNER,1);
+@@ -264,7 +265,7 @@
+  if(r->backup_crc!=g7_clock_crc(masked_live,sizeof(masked_live)))return fail(r,G2_E_BACKUP,0);
+  r->flags|=G2_BACKUP;phase(r,io,2);
+  if(!put(r,io,G2_CX_GMU,(r->old[G2_CX_GMU]&1)|0xf0,0)||!put(r,io,G2_CX_POWER,r->old[G2_CX_POWER]&~G2_COLLAPSE,0))return 0;
+- io->delay(io->ctx,1);
++ /* The mandatory enable delay occurs inside put, before its first readback. */
+  if(!wait_mask(r,io,G2_GPUCC,G2_CX_HW_STATUS,G2_PWR_ON,G2_PWR_ON,50000))return fail(r,G2_E_POWER,1);
+  r->cx_on_status=read_word(r,io,G2_GPUCC,G2_CX_HW_STATUS);r->flags|=G2_CX_ON;
+  if(!put(r,io,G2_CX_POWER,(r->old[G2_CX_POWER]&~G2_COLLAPSE)|G2_RETAIN,0))return 0;
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -196,6 +196,10 @@
+  struct g7c_io io={&zg,zg_read_clock,zg_write_clock,zg_delay,zg_ticks,zg_phase,zg_qualified};
+  int success=g7c_run(&zg.clocks,&io);
+  printf("ZIYI GPU clocks result=%u flags=%x error=%u poison=%u restore=%u rates=%u/%u/%u/%u\n",success,zg.clocks.flags,zg.clocks.error,zg.clocks.poison,zg.clocks.restore,zg.clocks.measure[0][3],zg.clocks.measure[1][3],zg.clocks.measure[2][3],zg.clocks.measure[3][3]);
++ printf("ZIYI GPU clock evidence events%u reads%llu phase%u CXhw%08x/%08x GX%08x/%08x\n",zg.clocks.events,zg.clocks.base.reads,zg.clocks.phase,zg.clocks.cx_on_status,zg.clocks.cx_off_status,zg.clocks.gx_before,zg.clocks.gx_after);zg_sleep(500);
++ for(unsigned i=0;i<G2_NREGS;i++){const struct g7c_reg*d=&g7c_regs[i];printf("ZIYI GPU ctl%u %llx+%x old%08x want%08x actual%08x\n",i,d->base,d->offset,zg.clocks.old[i],zg.clocks.expected[i],zg.clocks.final[i]);zg_sleep(250);}
++ for(unsigned i=0;i<zg.clocks.events&&i<192;i++){const struct g7c_event*e=&zg.clocks.trace[i];printf("ZIYI GPU store%u ctl%u phase%x value%08x\n",i,e->index,e->phase,e->value);zg_sleep(100);}
++ if(zg.gmu_enabled){struct g8_record*r=&zg.firmware.record;printf("ZIYI GMU last%llx value%llx pending%llx/%u=%llx err%u poison%u writes%u\n",r->last_address,r->last_value,r->pending_address,r->pending_width,r->pending_value,r->error,r->poison,r->writes);zg_sleep(500);}
+  printf("ZIYI GPU probe done: opt-in FW100 transaction resets/restores; no persistent GPU or acceleration\n");
+ unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);if(zg.firmware.record.retain_allocations||zg.lease){printf("ZIYI GMU retain owned IO maps/private pages and CX; cleanup incomplete\n");}else zg_unmap_all(&zg);
+ done:thread_terminate(current_thread());

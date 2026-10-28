@@ -14,7 +14,8 @@ struct model {
  unsigned dirty_missing,dirty_stuck,clear_immediate,cmd_owner_poll,transient_clear,cmd_samples,dirty_forge_checks;
  unsigned dirty_delayed,dirty_delay[G2_NREGS],dirty_store_race,dirty_late;
  unsigned clock_never,unrequested_stores;
- uint64_t cx_settle_at;
+ uint64_t cx_settle_at,cx_enable_at;
+ unsigned early_enable_reads,enable_settles,skip_enable_wait;
  unsigned early_collapse_reads,early_collapse_writes,collapse_settles,collapse_unknown,collapse_never_off,collapse_preunknown;
  unsigned physical_matches,physical_contexts;
  unsigned hook_calls,hook_fail,hook_writes;
@@ -44,6 +45,7 @@ static uint32_t rate(struct model *m) {
 static uint32_t rd(void *arg,uint64_t b,uint32_t o,int *ok) {
  struct model *m=arg;m->reads++;*ok=1;
  if(m->cx_settle_at&&m->us<m->cx_settle_at){m->early_collapse_reads++;*ok=0;return 0x5022f001;}
+ if(m->cx_enable_at&&m->us<m->cx_enable_at){m->early_enable_reads++;return 0x5022f000;}
  if(m->r->phase<100&&!m->phase_reads[m->r->phase])m->phase_reads[m->r->phase]=m->reads;
  if(!g7c_read_allowed(m->r,b,o)){m->forbidden++;*ok=0;return 0;}
  if(m->fail_read==m->reads){*ok=0;return 0;}
@@ -117,6 +119,7 @@ static void wr(void *arg,uint64_t b,uint32_t o,uint32_t v,int *ok) {
  if(!g7c_store_guard(m->r,b,o,v,live)){m->guard_reject++;*ok=0;return;}
  if((v^m->values[i])&~(g7c_regs[i].mask|g7c_regs[i].ro_mask)){m->forbidden++;*ok=0;return;}
  uint32_t was=m->values[i];m->values[i]=(was&~g7c_regs[i].mask)|(v&g7c_regs[i].mask);
+ if(i==G2_CX_POWER&&!(v&G2_COLLAPSE)&&(was&G2_COLLAPSE)){m->cx_enable_at=m->us+1u;m->enable_settles++;}
  if(i==G2_CX_POWER&&(v&G2_COLLAPSE)&&!(was&G2_COLLAPSE)) {
   m->cx_settle_at=m->us+101u;m->collapse_settles++;
  }
@@ -141,7 +144,7 @@ static void wr(void *arg,uint64_t b,uint32_t o,uint32_t v,int *ok) {
  }
  if(m->fail_write==m->writes)*ok=0;
 }
-static void delay(void *arg,uint32_t us){((struct model *)arg)->us+=us;}
+static void delay(void *arg,uint32_t us){struct model*m=arg;if(m->skip_enable_wait&&m->cx_enable_at&&m->us<m->cx_enable_at&&us==1)return;m->us+=us;}
 static uint64_t ticks(void *arg){return ((struct model *)arg)->us*192/10;}
 static void setup(struct model *m,struct g7c_record *r) {
  memset(m,0,sizeof(*m));memset(r,0,sizeof(*r));m->r=r;
@@ -179,6 +182,7 @@ int main(void) {
  CHECK(m.dirty_forge_checks==4);CHECK(!((r.final[G2_GMU_CMD]|r.final[G2_HUB_CMD])&G4_CMD_PENDING));
  CHECK(!m.unrequested_stores);CHECK(!g7c_write_allowed(G2_GPUCC,0x9004));CHECK(!g7c_write_allowed(G2_GPUCC,0x900c));
  CHECK(m.collapse_settles==1&&!m.early_collapse_reads&&!m.early_collapse_writes);
+ CHECK(m.enable_settles==1&&!m.early_enable_reads);
  CHECK(g7c_read_allowed(&r,G2_GPUCC,0x9004)&&g7c_read_allowed(&r,G2_GPUCC,0x900c));
  unsigned writes=m.writes,reads=m.reads,phase_reads[100];memcpy(phase_reads,m.phase_reads,sizeof(phase_reads));printf("G2 model success bytes=%zu writes=%u reads=%u rates=%u/%u/%u/%u\n",sizeof(r),writes,reads,r.measure[0][3],r.measure[1][3],r.measure[2][3],r.measure[3][3]);
  for(test=1;test<=writes;test++) {
@@ -216,6 +220,7 @@ int main(void) {
  setup(&m,&r);m.active_gmu=1;test=1005;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_ACTIVE&&r.poison&&!m.smmu_reads);
  setup(&m,&r);m.gx_active=1;test=1006;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_ACTIVE&&r.poison&&!m.smmu_reads);
  setup(&m,&r);m.bad_counter=1;test=1007;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_COUNTER&&r.restore&&!r.poison&&same_rw(&m)&&!m.smmu_reads);
+ setup(&m,&r);m.skip_enable_wait=1;test=1007;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_OWNER&&r.poison&&m.writes==2&&m.early_enable_reads==1&&!r.restore&&!m.smmu_reads);
  setup(&m,&r);m.power_timeout=1;test=1008;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_POWER&&r.poison&&m.writes==2&&!m.smmu_reads);
  setup(&m,&r);m.update_stuck=1;test=1009;CHECK(!g7c_run(&r,&io));CHECK(r.error==G2_E_UPDATE&&r.poison&&!m.smmu_reads);
  setup(&m,&r);m.corrupt_backup=1;test=1010;CHECK(!g7c_run(&r,&io));CHECK(m.guard_reject==1&&m.writes==1&&r.poison&&!m.smmu_reads);

@@ -11,8 +11,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_g7_clock.c",
       "target": "bsd/dev/ziyi_g7_clock.c",
-      "sha256": "fbcf731b90c45e520f77b7955c568b4ba4b866a53769c90b018a28427e3480ff",
-      "bytes": 17094
+      "sha256": "3f4bbef277c8b13ef30abfffe8fd5f46a6d012fcf1733a167ff6895bae4fe46a",
+      "bytes": 17273
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g7_clock.h",
@@ -89,8 +89,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
       "target": "bsd/dev/ziyi_gpu_probe.c",
-      "sha256": "817e017363ea0c33bf9ef0c4f44d7fdfd72af2da7306015bfaf23b0e875cff19",
-      "bytes": 17737
+      "sha256": "603a351076282eaac459dd1ab98bfc0c2d9fadc3501615d51c6c552c8eb851b7",
+      "bytes": 18676
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -277,8 +277,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g7_clock.c",
-      "sha256": "fbcf731b90c45e520f77b7955c568b4ba4b866a53769c90b018a28427e3480ff",
-      "bytes": 17094
+      "sha256": "3f4bbef277c8b13ef30abfffe8fd5f46a6d012fcf1733a167ff6895bae4fe46a",
+      "bytes": 17273
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g7_clock.h",
@@ -337,8 +337,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
-      "sha256": "817e017363ea0c33bf9ef0c4f44d7fdfd72af2da7306015bfaf23b0e875cff19",
-      "bytes": 17737
+      "sha256": "603a351076282eaac459dd1ab98bfc0c2d9fadc3501615d51c6c552c8eb851b7",
+      "bytes": 18676
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -407,8 +407,8 @@
     },
     {
       "path": "tools/ziyi-hw/test-gpu-clock.c",
-      "sha256": "554a72aa4faa4898c2ac4fb248bd311f27098599ebc71c9c246d25c71ea0e829",
-      "bytes": 17523
+      "sha256": "1101df47ce580b150bbc67d6dbe29f2d0e4061a22181b1a3a1d865025b5262fe",
+      "bytes": 18095
     },
     {
       "path": "tools/ziyi-hw/test-gpu-engine.c",
@@ -656,7 +656,7 @@
   ],
   "patch": "xnu/patches/0085-ziyi-hw-in-system.patch",
   "patchSHA256": "21cb6dd39f645a80fc5b5209434a8a75395167ac4371650eb0fa7946eeed2c9d",
-  "featureScope": "Opt-in G8 GMU FW_INIT100/reset/restore; no HFI start, CP or GPU UI acceleration",
+  "featureScope": "Source-required8XO-cycle enable wait before first readback; full retained-control diagnostics; G8 FW100 opt-in",
   "unchangedAPISources": [
     {
       "path": "pexpert/gen/device_tree.c",
@@ -671,5 +671,7 @@
   "incrementalPatch": "xnu/patches/0086-ziyi-actual-adt-api.patch",
   "incrementalPatchSHA256": "e679c692a397365d0875c080ebeac7cf8d6fa53d41f54bf64dc1358eb52028fc",
   "g8Patch": "xnu/patches/0087-ziyi-gmu-fwinit.patch",
-  "g8PatchSHA256": "599dd7baa739583087c5f96c91f5cf1321b24756675f6f2836f88bcbe7b1b884"
+  "g8PatchSHA256": "599dd7baa739583087c5f96c91f5cf1321b24756675f6f2836f88bcbe7b1b884",
+  "cxEnablePatch": "xnu/patches/0088-ziyi-cx-enable-settle.patch",
+  "cxEnablePatchSHA256": "2de263aafd91e723eb19993af9f24bf19eb8f57b25d917dc9b1df477d8b359af"
 }

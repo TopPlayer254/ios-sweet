@@ -95,6 +95,7 @@ static int put(struct g7c_record *r,const struct g7c_io *io,unsigned i,uint32_t 
   * bits. Do not add transient states to its authority/envelope. Only the
   * first stable read after 1us+100us can qualify this store. */
  if(i==G2_CX_POWER&&(bits&G2_COLLAPSE))io->delay(io->ctx,G6_COLLAPSE_SETTLE_US);
+ else if(i==G2_CX_POWER&&((now^value)&G2_COLLAPSE))io->delay(io->ctx,1); /* vendor8XO cycles before first status read */
  uint32_t after=reg(r,io,i);if(r->poison)return 0;
  if(pulse)ackmask&=~G2_UPDATE;
  if(((after^now)&~(d->mask|d->ro_mask))||((after^value)&ackmask))return fail(r,G2_E_OWNER,1);
@@ -264,7 +265,7 @@ int g7c_run(struct g7c_record *r,const struct g7c_io *io) {
  if(r->backup_crc!=g7_clock_crc(masked_live,sizeof(masked_live)))return fail(r,G2_E_BACKUP,0);
  r->flags|=G2_BACKUP;phase(r,io,2);
  if(!put(r,io,G2_CX_GMU,(r->old[G2_CX_GMU]&1)|0xf0,0)||!put(r,io,G2_CX_POWER,r->old[G2_CX_POWER]&~G2_COLLAPSE,0))return 0;
- io->delay(io->ctx,1);
+ /* The mandatory enable delay occurs inside put, before its first readback. */
  if(!wait_mask(r,io,G2_GPUCC,G2_CX_HW_STATUS,G2_PWR_ON,G2_PWR_ON,50000))return fail(r,G2_E_POWER,1);
  r->cx_on_status=read_word(r,io,G2_GPUCC,G2_CX_HW_STATUS);r->flags|=G2_CX_ON;
  if(!put(r,io,G2_CX_POWER,(r->old[G2_CX_POWER]&~G2_COLLAPSE)|G2_RETAIN,0))return 0;
