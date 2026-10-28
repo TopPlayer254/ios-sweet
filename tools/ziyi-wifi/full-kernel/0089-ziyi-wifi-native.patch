@@ -3016,7 +3016,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/hakios.wifi.c
-@@ -0,0 +1,4235 @@
+@@ -0,0 +1,4229 @@
 +/*
 + * The Wi-Fi of the POCO X5 Pro (redwood), from nothing and step by step. Every address below
 + * belongs to this phone, and nothing here is touched unless a boot-arg asks for it.
@@ -6677,7 +6677,7 @@
 + 0xffffffffu,0xfffffffeu /* GR1 CBAR/CBA2R, not CB offsets */
 +};
 +static uint32_t zws_original[ZWS_CB_WORDS];
-+static bool zws_owned, zws_touched;
++static bool zws_owned, zws_touched, zws_poisoned;
 +static bool zws_capture(struct zws_snapshot*s)
 +{
 + if(!ziyi_wifi_native_binding(0))return false;
@@ -6740,13 +6740,15 @@
 + if(dsp_started||(zw_native_pas.poison&&zw_native_pas.operation>=ZWN_PAS_START)||!ziyi_wifi_native_binding(0)){
 +  tell("wifi: retain SMMU lease: DSP not stopped or board binding lost\n");return;
 + }
++ uint64_t storage_token=zws_storage_write_begin();
++ if(!storage_token){zws_poisoned=true;return;}
 + put(&apps_smmu,"remove stream",SMMU_SMR(radio_space.match),radio_space.old_smr);
 + put(&apps_smmu,"old s2cr",SMMU_S2CR(radio_space.match),radio_space.old_s2cr);
 + put(&apps_smmu_context,"disable context",SMMU_CB_SCTLR,0);
 + put(&apps_smmu_context,"tlbiasid",SMMU_CB_TLBIASID,radio_space.context);
 + put(&apps_smmu_context,"tlbsync",SMMU_CB_TLBSYNC,1);
 + for(unsigned ms=0;rd(apps_smmu_context.base+SMMU_CB_TLBSTATUS)&1u;ms++){
-+  if(ms==100){tell("wifi: retain SMMU lease: restore TLB sync timeout\n");return;}sleep_ms(1);
++  if(ms==100){tell("wifi: retain SMMU lease: restore TLB sync timeout\n");zws_poisoned=true;goto storage_done;}sleep_ms(1);
 + }
 + for(unsigned n=1;n<ZWS_CB_WORDS;n++){
 +  if(n==9)put(&apps_smmu_second,"restore cbar",SMMU_CBAR(radio_space.context),zws_original[n]);
@@ -6758,12 +6760,15 @@
 +  uint32_t v=n==9?get(&apps_smmu_second,"restored cbar",SMMU_CBAR(radio_space.context)):
 +   n==10?get(&apps_smmu_second,"restored cba2r",SMMU_CBA2R(radio_space.context)):
 +   get(&apps_smmu_context,"restored context",zws_offsets[n]);
-+  if(v!=zws_original[n]){tell("wifi: SMMU restore differs at control %u\n",n);return;}
++  if(v!=zws_original[n]){tell("wifi: SMMU restore differs at control %u\n",n);zws_poisoned=true;goto storage_done;}
 + }
 + if(rd(apps_smmu.base+SMMU_SMR(radio_space.match))!=radio_space.old_smr||
-+    rd(apps_smmu.base+SMMU_S2CR(radio_space.match))!=radio_space.old_s2cr)return;
++    rd(apps_smmu.base+SMMU_S2CR(radio_space.match))!=radio_space.old_s2cr){zws_poisoned=true;goto storage_done;}
 + zws_touched=zws_owned=radio_space.on=radio_space.found=false;
++ zws_poisoned=false;
 + tell("wifi: SMMU stream and all eleven context controls restored\n");
++storage_done:
++ if(!zws_storage_write_end(storage_token))zws_poisoned=true;
 +}
 +
 +/* What the SMMU has recorded of requests of the radio's that it could not serve. */
@@ -6790,71 +6795,59 @@
 +}
 +
 +/* The radio's stream through a context with our tables. */
++/* Caller holds hakios_smmu_lock; no allocations under the storage epoch. */
 +static bool
 +radio_space_on(void)
 +{
-+	uint32_t smr = SMMU_SMR(radio_space.match), s2cr = SMMU_S2CR(radio_space.match), sees = 1u << 31 | RADIO_STREAM_MASK << 16 |
-+	    RADIO_STREAM;
-+	uint64_t root = kvtophys(radio_space.tables) | (uint64_t)radio_space.context << 48;     /* tagged with the context's number */
-+
-+	printf("wifi: %u: THE SMMU IS ABOUT TO BE WRITTEN: context %u gets page tables of ours (root %#llx) and is switched on, and "
-+	    "match register %u sends stream %#x mask %#x through it; before: smr %#x, s2cr %#x, the context's sctlr %#x\n", step,
-+	    radio_space.context, root & PTE_ADDRESS, radio_space.match, RADIO_STREAM, RADIO_STREAM_MASK, radio_space.old_smr,
-+	    radio_space.old_s2cr, radio_space.old_sctlr);
-+	sleep_ms(pause_ms);
-+	if (!zws_still_free()) return false;
-+	if (!zws_storage_lease(radio_space.match,radio_space.context,
-+	    radio_space.old_smr,radio_space.old_s2cr)) return false;
-+	zws_touched = true; /* before the first store, including partial failures */
-+	put(&apps_smmu_context, "sctlr", SMMU_CB_SCTLR, 0);
-+	put(&apps_smmu_second, "cba2r", SMMU_CBA2R(radio_space.context), SMMU_CBA2R_64_BIT);
-+	put(&apps_smmu_second, "cbar", SMMU_CBAR(radio_space.context), SMMU_CBAR_STAGE_1);
-+	put(&apps_smmu_context, "tcr2", SMMU_CB_TCR2, SMMU_TCR2);
-+	put(&apps_smmu_context, "tcr", SMMU_CB_TCR, SMMU_TCR_39_BITS);
-+	put(&apps_smmu_context, "ttbr0, low", SMMU_CB_TTBR0, (uint32_t)root);
-+	put(&apps_smmu_context, "ttbr0, high", SMMU_CB_TTBR0 + 4, (uint32_t)(root >> 32));
-+	put(&apps_smmu_context, "ttbr1, low", SMMU_CB_TTBR1, 0);
-+	put(&apps_smmu_context, "ttbr1, high", SMMU_CB_TTBR1 + 4, 0);
-+	put(&apps_smmu_context, "mair0", SMMU_CB_MAIR0, SMMU_MAIR0);
-+	put(&apps_smmu_context, "mair1", SMMU_CB_MAIR1, 0);
-+	/* FSR is W1C; inherited faults were rejected rather than cleared. */
-+	put(&apps_smmu_context, "tlbiasid", SMMU_CB_TLBIASID, radio_space.context);
-+	put(&apps_smmu_context, "tlbsync", SMMU_CB_TLBSYNC, 1);
-+	for (unsigned ms = 0; rd(apps_smmu_context.base + SMMU_CB_TLBSTATUS) & 1; ms++) {
-+		if (ms == 100) {
-+			printf("wifi: %u: the SMMU does not finish forgetting old translations\n", step);
-+			return false;
-+		}
-+		sleep_ms(1);
-+	}
-+	put(&apps_smmu_context, "sctlr", SMMU_CB_SCTLR, SMMU_SCTLR_ON);
-+	radio_space.on = true;                  /* (from here on there is something to take back) */
-+	put(&apps_smmu, "s2cr", s2cr, radio_space.context);
-+	put(&apps_smmu, "smr", smr, sees);
-+
-+	/* the global ones are the hypervisor's to grant: see what it made of them */
-+	if (get(&apps_smmu, "smr", smr) != sees || (get(&apps_smmu, "s2cr", s2cr) & 0x300ff) != radio_space.context ||
-+	    (get(&apps_smmu_second, "cbar", SMMU_CBAR(radio_space.context)) & 0x30000) != (SMMU_CBAR_STAGE_1 & 0x30000) ||
-+	    !(get(&apps_smmu_context, "sctlr", SMMU_CB_SCTLR) & 1) ||
-+	    get(&apps_smmu_context, "ttbr0, low", SMMU_CB_TTBR0) != (uint32_t)root ||
-+	    get(&apps_smmu_context, "ttbr0, high", SMMU_CB_TTBR0 + 4) != (uint32_t)(root >> 32)) {
-+		printf("wifi: %u: THE SMMU DID NOT TAKE WHAT WAS WRITTEN: stream %#x is not going through context %u\n", step,
-+		    RADIO_STREAM, radio_space.context);
-+		return false;
-+	}
-+	get(&apps_smmu_context, "tcr", SMMU_CB_TCR);
-+	get(&apps_smmu_context, "tcr2", SMMU_CB_TCR2);
-+	get(&apps_smmu_second, "cba2r", SMMU_CBA2R(radio_space.context));
-+	get(&apps_smmu, "sgfsr", SMMU_SGFSR);
-+	printf("wifi: %u: THE RADIO'S STREAM GOES THROUGH CONTEXT %u of the SMMU, with our page tables\n", step, radio_space.context);
-+	radio_space_faults();
-+	return true;
++ uint32_t smr=SMMU_SMR(radio_space.match),s2cr=SMMU_S2CR(radio_space.match);
++ uint32_t sees=1u<<31|RADIO_STREAM_MASK<<16|RADIO_STREAM;
++ uint64_t root=kvtophys(radio_space.tables)|(uint64_t)radio_space.context<<48;
++ if(zws_poisoned||!zws_still_free()||
++    !zws_storage_lease(radio_space.match,radio_space.context,
++     radio_space.old_smr,radio_space.old_s2cr))return false;
++ uint64_t storage_token=zws_storage_write_begin();if(!storage_token)return false;
++ bool ok=false;zws_touched=true;
++ put(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR,0);
++ put(&apps_smmu_second,"cba2r",SMMU_CBA2R(radio_space.context),SMMU_CBA2R_64_BIT);
++ put(&apps_smmu_second,"cbar",SMMU_CBAR(radio_space.context),SMMU_CBAR_STAGE_1);
++ put(&apps_smmu_context,"tcr2",SMMU_CB_TCR2,SMMU_TCR2);
++ put(&apps_smmu_context,"tcr",SMMU_CB_TCR,SMMU_TCR_39_BITS);
++ put(&apps_smmu_context,"ttbr0, low",SMMU_CB_TTBR0,(uint32_t)root);
++ put(&apps_smmu_context,"ttbr0, high",SMMU_CB_TTBR0+4,(uint32_t)(root>>32));
++ put(&apps_smmu_context,"ttbr1, low",SMMU_CB_TTBR1,0);
++ put(&apps_smmu_context,"ttbr1, high",SMMU_CB_TTBR1+4,0);
++ put(&apps_smmu_context,"mair0",SMMU_CB_MAIR0,SMMU_MAIR0);
++ put(&apps_smmu_context,"mair1",SMMU_CB_MAIR1,0);
++ put(&apps_smmu_context,"tlbiasid",SMMU_CB_TLBIASID,radio_space.context);
++ put(&apps_smmu_context,"tlbsync",SMMU_CB_TLBSYNC,1);
++ for(unsigned ms=0;rd(apps_smmu_context.base+SMMU_CB_TLBSTATUS)&1u;ms++){
++  if(ms==100)goto done;sleep_ms(1);
++ }
++ put(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR,SMMU_SCTLR_ON);
++ put(&apps_smmu,"s2cr",s2cr,radio_space.context);
++ put(&apps_smmu,"smr",smr,sees);
++ if(get(&apps_smmu,"smr",smr)!=sees||
++    (get(&apps_smmu,"s2cr",s2cr)&0x300ff)!=radio_space.context||
++    (get(&apps_smmu_second,"cbar",SMMU_CBAR(radio_space.context))&0x30000)!=(SMMU_CBAR_STAGE_1&0x30000)||
++    !(get(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR)&1)||
++    get(&apps_smmu_context,"ttbr0, low",SMMU_CB_TTBR0)!=(uint32_t)root||
++    get(&apps_smmu_context,"ttbr0, high",SMMU_CB_TTBR0+4)!=(uint32_t)(root>>32)||
++    get(&apps_smmu_context,"fault",SMMU_CB_FSR))goto done;
++ radio_space.on=true;ok=true;
++done:
++ if(!zws_storage_write_end(storage_token))ok=false;
++ if(!ok){radio_space.on=false;zws_poisoned=true;tell("wifi: SMMU write failed; mapping remains poisoned\n");}
++ else tell("wifi: SMMU stream %#x through context %u qualified\n",RADIO_STREAM,radio_space.context);
++ return ok;
 +}
 +
 +/* The stream goes nowhere again, and the context translates nothing: as they were found. */
 +static void
 +radio_space_off(void)
-+{ zws_restore(); }
++{
++ if(leaving){tell("wifi: retain SMMU mapping during panic; no blocking restore\n");return;}
++ lck_mtx_lock(&hakios_smmu_lock);zws_restore();lck_mtx_unlock(&hakios_smmu_lock);
++}
 +
 +/*
 + * For the driver (hakios.lx.c): memory of ours that the radio is to see, at the address
@@ -6871,6 +6864,7 @@
 + size=(size+4095ull)&~4095ull;
 + lck_mtx_lock(&hakios_smmu_lock);
 + bool ok=false;
++ if(zws_poisoned)goto out;
 + if(radio_space.next>RADIO_ADDRESSES_SIZE-size)goto out;
 + *address=RADIO_ADDRESSES+radio_space.next;
 + radio_space.next+=size;
@@ -6882,7 +6876,7 @@
 + put(&apps_smmu_context,"tlbiasid",SMMU_CB_TLBIASID,radio_space.context);
 + put(&apps_smmu_context,"tlbsync",SMMU_CB_TLBSYNC,1);
 + for(unsigned ms=0;rd(apps_smmu_context.base+SMMU_CB_TLBSTATUS)&1u;ms++){
-+  if(ms==100)goto out;
++  if(ms==100){zws_poisoned=true;goto out;}
 +  sleep_ms(1);
 + }
 + ok=true;
@@ -7761,7 +7755,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/ziyi_wifi_smmu.c
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,91 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#include "ziyi_wifi_smmu.h"
 +#include <stddef.h>
@@ -7802,6 +7796,21 @@
 + * No callbacks, allocations, or storage locks occur under the Wi-Fi mutex. */
 +static struct {unsigned match,context;uint32_t old_smr,old_s2cr;} storage_lease;
 +static unsigned storage_lease_state;
++static uint64_t storage_generation;
++uint64_t zws_storage_epoch(void){return __atomic_load_n(&storage_generation,__ATOMIC_ACQUIRE);}
++uint64_t zws_storage_write_begin(void)
++{
++ uint64_t old=zws_storage_epoch();
++ if((old&1u)||old>=UINT64_MAX-1)return 0;
++ return __atomic_compare_exchange_n(&storage_generation,&old,old+1,0,
++  __ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)?old+1:0;
++}
++int zws_storage_write_end(uint64_t token)
++{
++ if(!(token&1u))return 0;
++ return __atomic_compare_exchange_n(&storage_generation,&token,token+1,0,
++  __ATOMIC_RELEASE,__ATOMIC_RELAXED);
++}
 +int zws_storage_lease(unsigned match,unsigned context,uint32_t old_smr,uint32_t old_s2cr)
 +{
 + if(!match||match>=ZWS_SMRS||!context||context>=ZWS_CBS||(old_smr&0x80000000u))return 0;
@@ -7840,7 +7849,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/ziyi_wifi_smmu.h
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,22 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#pragma once
 +#include <stdint.h>
@@ -7860,6 +7869,9 @@
 +struct u3_smmu;
 +int zws_storage_lease(unsigned match,unsigned context,uint32_t old_smr,uint32_t old_s2cr);
 +int zws_storage_coexists(const struct u3_smmu*,const struct u3_smmu*,const struct u3_smmu*);
++uint64_t zws_storage_epoch(void);
++uint64_t zws_storage_write_begin(void);
++int zws_storage_write_end(uint64_t);
 --- /dev/null
 +++ b/bsd/sys/hakios.input.h
 @@ -0,0 +1,125 @@
@@ -8725,21 +8737,45 @@
  #include "ziyi_u1_sha.inc"
  #include "ziyi_u4_verify.h"
  #include "ziyi_u7_write_policy.h"
-@@ -82,14 +83,14 @@
-     for(unsigned pass=0;pass<2;pass++,s=&b) {
-         bzero(s,sizeof(*s));s->cr0=sr(0);s->cr2=sr(8);s->id0=sr(0x20);
-         s->id1=sr(0x24);s->id2=sr(0x28);s->id7=sr(0x3c);
+@@ -78,19 +79,28 @@
+ }
+ static int bypass(void) {
+     struct u3_smmu a,b;
+-    struct u3_smmu *s=&a;
+-    for(unsigned pass=0;pass<2;pass++,s=&b) {
+-        bzero(s,sizeof(*s));s->cr0=sr(0);s->cr2=sr(8);s->id0=sr(0x20);
+-        s->id1=sr(0x24);s->id2=sr(0x28);s->id7=sr(0x3c);
 -        for(unsigned i=0;i<U3_MATCHES;i++) {s->smr[i]=sr(0x800+4*i);s->s2cr[i]=sr(0xc00+4*i);}
-+        /* Same runtime-DT HLOS scope as Wi-Fi; remaining snapshot cells stay zero. */
-+        for(unsigned i=0;i<ZWS_SMRS;i++) {s->smr[i]=sr(0x800+4*i);s->s2cr[i]=sr(0xc00+4*i);}
-         s->cbar=sr(0x1000);s->cba2r=sr(0x1800);s->sctlr=sr(0x80000);s->tcr2=sr(0x80010);
-         s->ttbr0lo=sr(0x80020);s->ttbr0hi=sr(0x80024);s->ttbr1lo=sr(0x80028);
-         s->ttbr1hi=sr(0x8002c);s->tcr=sr(0x80030);__builtin_arm_dsb(0xf);
-     }
-     u1.cr0=a.cr0;u1.id0=a.id0;
+-        s->cbar=sr(0x1000);s->cba2r=sr(0x1800);s->sctlr=sr(0x80000);s->tcr2=sr(0x80010);
+-        s->ttbr0lo=sr(0x80020);s->ttbr0hi=sr(0x80024);s->ttbr1lo=sr(0x80028);
+-        s->ttbr1hi=sr(0x8002c);s->tcr=sr(0x80030);__builtin_arm_dsb(0xf);
+-    }
+-    u1.cr0=a.cr0;u1.id0=a.id0;
 -    if(!u1_equal(&a,&b,sizeof(a))||!u3_identity(&a)) return 0;
 -    if(u1.owned&&!u1_equal(&a,&u1.identity,sizeof(a))) return 0;
-+    if(!zws_storage_coexists(&a,&b,u1.owned?&u1.identity:&a)) return 0;
-     u1.identity=a;return 1;
+-    u1.identity=a;return 1;
++    uint64_t deadline=after_ms(1000);
++    do {
++        uint64_t epoch=zws_storage_epoch();
++        if(epoch&1u){delay(10);continue;}
++        struct u3_smmu *s=&a;
++        for(unsigned pass=0;pass<2;pass++,s=&b) {
++            bzero(s,sizeof(*s));s->cr0=sr(0);s->cr2=sr(8);s->id0=sr(0x20);
++            s->id1=sr(0x24);s->id2=sr(0x28);s->id7=sr(0x3c);
++            for(unsigned i=0;i<ZWS_SMRS;i++){s->smr[i]=sr(0x800+4*i);s->s2cr[i]=sr(0xc00+4*i);}
++            s->cbar=sr(0x1000);s->cba2r=sr(0x1800);s->sctlr=sr(0x80000);s->tcr2=sr(0x80010);
++            s->ttbr0lo=sr(0x80020);s->ttbr0hi=sr(0x80024);s->ttbr1lo=sr(0x80028);
++            s->ttbr1hi=sr(0x8002c);s->tcr=sr(0x80030);__builtin_arm_dsb(0xf);
++        }
++        /* A writer can change a pair between its two MMIO reads. Only inspect
++         * the pair after a stable even epoch across BOTH complete snapshots. */
++        __builtin_arm_dsb(0xf);
++        if(epoch!=zws_storage_epoch()){delay(10);continue;}
++        u1.cr0=a.cr0;u1.id0=a.id0;
++        if(!zws_storage_coexists(&a,&b,u1.owned?&u1.identity:&a))return 0;
++        u1.identity=a;return 1;
++    } while(mach_absolute_time()<deadline);
++    return 0;
  }
  static int old_queue_readonly(void) {
+     uint64_t pa=hr(0x50)|(uint64_t)hr(0x54)<<32;

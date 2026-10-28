@@ -33,5 +33,10 @@ int main(void)
  b=base;CHECK(zws_storage_coexists(&a,&b,&base));
  b=a;b.smr[2]=0x80011c00;CHECK(!zws_storage_coexists(&a,&b,&base));
  CHECK(!zws_storage_coexists(NULL,&b,&base));
+ uint64_t initial=zws_storage_epoch(),token=zws_storage_write_begin();
+ CHECK(!(initial&1)&&token==initial+1&&zws_storage_epoch()==token);
+ CHECK(!zws_storage_write_begin());CHECK(!zws_storage_write_end(token+2));
+ CHECK(zws_storage_epoch()==token);CHECK(zws_storage_write_end(token));
+ CHECK(zws_storage_epoch()==initial+2);CHECK(!zws_storage_write_end(token));
  printf("WIFI_UFS_EXACT_LEASE_PASS %u checks; no native claim\n",checks);
 }

@@ -52,7 +52,7 @@
     },
     {
       "path": "bsd/dev/hakios.wifi.c",
-      "after": "16a27fb4fd3ff4b91e4a00159a08df613b635b26e5aad19bba62cd18dd4fec2d",
+      "after": "7f3d9efba9889d70f49d18b10467cd9ee603d9ba117949e5a66e70556630281e",
       "new": true
     },
     {
@@ -112,12 +112,12 @@
     },
     {
       "path": "bsd/dev/ziyi_wifi_smmu.c",
-      "after": "e794c1bbc09f1241cb5b9313febf5e29130a6ba17e3e5f4249b1fbfc91b8806f",
+      "after": "6bedb704ccbc5a1a4cc200a74ff117528d129c6c168a263be7833f6841dc63a2",
       "new": true
     },
     {
       "path": "bsd/dev/ziyi_wifi_smmu.h",
-      "after": "5285e16b8ba38a5e43b86520c57190e704d0514058f78a8f5b96f92f4941d478",
+      "after": "1b43a0a4bf77c957f16fe49bc371141a12ed444c6395c02c69e414af69ad3569",
       "new": true
     },
     {
@@ -164,7 +164,7 @@
     {
       "path": "bsd/dev/sweet_ufs.c",
       "before": "27dc0c04317285c084dbfbf6ec7096e2ba0cc4946e9d3d60e1f5c51f166301cc",
-      "after": "e1618ec536987e5f8e6bac869a86f3d3854bbd3e3784bfc385cdd6baf8e08996",
+      "after": "935e1cff1fb9243f81b7410d714b3dbef4088f95f3c198f5428d22bf832f4b31",
       "new": false
     }
   ],
@@ -192,5 +192,7 @@
   "phoneOperated": false,
   "cachePA64SourceFixed": true,
   "ufsExactWifiLease": true,
-  "baselineUnchanged": 72
+  "baselineUnchanged": 72,
+  "smmuStorageEpoch": true,
+  "smmuStickyMutationFailure": true
 }

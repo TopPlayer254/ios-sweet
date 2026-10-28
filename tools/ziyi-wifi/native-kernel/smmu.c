@@ -38,6 +38,21 @@ int zws_select(const struct zws_snapshot*a,const struct zws_snapshot*b,struct zw
  * No callbacks, allocations, or storage locks occur under the Wi-Fi mutex. */
 static struct {unsigned match,context;uint32_t old_smr,old_s2cr;} storage_lease;
 static unsigned storage_lease_state;
+static uint64_t storage_generation;
+uint64_t zws_storage_epoch(void){return __atomic_load_n(&storage_generation,__ATOMIC_ACQUIRE);}
+uint64_t zws_storage_write_begin(void)
+{
+ uint64_t old=zws_storage_epoch();
+ if((old&1u)||old>=UINT64_MAX-1)return 0;
+ return __atomic_compare_exchange_n(&storage_generation,&old,old+1,0,
+  __ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)?old+1:0;
+}
+int zws_storage_write_end(uint64_t token)
+{
+ if(!(token&1u))return 0;
+ return __atomic_compare_exchange_n(&storage_generation,&token,token+1,0,
+  __ATOMIC_RELEASE,__ATOMIC_RELAXED);
+}
 int zws_storage_lease(unsigned match,unsigned context,uint32_t old_smr,uint32_t old_s2cr)
 {
  if(!match||match>=ZWS_SMRS||!context||context>=ZWS_CBS||(old_smr&0x80000000u))return 0;

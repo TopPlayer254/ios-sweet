@@ -3658,7 +3658,7 @@ static const uint32_t zws_offsets[ZWS_CB_WORDS]={
  0xffffffffu,0xfffffffeu /* GR1 CBAR/CBA2R, not CB offsets */
 };
 static uint32_t zws_original[ZWS_CB_WORDS];
-static bool zws_owned, zws_touched;
+static bool zws_owned, zws_touched, zws_poisoned;
 static bool zws_capture(struct zws_snapshot*s)
 {
  if(!ziyi_wifi_native_binding(0))return false;
@@ -3721,13 +3721,15 @@ static void zws_restore(void)
  if(dsp_started||(zw_native_pas.poison&&zw_native_pas.operation>=ZWN_PAS_START)||!ziyi_wifi_native_binding(0)){
   tell("wifi: retain SMMU lease: DSP not stopped or board binding lost\n");return;
  }
+ uint64_t storage_token=zws_storage_write_begin();
+ if(!storage_token){zws_poisoned=true;return;}
  put(&apps_smmu,"remove stream",SMMU_SMR(radio_space.match),radio_space.old_smr);
  put(&apps_smmu,"old s2cr",SMMU_S2CR(radio_space.match),radio_space.old_s2cr);
  put(&apps_smmu_context,"disable context",SMMU_CB_SCTLR,0);
  put(&apps_smmu_context,"tlbiasid",SMMU_CB_TLBIASID,radio_space.context);
  put(&apps_smmu_context,"tlbsync",SMMU_CB_TLBSYNC,1);
  for(unsigned ms=0;rd(apps_smmu_context.base+SMMU_CB_TLBSTATUS)&1u;ms++){
-  if(ms==100){tell("wifi: retain SMMU lease: restore TLB sync timeout\n");return;}sleep_ms(1);
+  if(ms==100){tell("wifi: retain SMMU lease: restore TLB sync timeout\n");zws_poisoned=true;goto storage_done;}sleep_ms(1);
  }
  for(unsigned n=1;n<ZWS_CB_WORDS;n++){
   if(n==9)put(&apps_smmu_second,"restore cbar",SMMU_CBAR(radio_space.context),zws_original[n]);
@@ -3739,12 +3741,15 @@ static void zws_restore(void)
   uint32_t v=n==9?get(&apps_smmu_second,"restored cbar",SMMU_CBAR(radio_space.context)):
    n==10?get(&apps_smmu_second,"restored cba2r",SMMU_CBA2R(radio_space.context)):
    get(&apps_smmu_context,"restored context",zws_offsets[n]);
-  if(v!=zws_original[n]){tell("wifi: SMMU restore differs at control %u\n",n);return;}
+  if(v!=zws_original[n]){tell("wifi: SMMU restore differs at control %u\n",n);zws_poisoned=true;goto storage_done;}
  }
  if(rd(apps_smmu.base+SMMU_SMR(radio_space.match))!=radio_space.old_smr||
-    rd(apps_smmu.base+SMMU_S2CR(radio_space.match))!=radio_space.old_s2cr)return;
+    rd(apps_smmu.base+SMMU_S2CR(radio_space.match))!=radio_space.old_s2cr){zws_poisoned=true;goto storage_done;}
  zws_touched=zws_owned=radio_space.on=radio_space.found=false;
+ zws_poisoned=false;
  tell("wifi: SMMU stream and all eleven context controls restored\n");
+storage_done:
+ if(!zws_storage_write_end(storage_token))zws_poisoned=true;
 }
 
 /* What the SMMU has recorded of requests of the radio's that it could not serve. */
@@ -3771,71 +3776,59 @@ radio_space_faults(void)
 }
 
 /* The radio's stream through a context with our tables. */
+/* Caller holds hakios_smmu_lock; no allocations under the storage epoch. */
 static bool
 radio_space_on(void)
 {
-	uint32_t smr = SMMU_SMR(radio_space.match), s2cr = SMMU_S2CR(radio_space.match), sees = 1u << 31 | RADIO_STREAM_MASK << 16 |
-	    RADIO_STREAM;
-	uint64_t root = kvtophys(radio_space.tables) | (uint64_t)radio_space.context << 48;     /* tagged with the context's number */
-
-	printf("wifi: %u: THE SMMU IS ABOUT TO BE WRITTEN: context %u gets page tables of ours (root %#llx) and is switched on, and "
-	    "match register %u sends stream %#x mask %#x through it; before: smr %#x, s2cr %#x, the context's sctlr %#x\n", step,
-	    radio_space.context, root & PTE_ADDRESS, radio_space.match, RADIO_STREAM, RADIO_STREAM_MASK, radio_space.old_smr,
-	    radio_space.old_s2cr, radio_space.old_sctlr);
-	sleep_ms(pause_ms);
-	if (!zws_still_free()) return false;
-	if (!zws_storage_lease(radio_space.match,radio_space.context,
-	    radio_space.old_smr,radio_space.old_s2cr)) return false;
-	zws_touched = true; /* before the first store, including partial failures */
-	put(&apps_smmu_context, "sctlr", SMMU_CB_SCTLR, 0);
-	put(&apps_smmu_second, "cba2r", SMMU_CBA2R(radio_space.context), SMMU_CBA2R_64_BIT);
-	put(&apps_smmu_second, "cbar", SMMU_CBAR(radio_space.context), SMMU_CBAR_STAGE_1);
-	put(&apps_smmu_context, "tcr2", SMMU_CB_TCR2, SMMU_TCR2);
-	put(&apps_smmu_context, "tcr", SMMU_CB_TCR, SMMU_TCR_39_BITS);
-	put(&apps_smmu_context, "ttbr0, low", SMMU_CB_TTBR0, (uint32_t)root);
-	put(&apps_smmu_context, "ttbr0, high", SMMU_CB_TTBR0 + 4, (uint32_t)(root >> 32));
-	put(&apps_smmu_context, "ttbr1, low", SMMU_CB_TTBR1, 0);
-	put(&apps_smmu_context, "ttbr1, high", SMMU_CB_TTBR1 + 4, 0);
-	put(&apps_smmu_context, "mair0", SMMU_CB_MAIR0, SMMU_MAIR0);
-	put(&apps_smmu_context, "mair1", SMMU_CB_MAIR1, 0);
-	/* FSR is W1C; inherited faults were rejected rather than cleared. */
-	put(&apps_smmu_context, "tlbiasid", SMMU_CB_TLBIASID, radio_space.context);
-	put(&apps_smmu_context, "tlbsync", SMMU_CB_TLBSYNC, 1);
-	for (unsigned ms = 0; rd(apps_smmu_context.base + SMMU_CB_TLBSTATUS) & 1; ms++) {
-		if (ms == 100) {
-			printf("wifi: %u: the SMMU does not finish forgetting old translations\n", step);
-			return false;
-		}
-		sleep_ms(1);
-	}
-	put(&apps_smmu_context, "sctlr", SMMU_CB_SCTLR, SMMU_SCTLR_ON);
-	radio_space.on = true;                  /* (from here on there is something to take back) */
-	put(&apps_smmu, "s2cr", s2cr, radio_space.context);
-	put(&apps_smmu, "smr", smr, sees);
-
-	/* the global ones are the hypervisor's to grant: see what it made of them */
-	if (get(&apps_smmu, "smr", smr) != sees || (get(&apps_smmu, "s2cr", s2cr) & 0x300ff) != radio_space.context ||
-	    (get(&apps_smmu_second, "cbar", SMMU_CBAR(radio_space.context)) & 0x30000) != (SMMU_CBAR_STAGE_1 & 0x30000) ||
-	    !(get(&apps_smmu_context, "sctlr", SMMU_CB_SCTLR) & 1) ||
-	    get(&apps_smmu_context, "ttbr0, low", SMMU_CB_TTBR0) != (uint32_t)root ||
-	    get(&apps_smmu_context, "ttbr0, high", SMMU_CB_TTBR0 + 4) != (uint32_t)(root >> 32)) {
-		printf("wifi: %u: THE SMMU DID NOT TAKE WHAT WAS WRITTEN: stream %#x is not going through context %u\n", step,
-		    RADIO_STREAM, radio_space.context);
-		return false;
-	}
-	get(&apps_smmu_context, "tcr", SMMU_CB_TCR);
-	get(&apps_smmu_context, "tcr2", SMMU_CB_TCR2);
-	get(&apps_smmu_second, "cba2r", SMMU_CBA2R(radio_space.context));
-	get(&apps_smmu, "sgfsr", SMMU_SGFSR);
-	printf("wifi: %u: THE RADIO'S STREAM GOES THROUGH CONTEXT %u of the SMMU, with our page tables\n", step, radio_space.context);
-	radio_space_faults();
-	return true;
+ uint32_t smr=SMMU_SMR(radio_space.match),s2cr=SMMU_S2CR(radio_space.match);
+ uint32_t sees=1u<<31|RADIO_STREAM_MASK<<16|RADIO_STREAM;
+ uint64_t root=kvtophys(radio_space.tables)|(uint64_t)radio_space.context<<48;
+ if(zws_poisoned||!zws_still_free()||
+    !zws_storage_lease(radio_space.match,radio_space.context,
+     radio_space.old_smr,radio_space.old_s2cr))return false;
+ uint64_t storage_token=zws_storage_write_begin();if(!storage_token)return false;
+ bool ok=false;zws_touched=true;
+ put(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR,0);
+ put(&apps_smmu_second,"cba2r",SMMU_CBA2R(radio_space.context),SMMU_CBA2R_64_BIT);
+ put(&apps_smmu_second,"cbar",SMMU_CBAR(radio_space.context),SMMU_CBAR_STAGE_1);
+ put(&apps_smmu_context,"tcr2",SMMU_CB_TCR2,SMMU_TCR2);
+ put(&apps_smmu_context,"tcr",SMMU_CB_TCR,SMMU_TCR_39_BITS);
+ put(&apps_smmu_context,"ttbr0, low",SMMU_CB_TTBR0,(uint32_t)root);
+ put(&apps_smmu_context,"ttbr0, high",SMMU_CB_TTBR0+4,(uint32_t)(root>>32));
+ put(&apps_smmu_context,"ttbr1, low",SMMU_CB_TTBR1,0);
+ put(&apps_smmu_context,"ttbr1, high",SMMU_CB_TTBR1+4,0);
+ put(&apps_smmu_context,"mair0",SMMU_CB_MAIR0,SMMU_MAIR0);
+ put(&apps_smmu_context,"mair1",SMMU_CB_MAIR1,0);
+ put(&apps_smmu_context,"tlbiasid",SMMU_CB_TLBIASID,radio_space.context);
+ put(&apps_smmu_context,"tlbsync",SMMU_CB_TLBSYNC,1);
+ for(unsigned ms=0;rd(apps_smmu_context.base+SMMU_CB_TLBSTATUS)&1u;ms++){
+  if(ms==100)goto done;sleep_ms(1);
+ }
+ put(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR,SMMU_SCTLR_ON);
+ put(&apps_smmu,"s2cr",s2cr,radio_space.context);
+ put(&apps_smmu,"smr",smr,sees);
+ if(get(&apps_smmu,"smr",smr)!=sees||
+    (get(&apps_smmu,"s2cr",s2cr)&0x300ff)!=radio_space.context||
+    (get(&apps_smmu_second,"cbar",SMMU_CBAR(radio_space.context))&0x30000)!=(SMMU_CBAR_STAGE_1&0x30000)||
+    !(get(&apps_smmu_context,"sctlr",SMMU_CB_SCTLR)&1)||
+    get(&apps_smmu_context,"ttbr0, low",SMMU_CB_TTBR0)!=(uint32_t)root||
+    get(&apps_smmu_context,"ttbr0, high",SMMU_CB_TTBR0+4)!=(uint32_t)(root>>32)||
+    get(&apps_smmu_context,"fault",SMMU_CB_FSR))goto done;
+ radio_space.on=true;ok=true;
+done:
+ if(!zws_storage_write_end(storage_token))ok=false;
+ if(!ok){radio_space.on=false;zws_poisoned=true;tell("wifi: SMMU write failed; mapping remains poisoned\n");}
+ else tell("wifi: SMMU stream %#x through context %u qualified\n",RADIO_STREAM,radio_space.context);
+ return ok;
 }
 
 /* The stream goes nowhere again, and the context translates nothing: as they were found. */
 static void
 radio_space_off(void)
-{ zws_restore(); }
+{
+ if(leaving){tell("wifi: retain SMMU mapping during panic; no blocking restore\n");return;}
+ lck_mtx_lock(&hakios_smmu_lock);zws_restore();lck_mtx_unlock(&hakios_smmu_lock);
+}
 
 /*
  * For the driver (hakios.lx.c): memory of ours that the radio is to see, at the address
@@ -3852,6 +3845,7 @@ radio_map(uint64_t physical, uint64_t size, uint64_t attributes, unsigned long l
  size=(size+4095ull)&~4095ull;
  lck_mtx_lock(&hakios_smmu_lock);
  bool ok=false;
+ if(zws_poisoned)goto out;
  if(radio_space.next>RADIO_ADDRESSES_SIZE-size)goto out;
  *address=RADIO_ADDRESSES+radio_space.next;
  radio_space.next+=size;
@@ -3863,7 +3857,7 @@ radio_map(uint64_t physical, uint64_t size, uint64_t attributes, unsigned long l
  put(&apps_smmu_context,"tlbiasid",SMMU_CB_TLBIASID,radio_space.context);
  put(&apps_smmu_context,"tlbsync",SMMU_CB_TLBSYNC,1);
  for(unsigned ms=0;rd(apps_smmu_context.base+SMMU_CB_TLBSTATUS)&1u;ms++){
-  if(ms==100)goto out;
+  if(ms==100){zws_poisoned=true;goto out;}
   sleep_ms(1);
  }
  ok=true;

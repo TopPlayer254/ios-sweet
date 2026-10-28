@@ -17,3 +17,6 @@ int zws_select(const struct zws_snapshot*,const struct zws_snapshot*,struct zws_
 struct u3_smmu;
 int zws_storage_lease(unsigned match,unsigned context,uint32_t old_smr,uint32_t old_s2cr);
 int zws_storage_coexists(const struct u3_smmu*,const struct u3_smmu*,const struct u3_smmu*);
+uint64_t zws_storage_epoch(void);
+uint64_t zws_storage_write_begin(void);
+int zws_storage_write_end(uint64_t);
