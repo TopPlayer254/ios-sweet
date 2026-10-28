@@ -59,6 +59,10 @@ def main():
  ufs=(xnu/'bsd/dev/sweet_ufs.c').read_text()
  assert ufs.count('zws_storage_coexists(&a,&b,u1.owned?&u1.identity:&a)')==1
  assert 'for(unsigned i=0;i<ZWS_SMRS;i++)' in ufs
+ assert ufs.count('zws_storage_epoch()')==2 and 'if(epoch&1u)' in ufs
+ wifi=(xnu/'bsd/dev/hakios.wifi.c').read_text()
+ assert wifi.count('zws_storage_write_begin()')==2 and wifi.count('zws_storage_write_end(storage_token)')==2
+ assert 'if(zws_poisoned)goto out;' in wifi and 'radio_space.on=true;ok=true;' in wifi
  kernel=ROOT/'dxb/fakeroot/System/Library/Kernels/kernel.development.sweet';data=kernel.read_bytes();parsed=text_symbols(data)
  names=hw['linkedFunctions']+['_hakios_wifi_init','_hakios_sta_ask_join_standing','_lx_start','_lx_transmit',
   '_lx_os_qmi_target','_zwn_pas_probe','_zwn_pas_start','_zwn_qmp_open','_zws_select','_ziyi_wifi_image_file','_HakiosWLANStart',
@@ -95,6 +99,6 @@ def main():
   at+=size
  assert len(slots)==1
  report=dict(result='WIFI_NATIVE_FULL_XNU_SOURCE_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),baselineScopes=scopes,
-  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
+  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
  (out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(dict(result=report['result'],baseline72Unchanged=True,addedFiles=len(new),linkedFunctions=len(bodies))))
 if __name__=='__main__':main()
