@@ -52,7 +52,7 @@
     },
     {
       "path": "bsd/dev/hakios.wifi.c",
-      "after": "5ad6d321f52a57add8621fbd4f0786626d2c43efc42888bda48f9ee327b2cab0",
+      "after": "7e65f304ad544b0c6906819fee02a38ab3f4c44faef8b1ff982509ca50a079a6",
       "new": true
     },
     {

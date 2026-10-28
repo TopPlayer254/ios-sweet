@@ -3016,7 +3016,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/hakios.wifi.c
-@@ -0,0 +1,4231 @@
+@@ -0,0 +1,4233 @@
 +/*
 + * The Wi-Fi of the POCO X5 Pro (redwood), from nothing and step by step. Every address below
 + * belongs to this phone, and nothing here is touched unless a boot-arg asks for it.
@@ -3198,9 +3198,10 @@
 +extern int ziyi_wifi_native_binding(int);
 +extern int ziyi_wifi_native_boot_authorized(void);
 +extern uint64_t ziyi_wifi_native_epoch(void);
-+/* Exact XNU vm/pmap.h MACH_KERNEL_PRIVATE signatures, used by this built-in BSD adapter. */
++/* Exact XNU private APIs, used by this built-in BSD adapter. */
 +extern void pmap_set_cache_attributes(ppnum_t,unsigned int);
 +extern unsigned int pmap_cache_attributes(ppnum_t);
++extern vm_offset_t io_map(vm_map_offset_t,vm_size_t,unsigned int,vm_prot_t,bool);
 +
 +extern vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
 +extern vm_offset_t ml_io_map_wcomb(vm_offset_t phys_addr, vm_size_t size);
@@ -3534,7 +3535,7 @@
 +		/* memory, not registers; and from the kernel's own map: where ml_io_map() puts things there are 8 MB in all */
 +		smem = (const volatile uint8_t *)ml_io_map_unmappable(SMEM_PHYS, SMEM_SIZE, VM_WIMG_WCOMB);
 +	}
-+	if (offset + size > SMEM_SIZE) {
++	if (!smem || !to || offset > SMEM_SIZE || size > SMEM_SIZE - offset) {
 +		return false;
 +	}
 +	for (uint32_t i = 0; i < size; i++) {
@@ -6691,10 +6692,14 @@
 +  s->s2cr[n]=rd(apps_smmu.base+SMMU_S2CR(n));
 + }
 + /* Only the HLOS 78 banks granted by the runtime DT, not IDR1's full count. */
-+ for(unsigned n=0;n<ZWS_CBS;n++){
-+  vm_offset_t at=ml_io_map_unmappable(apps_smmu.phys+(pages+n)*page,0x1000,VM_WIMG_IO);
-+  if(!at)return false;s->sctlr[n]=rd(at);ml_io_unmap(at,round_page(0x1000));
-+ }
++ /* io_map returns VA+physical-page-offset; ml_io_unmap requires the original
++  * page-aligned allocation. Map the aligned context-bank base once and read
++  * only the 78 HLOS banks, then unmap the exact rounded allocation. */
++ vm_size_t span=round_page(ZWS_CBS*page);
++ vm_offset_t at=io_map(apps_smmu.phys+pages*page,span,VM_WIMG_IO,VM_PROT_READ,true);
++ if(!at)return false;
++ for(unsigned n=0;n<ZWS_CBS;n++)s->sctlr[n]=rd(at+n*page);
++ ml_io_unmap(at,span);
 + return ziyi_wifi_native_binding(0);
 +}
 +static bool
@@ -6853,39 +6858,35 @@
 + * For the driver (hakios.lx.c): memory of ours that the radio is to see, at the address
 + * returned. Without wifi_smmu=2 it has an address and the radio is shown nothing.
 + */
++/* Serialize address reservation, page-table updates and TLB completion across
++ * all eight CPUs. Never reuse an address after a partial map failure. */
 +static bool
 +radio_map(uint64_t physical, uint64_t size, uint64_t attributes, unsigned long long *address)
 +{
-+	size = (size + 4095) & ~4095ull;
-+	if (radio_space.next + size > RADIO_ADDRESSES_SIZE) {
-+		return false;
-+	}
-+	*address = RADIO_ADDRESSES + radio_space.next;
-+	radio_space.next += size;
-+	if (whole) {
-+		radio_space.wanted = 2;
-+	}
-+	if (radio_space.wanted != 2) {
-+		printf("wifi: %u: THE RADIO IS NOT SHOWN the %llu KB of ours at %#llx that the driver will know as %#llx: that takes "
-+		    "a context of the SMMU (wifi_smmu=2)\n", step, size >> 10, physical, *address);
-+		return true;
-+	}
-+	lck_mtx_lock(&hakios_smmu_lock);       /* (the sound may be looking for a free context at the same time) */
-+	if ((!radio_space.found && !radio_space_find()) || !radio_enter(*address, physical, size, attributes)) {
-+		lck_mtx_unlock(&hakios_smmu_lock);
-+		return false;
-+	}
-+	printf("wifi: %u: the radio is to see %llu KB of ours (%#llx) at %#llx\n", step, size >> 10, physical, *address);
-+	if (!radio_space.on) {
-+		bool on = radio_space_on();
-+
-+		lck_mtx_unlock(&hakios_smmu_lock);
-+		return on;
-+	}
-+	lck_mtx_unlock(&hakios_smmu_lock);
-+	put(&apps_smmu_context, "tlbiasid", SMMU_CB_TLBIASID, radio_space.context);
-+	put(&apps_smmu_context, "tlbsync", SMMU_CB_TLBSYNC, 1);
-+	return true;
++ if(!address||!size||(physical&4095ull)||size>RADIO_ADDRESSES_SIZE||
++    physical>PTE_ADDRESS||size>0x1000000000000ull-physical||
++    (attributes!=RADIO_PTE&&attributes!=RADIO_PTE_DEVICE))return false;
++ size=(size+4095ull)&~4095ull;
++ lck_mtx_lock(&hakios_smmu_lock);
++ bool ok=false;
++ if(radio_space.next>RADIO_ADDRESSES_SIZE-size)goto out;
++ *address=RADIO_ADDRESSES+radio_space.next;
++ radio_space.next+=size;
++ if(whole)radio_space.wanted=2;
++ if(radio_space.wanted!=2)goto out;
++ if((!radio_space.found&&!radio_space_find())||
++    !radio_enter(*address,physical,size,attributes))goto out;
++ if(!radio_space.on){ok=radio_space_on();goto out;}
++ put(&apps_smmu_context,"tlbiasid",SMMU_CB_TLBIASID,radio_space.context);
++ put(&apps_smmu_context,"tlbsync",SMMU_CB_TLBSYNC,1);
++ for(unsigned ms=0;rd(apps_smmu_context.base+SMMU_CB_TLBSTATUS)&1u;ms++){
++  if(ms==100)goto out;
++  sleep_ms(1);
++ }
++ ok=true;
++out:
++ lck_mtx_unlock(&hakios_smmu_lock);
++ return ok;
 +}
 +
 +bool
@@ -7166,6 +7167,7 @@
 +		tell("wifi: NO MEMORY FOR THE RADIO in one piece: it is not brought up\n");
 +		whole_runs = false;
 +		thread_terminate(current_thread());
++		return;
 +	}
 +	for (unsigned i = 0; i < sizeof(needed) && failed == 0; i++) {
 +		step = needed[i];
