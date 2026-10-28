@@ -15,11 +15,15 @@ def main():
   ('ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)', 'ROOT=$(cd "$(dirname "$0")/.." && pwd)'),
   ('LD=$ROOT/xnu-deps/host/bin/ld64', 'LD="${ZIYI_LD:?actual Apple linker required}"'),
   ('source "$ROOT/xnu-env.sh"', 'XNU_SRC="$ROOT/xnu-public-headers"'),
+  ('fi\n[ "$1" = fetch ]', 'fi\npython3 "$ROOT/tools/patch_qmi_target.py" "$ROOT"\n[ "$1" = fetch ]'),
  ]:
   assert text.count(old)==1,old;text=text.replace(old,new);changes.append(dict(old=old,new=new))
  script.write_text(text)
+ shutil.copyfile(source/'patch_qmi_target.py',out/'tools/patch_qmi_target.py')
+ shutil.copyfile(source/'qmi-source-sha256.txt',out/'qmi-source-sha256.txt')
  tools=out/'host-tools';tools.mkdir();shim=tools/'sha256sum';shim.write_text('#!/bin/sh\nexec shasum -a 256 "$@"\n');shim.chmod(0o755)
  (out/'build-adaptation.json').write_text(json.dumps(dict(donorRevision=m['revision'],changes=changes,
-  unmodifiedDriverSources=True,unmodifiedLinuxKPI=True,phoneOperated=False),indent=2)+'\n')
+  unmodifiedDriverSources=False,driverChanges='Checked target-capabilities hook in qmi.c only',
+  unmodifiedLinuxKPI=True,phoneOperated=False),indent=2)+'\n')
  print(json.dumps(dict(result='WIFI_MACOS_BUILD_STAGED',stage=str(out),changes=len(changes))))
 if __name__=='__main__':main()

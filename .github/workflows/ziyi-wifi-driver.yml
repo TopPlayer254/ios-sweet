@@ -17,6 +17,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: WPSS transport and own ELF board naming sanitizers
+        run: |
+          mkdir -p wifi-host-evidence
+          cc -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined tools/ziyi-wifi/native/scm.c tools/ziyi-wifi/native/smp.c tools/ziyi-wifi/native/test_transport.c -o wifi-host-evidence/transport
+          ./wifi-host-evidence/transport | tee wifi-host-evidence/transport.log
+          cc -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined tools/ziyi-wifi/native/bdf.c tools/ziyi-wifi/native/test_bdf.c -o wifi-host-evidence/bdf
+          ./wifi-host-evidence/bdf | tee wifi-host-evidence/bdf.log
       - name: LLVM inspection tools
         run: |
           brew list --versions llvm || brew install llvm
@@ -38,8 +45,10 @@ jobs:
         with:
           name: ziyi-wifi-driver-evidence
           path: |
+            wifi-host-evidence/*.log
             ${{ runner.temp }}/ziyi-wifi/build-adaptation.json
             ${{ runner.temp }}/ziyi-wifi/build.log
+            ${{ runner.temp }}/ziyi-wifi/qmi-target-adaptation.json
             ${{ runner.temp }}/ziyi-wifi/xnu-deps/build/ath11k/obj/*.err
             ${{ runner.temp }}/ziyi-wifi/xnu-deps/build/ath11k/out/*
           if-no-files-found: warn

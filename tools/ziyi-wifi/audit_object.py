@@ -19,8 +19,10 @@ def main():
   strongExports=strong,remainingDonorStubs=stubs,
   undefined=subprocess.check_output(['llvm-nm','-u','--format=just-symbols',str(obj)],text=True).splitlines(),
   donorAdaptation=json.loads((stage/'build-adaptation.json').read_text()),
+  qmiTargetAdaptation=json.loads((stage/'qmi-target-adaptation.json').read_text()),
   linkedIntoXNU=False,nativeRadio=False,scan=False,association=False,datapath=False,
   remaining='Review stubs and native adapter, then link with real XNU and test WPSS/QMI/scan/join/data')
  (folder/'ziyi-build-audit.json').write_text(json.dumps(report,indent=2)+'\n')
+ assert '_lx_os_qmi_target' in report['undefined'], 'QMI target binding callback must remain a real kernel dependency'
  print(json.dumps(dict(result=report['result'],bytes=report['bytes'],strongExports=strong,stubs=len(stubs))))
 if __name__=='__main__':main()
