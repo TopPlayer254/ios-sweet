@@ -604,6 +604,8 @@ struct qmi_state {
 	uint32_t peer_node, peer_port;
 	/* said in the log once each, so that a firmware that talks a lot cannot fill it */
 	bool said_malformed, said_undecoded, said_unknown;
+	/* Exact discovered WLFW endpoint, published before its new_server callback. */
+	uint32_t ziyi_wlfw_node, ziyi_wlfw_port;
 };
 
 static const struct hakios_qrtr_ops *qmi_transport;
@@ -727,6 +729,12 @@ qmi_server(void *context, bool arrived, uint32_t service, uint32_t version, uint
 		}
 	}
 	svc = *p;
+#ifdef KERNEL
+	if ((!arrived && s->ziyi_wlfw_node==node && s->ziyi_wlfw_port==port) ||
+	    (arrived && service==0x45 && version==1 && instance==3 && node==13 && port)) {
+		s->ziyi_wlfw_node=arrived?node:0;s->ziyi_wlfw_port=arrived?port:0;
+	}
+#endif
 	if (!arrived && svc != NULL) {
 		*p = svc->next;
 	}
@@ -743,6 +751,9 @@ qmi_server(void *context, bool arrived, uint32_t service, uint32_t version, uint
 		svc->node = node;
 		svc->port = port;
 		if (s->ops.new_server != NULL && s->ops.new_server(s->handle, svc) < 0) {
+			os_lock(&s->lock);
+			if(s->ziyi_wlfw_node==node&&s->ziyi_wlfw_port==port){s->ziyi_wlfw_node=0;s->ziyi_wlfw_port=0;}
+			os_unlock(&s->lock);
 			os_free(svc, sizeof(*svc));
 			return;
 		}
@@ -881,6 +892,39 @@ qmi_txn_init(struct qmi_handle *qmi, struct qmi_txn *txn, const struct qmi_elem_
 	return id;
 }
 
+#ifdef KERNEL
+extern int ziyi_wifi_native_binding(int);
+/* Xiaomi 24856283 ICNSS2 QMI HOST_CAP GPIO_INFO, not APSS GPIO MMIO.
+ * cnss_utils/wlan_firmware_service_v01.c: TLV0x2d, u8 count + u32 array.
+ * icnss2/qmi.c: indices WLAN_EN/BT_EN/HOST_SOL/TARGET_SOL; absent=0xffff.
+ * The caller binds the discovered WLFW service and native ziyi boot epoch.
+ * Validate the whole original packet before writing any byte. */
+static __attribute__((noinline)) int
+ziyi_wlfw_host_cap(uint8_t *packet, size_t length, size_t capacity,
+    unsigned wlan_en, int bound)
+{
+ if(!bound || wlan_en!=25u)return -EPERM;
+ if(!packet || length<7 || length>capacity || length>65542u)return -EINVAL;
+ if(packet[0]!=0 || packet[3]!=0x34 || packet[4]!=0 ||
+    (size_t)(packet[5]|packet[6]<<8)!=length-7)return -EINVAL;
+ for(size_t at=7;at<length;){
+  if(length-at<3)return -EINVAL;
+  size_t bytes=(size_t)(packet[at+1]|packet[at+2]<<8);
+  if(bytes>length-at-3 || packet[at]==0x2d)return -EINVAL;
+  at+=3+bytes;
+ }
+ if(capacity-length<20 || length-7>65535u-20u)return -ENOSPC;
+ uint8_t *p=packet+length;
+ p[0]=0x2d;p[1]=17;p[2]=0;p[3]=4;
+ const uint32_t gpio[4]={25u,0xffffu,0xffffu,0xffffu};
+ for(unsigned i=0;i<4;i++)for(unsigned b=0;b<4;b++)
+  p[4+4*i+b]=(uint8_t)(gpio[i]>>(8*b));
+ size_t payload=length-7+20;
+ packet[5]=(uint8_t)payload;packet[6]=(uint8_t)(payload>>8);
+ return (int)(length+20);
+}
+#endif
+
 int
 qmi_send_request(struct qmi_handle *qmi, struct sockaddr_qrtr *sq, struct qmi_txn *txn, int msg_id, size_t largest,
     const struct qmi_elem_info *ei, const void *structure)
@@ -888,7 +932,9 @@ qmi_send_request(struct qmi_handle *qmi, struct sockaddr_qrtr *sq, struct qmi_tx
 	struct qmi_state *s = state_of(qmi);
 	uint32_t node, port;
 	bool connected;
-	size_t size = largest + QMI_HEADER_SIZE;
+	size_t size;
+	bool ziyi_hostcap=false;
+	uint32_t wlfw_node=0,wlfw_port=0;
 	void *buffer;
 	int length, error;
 
@@ -899,6 +945,7 @@ qmi_send_request(struct qmi_handle *qmi, struct sockaddr_qrtr *sq, struct qmi_tx
 	connected = s->connected;
 	node = s->peer_node;
 	port = s->peer_port;
+	wlfw_node=s->ziyi_wlfw_node;wlfw_port=s->ziyi_wlfw_port;
 	os_unlock(&s->lock);
 	if (sq != NULL) {
 		node = sq->sq_node;
@@ -906,15 +953,29 @@ qmi_send_request(struct qmi_handle *qmi, struct sockaddr_qrtr *sq, struct qmi_tx
 	} else if (!connected) {
 		return -ENOTCONN;
 	}
+#ifdef KERNEL
+	ziyi_hostcap=msg_id==0x34 && node==13 && node==wlfw_node && port && port==wlfw_port;
+#else
+	(void)wlfw_node;(void)wlfw_port;
+#endif
+	if(ziyi_hostcap && (largest>65535u || txn->qmi!=qmi))return -EINVAL;
+	size=largest+QMI_HEADER_SIZE+(ziyi_hostcap?20u:0u);
 	buffer = os_alloc(size);
 	if (buffer == NULL) {
 		return -ENOMEM;
 	}
-	length = hakios_qmi_encode(QMI_REQUEST, (uint16_t)msg_id, txn->id, ei, structure, buffer, size);
+	length = hakios_qmi_encode(QMI_REQUEST, (uint16_t)msg_id, txn->id, ei, structure, buffer, largest+QMI_HEADER_SIZE);
 	if (length < 0) {
 		os_free(buffer, size);
 		return length;
 	}
+#ifdef KERNEL
+	if(ziyi_hostcap){
+		length=ziyi_wlfw_host_cap(buffer,(size_t)length,size,25u,ziyi_wifi_native_binding(0));
+		if(length<0){os_free(buffer,size);return length;}
+		os_log("ZWIFI W13 HOST_CAP GPIO_INFO wlan=25 absent=ffff count=4 bytes=20\n");
+	}
+#endif
 	error = s->transport->send(s->port, node, port, buffer, (size_t)length);
 	os_free(buffer, size);
 	return error > 0 ? -error : error;

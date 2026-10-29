@@ -42,7 +42,7 @@
     },
     {
       "path": "bsd/dev/hakios.qmi.c",
-      "after": "5feb3ddc9c4244701e2f462e77500a732a3fe1f55d43127a2341ca9a55c1c0a1",
+      "after": "ecdcf83e86e5abeaf3ff525bf6221978e7d98c52cd647dae6d18956a9ced1cd5",
       "new": true
     },
     {
@@ -52,7 +52,7 @@
     },
     {
       "path": "bsd/dev/hakios.wifi.c",
-      "after": "90b4e23cb2a47982fadc57cf46d94bb0fba940e744ad0477c0a347f5c7a57430",
+      "after": "6cf849e2ecc1a1f5aff09848d2b5ce1051aba3b927e7a5dcad7c33c571242c73",
       "new": true
     },
     {
@@ -195,5 +195,6 @@
   "baselineUnchanged": 72,
   "smmuStorageEpoch": true,
   "smmuStickyMutationFailure": true,
-  "retainedWifiStatus": true
+  "retainedWifiStatus": true,
+  "vendorHostCapGPIO": true
 }

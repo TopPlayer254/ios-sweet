@@ -38,7 +38,7 @@
     },
     {
       "path": "hakios.wifi.c",
-      "sha256": "fe8f9b0dbc63f45e12c2a639193e4120a010e9cfcbb9c1d54a521b9cc967b0cf",
+      "sha256": "9b4227e631000a98110541bf96f33e44de9d00524538508226dafed13cc8e6e4",
       "bytes": 187240
     },
     {
@@ -75,6 +75,16 @@
       "path": "test_coexist.c",
       "sha256": "5ad5e18a20097ada2a80d89fa8bf5f234685adccaa1598e9c172007e305bd328",
       "bytes": 3810
+    },
+    {
+      "path": "hostcap.inc",
+      "sha256": "861d270f2d4e2197b13250716f3a3ae068809c7b2e4a3114957c844cf87ba272",
+      "bytes": 1320
+    },
+    {
+      "path": "test_hostcap.c",
+      "sha256": "30979fe8dc0799253370a135d0f9cd46e74861d98117c2d5a85da4f8d9f473c3",
+      "bytes": 2244
     }
   ],
   "firmwareIncluded": false,

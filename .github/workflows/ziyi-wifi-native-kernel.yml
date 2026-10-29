@@ -169,6 +169,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -Itools/ziyi-wifi/native-kernel tools/ziyi-wifi/native-kernel/scm.c tools/ziyi-wifi/native-kernel/smp.c tools/ziyi-wifi/native-kernel/test_transport.c -o u1-evidence/test-wifi-pas
           u1-evidence/test-wifi-pas > u1-evidence/test-wifi-pas.log
 
+      - name: Ziyi WLFW host capability GPIO_INFO wire contract
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -Itools/ziyi-wifi/native-kernel tools/ziyi-wifi/native-kernel/test_hostcap.c -o u1-evidence/test-wifi-hostcap
+          u1-evidence/test-wifi-hostcap > u1-evidence/test-wifi-hostcap.log
+
       - name: Fetch build script
         run: |
           git init -q dxb
