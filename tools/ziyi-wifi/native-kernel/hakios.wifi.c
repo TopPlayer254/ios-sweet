@@ -229,6 +229,78 @@ static char kept[64 * 1024];
 static uint32_t kept_at;
 static bool kept_wrapped;
 
+/* W7: RAM-only status, retained independently of console scrollback.
+ * say_lock protects the ring. Atomic scalar fields never grant hardware access.
+ * This is inserted BEFORE '#define printf say': reporter output must neither
+ * recurse into the logger nor replace the retained transport messages.
+ */
+#include <kern/sched_prim.h>
+extern unsigned ziyi_wifi_native_failure(void);
+extern uint64_t ziyi_wifi_native_diagnostic(unsigned item);
+enum { ZYW_ENTER=1, ZYW_BIND, ZYW_CAPSULE, ZYW_PREPARE, ZYW_STEP,
+       ZYW_UP, ZYW_FAILED, ZYW_FINISHED };
+static unsigned zyw_phase, zyw_current, zyw_done, zyw_failed, zyw_errno;
+static char zyw_tail[16][240];
+static uint64_t zyw_tail_count;
+
+static void
+zyw_mark(unsigned phase, unsigned current, unsigned done, unsigned failed, unsigned error)
+{
+ lck_mtx_lock(&say_lock);
+ zyw_current=current;zyw_done=done;zyw_failed=failed;zyw_errno=error;
+ __atomic_store_n(&zyw_phase,phase,__ATOMIC_RELEASE);
+ lck_mtx_unlock(&say_lock);
+}
+
+/* Called only under say_lock, so a reporter never copies a partial string. */
+static void
+zyw_remember(const char *line)
+{
+ if(!line||!*line)return;
+ char *to=zyw_tail[zyw_tail_count%16];
+ unsigned n=0;
+ for(;n<sizeof(zyw_tail[0])-1&&line[n];n++)
+  to[n]=(line[n]=='\n'||line[n]=='\r')?' ':line[n];
+ to[n]=0;zyw_tail_count++;
+}
+
+static void
+zyw_status_thread(__unused void *parameter, __unused wait_result_t result)
+{
+ uint64_t cursor=0;
+ /* Fifteen minutes, enough to read failures after the GUI starts. Sleep via
+  * scheduler deadlines: no busy polling and no MMIO in this worker. */
+ for(unsigned tick=0;tick<180;tick++){
+  uint64_t deadline;
+  clock_interval_to_deadline(5,NSEC_PER_SEC,&deadline);
+  (void)assert_wait_deadline(&zyw_phase,THREAD_UNINT,deadline);
+  thread_block(THREAD_CONTINUE_NULL);
+  char line[240];unsigned phase,current,done,failed,error;uint64_t count,index;
+  lck_mtx_lock(&say_lock);
+  phase=__atomic_load_n(&zyw_phase,__ATOMIC_ACQUIRE);
+  current=zyw_current;done=zyw_done;failed=zyw_failed;error=zyw_errno;
+  count=zyw_tail_count;
+  uint64_t first=count>16?count-16:0;
+  if(cursor<first||cursor>=count)cursor=first;
+  index=cursor;
+  if(count){memcpy(line,zyw_tail[cursor%16],sizeof(line));cursor++;}
+  else line[0]=0;
+  lck_mtx_unlock(&say_lock);
+  /* One bounded block, seven short console rows. Do not hold say_lock
+   * across console I/O and never call say/tell from this reporter. */
+  printf("ZWIFI W7 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
+         "ZWIFI cpu=%llx/%llx/%llu dt=%llx\n"
+         "ZWIFI log=%llu/%llu\n%.60s\n%.60s\n%.60s\n%.60s\n",
+         phase,current,done,failed,error,ziyi_wifi_native_failure(),
+         ziyi_wifi_native_diagnostic(0),ziyi_wifi_native_diagnostic(1),
+         ziyi_wifi_native_diagnostic(2),ziyi_wifi_native_diagnostic(3),
+         index,count,line,line+((strlen(line)>60)?60:strlen(line)),
+         line+((strlen(line)>120)?120:strlen(line)),
+         line+((strlen(line)>180)?180:strlen(line)));
+ }
+ (void)thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
+}
+
 static void
 say_line(const char *line, bool aloud)
 {
@@ -237,6 +309,7 @@ say_line(const char *line, bool aloud)
 		return;
 	}
 	lck_mtx_lock(&say_lock);
+	zyw_remember(line);
 	if (quiet && !aloud) {
 		for (const char *c = line; *c != 0; c++) {
 			kept[kept_at] = *c;
@@ -246,7 +319,6 @@ say_line(const char *line, bool aloud)
 			}
 		}
 	} else {
-		printf("%s", line);
 		printf("%s", line);
 	}
 	lck_mtx_unlock(&say_lock);
@@ -4147,7 +4219,10 @@ whole_thread(__unused void *parameter, __unused wait_result_t result)
 	uint32_t done = 0, failed = 0;
 
 	/* the memory the radio is shown is one piece: taken now, while that is easy to find */
-	if (hakios_lx_prepare() != 0) {
+	zyw_mark(ZYW_PREPARE,0,0,0,0);
+	int preparation_error=hakios_lx_prepare();
+	if (preparation_error != 0) {
+		zyw_mark(ZYW_FAILED,0,0,0,(unsigned)preparation_error);
 		tell("wifi: NO MEMORY FOR THE RADIO in one piece: it is not brought up\n");
 		whole_runs = false;
 		thread_terminate(current_thread());
@@ -4155,17 +4230,21 @@ whole_thread(__unused void *parameter, __unused wait_result_t result)
 	}
 	for (unsigned i = 0; i < sizeof(needed) && failed == 0; i++) {
 		step = needed[i];
+		zyw_mark(ZYW_STEP,step,done,0,0);
 		if (step == 15) {
 			tell("wifi: the radio's DSP is up and linked, %llu ms in; now the driver\n", (now_us() - began) / 1000);
 		}
 		if (steps[step - 1]()) {
 			done = step;
+			zyw_mark(ZYW_STEP,step,done,0,0);
 		} else {
 			failed = step;
+			zyw_mark(ZYW_FAILED,step,done,failed,0);
 		}
 	}
 	last_step = needed[sizeof(needed) - 1];
 	if (failed == 0) {
+		zyw_mark(ZYW_UP,step,done,0,0);
 		tell("wifi: THE RADIO IS UP, %llu.%llu s after the kernel began on it\n", (now_us() - began) / 1000000,
 		    (now_us() - began) / 100000 % 10);
 		join_given(began);
@@ -4176,6 +4255,7 @@ whole_thread(__unused void *parameter, __unused wait_result_t result)
 	}
 	steps_over(failed == 0 ? last_step : 0);
 	step = done;
+	zyw_mark(failed?ZYW_FAILED:ZYW_FINISHED,step,done,failed,0);
 	whole_runs = false;
 	thread_terminate(current_thread());
 }
@@ -4192,7 +4272,13 @@ hakios_wifi_init(void)
 	thread_t thread;
 
 	/* ziyi whole-radio candidate only: no donor PMIC/pin surveys or dirty overrides. */
-	if (!ziyi_wifi_native_boot_authorized()) return;
+	zyw_mark(ZYW_ENTER,0,0,0,0);
+	if(kernel_thread_start(zyw_status_thread,NULL,&thread)==KERN_SUCCESS)thread_deallocate(thread);
+	else tell("ZWIFI W7 status worker unavailable\n");
+	zyw_mark(ZYW_BIND,0,0,0,0);
+	if (!ziyi_wifi_native_boot_authorized()) {
+		zyw_mark(ZYW_FAILED,0,0,0,ziyi_wifi_native_failure());return;
+	}
 	last_step = 0;
 	if (last_step == 0 && (!PE_parse_boot_argn("wifi", &on, sizeof(on)) || on == 0)) {
 		return;
@@ -4214,7 +4300,9 @@ hakios_wifi_init(void)
 	}
 	hakios_qmi_set_transport(&qrtr_ops);
 	if (last_step == 0) {
+		zyw_mark(ZYW_CAPSULE,0,0,0,0);
 		if (image_file("wpss.mdt", &size) == NULL) {
+			zyw_mark(ZYW_FAILED,0,0,0,ENOENT);
 			printf("wifi: wifi=1, but the radio's firmware is not in the small image (fw-wifi/, see the README): no Wi-Fi\n");
 			return;
 		}
@@ -4225,6 +4313,7 @@ hakios_wifi_init(void)
 		new_from = STEPS + 1;
 		if (kernel_thread_start(whole_thread, NULL, &thread) != KERN_SUCCESS) {
 			whole_runs = false;
+			zyw_mark(ZYW_FAILED,0,0,0,ENOMEM);
 			tell("wifi: no thread: the radio is not brought up\n");
 			return;
 		}

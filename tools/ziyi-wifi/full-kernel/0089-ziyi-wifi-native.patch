@@ -3016,7 +3016,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/hakios.wifi.c
-@@ -0,0 +1,4236 @@
+@@ -0,0 +1,4325 @@
 +/*
 + * The Wi-Fi of the POCO X5 Pro (redwood), from nothing and step by step. Every address below
 + * belongs to this phone, and nothing here is touched unless a boot-arg asks for it.
@@ -3248,6 +3248,78 @@
 +static uint32_t kept_at;
 +static bool kept_wrapped;
 +
++/* W7: RAM-only status, retained independently of console scrollback.
++ * say_lock protects the ring. Atomic scalar fields never grant hardware access.
++ * This is inserted BEFORE '#define printf say': reporter output must neither
++ * recurse into the logger nor replace the retained transport messages.
++ */
++#include <kern/sched_prim.h>
++extern unsigned ziyi_wifi_native_failure(void);
++extern uint64_t ziyi_wifi_native_diagnostic(unsigned item);
++enum { ZYW_ENTER=1, ZYW_BIND, ZYW_CAPSULE, ZYW_PREPARE, ZYW_STEP,
++       ZYW_UP, ZYW_FAILED, ZYW_FINISHED };
++static unsigned zyw_phase, zyw_current, zyw_done, zyw_failed, zyw_errno;
++static char zyw_tail[16][240];
++static uint64_t zyw_tail_count;
++
++static void
++zyw_mark(unsigned phase, unsigned current, unsigned done, unsigned failed, unsigned error)
++{
++ lck_mtx_lock(&say_lock);
++ zyw_current=current;zyw_done=done;zyw_failed=failed;zyw_errno=error;
++ __atomic_store_n(&zyw_phase,phase,__ATOMIC_RELEASE);
++ lck_mtx_unlock(&say_lock);
++}
++
++/* Called only under say_lock, so a reporter never copies a partial string. */
++static void
++zyw_remember(const char *line)
++{
++ if(!line||!*line)return;
++ char *to=zyw_tail[zyw_tail_count%16];
++ unsigned n=0;
++ for(;n<sizeof(zyw_tail[0])-1&&line[n];n++)
++  to[n]=(line[n]=='\n'||line[n]=='\r')?' ':line[n];
++ to[n]=0;zyw_tail_count++;
++}
++
++static void
++zyw_status_thread(__unused void *parameter, __unused wait_result_t result)
++{
++ uint64_t cursor=0;
++ /* Fifteen minutes, enough to read failures after the GUI starts. Sleep via
++  * scheduler deadlines: no busy polling and no MMIO in this worker. */
++ for(unsigned tick=0;tick<180;tick++){
++  uint64_t deadline;
++  clock_interval_to_deadline(5,NSEC_PER_SEC,&deadline);
++  (void)assert_wait_deadline(&zyw_phase,THREAD_UNINT,deadline);
++  thread_block(THREAD_CONTINUE_NULL);
++  char line[240];unsigned phase,current,done,failed,error;uint64_t count,index;
++  lck_mtx_lock(&say_lock);
++  phase=__atomic_load_n(&zyw_phase,__ATOMIC_ACQUIRE);
++  current=zyw_current;done=zyw_done;failed=zyw_failed;error=zyw_errno;
++  count=zyw_tail_count;
++  uint64_t first=count>16?count-16:0;
++  if(cursor<first||cursor>=count)cursor=first;
++  index=cursor;
++  if(count){memcpy(line,zyw_tail[cursor%16],sizeof(line));cursor++;}
++  else line[0]=0;
++  lck_mtx_unlock(&say_lock);
++  /* One bounded block, seven short console rows. Do not hold say_lock
++   * across console I/O and never call say/tell from this reporter. */
++  printf("ZWIFI W7 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
++         "ZWIFI cpu=%llx/%llx/%llu dt=%llx\n"
++         "ZWIFI log=%llu/%llu\n%.60s\n%.60s\n%.60s\n%.60s\n",
++         phase,current,done,failed,error,ziyi_wifi_native_failure(),
++         ziyi_wifi_native_diagnostic(0),ziyi_wifi_native_diagnostic(1),
++         ziyi_wifi_native_diagnostic(2),ziyi_wifi_native_diagnostic(3),
++         index,count,line,line+((strlen(line)>60)?60:strlen(line)),
++         line+((strlen(line)>120)?120:strlen(line)),
++         line+((strlen(line)>180)?180:strlen(line)));
++ }
++ (void)thread_terminate(current_thread());thread_block(THREAD_CONTINUE_NULL);
++}
++
 +static void
 +say_line(const char *line, bool aloud)
 +{
@@ -3256,6 +3328,7 @@
 +		return;
 +	}
 +	lck_mtx_lock(&say_lock);
++	zyw_remember(line);
 +	if (quiet && !aloud) {
 +		for (const char *c = line; *c != 0; c++) {
 +			kept[kept_at] = *c;
@@ -3265,7 +3338,6 @@
 +			}
 +		}
 +	} else {
-+		printf("%s", line);
 +		printf("%s", line);
 +	}
 +	lck_mtx_unlock(&say_lock);
@@ -7166,7 +7238,10 @@
 +	uint32_t done = 0, failed = 0;
 +
 +	/* the memory the radio is shown is one piece: taken now, while that is easy to find */
-+	if (hakios_lx_prepare() != 0) {
++	zyw_mark(ZYW_PREPARE,0,0,0,0);
++	int preparation_error=hakios_lx_prepare();
++	if (preparation_error != 0) {
++		zyw_mark(ZYW_FAILED,0,0,0,(unsigned)preparation_error);
 +		tell("wifi: NO MEMORY FOR THE RADIO in one piece: it is not brought up\n");
 +		whole_runs = false;
 +		thread_terminate(current_thread());
@@ -7174,17 +7249,21 @@
 +	}
 +	for (unsigned i = 0; i < sizeof(needed) && failed == 0; i++) {
 +		step = needed[i];
++		zyw_mark(ZYW_STEP,step,done,0,0);
 +		if (step == 15) {
 +			tell("wifi: the radio's DSP is up and linked, %llu ms in; now the driver\n", (now_us() - began) / 1000);
 +		}
 +		if (steps[step - 1]()) {
 +			done = step;
++			zyw_mark(ZYW_STEP,step,done,0,0);
 +		} else {
 +			failed = step;
++			zyw_mark(ZYW_FAILED,step,done,failed,0);
 +		}
 +	}
 +	last_step = needed[sizeof(needed) - 1];
 +	if (failed == 0) {
++		zyw_mark(ZYW_UP,step,done,0,0);
 +		tell("wifi: THE RADIO IS UP, %llu.%llu s after the kernel began on it\n", (now_us() - began) / 1000000,
 +		    (now_us() - began) / 100000 % 10);
 +		join_given(began);
@@ -7195,6 +7274,7 @@
 +	}
 +	steps_over(failed == 0 ? last_step : 0);
 +	step = done;
++	zyw_mark(failed?ZYW_FAILED:ZYW_FINISHED,step,done,failed,0);
 +	whole_runs = false;
 +	thread_terminate(current_thread());
 +}
@@ -7211,7 +7291,13 @@
 +	thread_t thread;
 +
 +	/* ziyi whole-radio candidate only: no donor PMIC/pin surveys or dirty overrides. */
-+	if (!ziyi_wifi_native_boot_authorized()) return;
++	zyw_mark(ZYW_ENTER,0,0,0,0);
++	if(kernel_thread_start(zyw_status_thread,NULL,&thread)==KERN_SUCCESS)thread_deallocate(thread);
++	else tell("ZWIFI W7 status worker unavailable\n");
++	zyw_mark(ZYW_BIND,0,0,0,0);
++	if (!ziyi_wifi_native_boot_authorized()) {
++		zyw_mark(ZYW_FAILED,0,0,0,ziyi_wifi_native_failure());return;
++	}
 +	last_step = 0;
 +	if (last_step == 0 && (!PE_parse_boot_argn("wifi", &on, sizeof(on)) || on == 0)) {
 +		return;
@@ -7233,7 +7319,9 @@
 +	}
 +	hakios_qmi_set_transport(&qrtr_ops);
 +	if (last_step == 0) {
++		zyw_mark(ZYW_CAPSULE,0,0,0,0);
 +		if (image_file("wpss.mdt", &size) == NULL) {
++			zyw_mark(ZYW_FAILED,0,0,0,ENOENT);
 +			printf("wifi: wifi=1, but the radio's firmware is not in the small image (fw-wifi/, see the README): no Wi-Fi\n");
 +			return;
 +		}
@@ -7244,6 +7332,7 @@
 +		new_from = STEPS + 1;
 +		if (kernel_thread_start(whole_thread, NULL, &thread) != KERN_SUCCESS) {
 +			whole_runs = false;
++			zyw_mark(ZYW_FAILED,0,0,0,ENOMEM);
 +			tell("wifi: no thread: the radio is not brought up\n");
 +			return;
 +		}
@@ -7348,7 +7437,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/ziyi_wifi_binding.c
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,81 @@
 +/* SPDX-License-Identifier: MIT
 + * Native SWEET source contract binding. A coldboot bootarg is an explicit
 + * operator attestation, not a hardware OFF detector. Retained DSP state is
@@ -7362,31 +7451,59 @@
 +static struct zadt_binding wifi_dt;
 +static unsigned wifi_bound; /* 0 unused, 1 opening, 2 bound, 3 permanently failed */
 +static uint64_t wifi_epoch;
++static unsigned wifi_failure;
++static unsigned wifi_dt_failure;
 +int ziyi_wifi_native_binding(int initial);
 +int ziyi_wifi_native_boot_authorized(void);
 +uint64_t ziyi_wifi_native_epoch(void);
++unsigned ziyi_wifi_native_failure(void);
++uint64_t ziyi_wifi_native_diagnostic(unsigned item);
 +extern int ziyi_wifi_bdf_begin(uint64_t,int);
++/* First failing gate stays visible to the delayed RAM status reporter. */
++static void failed(unsigned reason)
++{
++ unsigned zero=0;
++ (void)__atomic_compare_exchange_n(&wifi_failure,&zero,reason,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE);
++}
++unsigned ziyi_wifi_native_failure(void){return __atomic_load_n(&wifi_failure,__ATOMIC_ACQUIRE);}
++uint64_t ziyi_wifi_native_diagnostic(unsigned item)
++{
++ uint64_t value=0;
++ if(item==0)__asm__ volatile("mrs %0,CurrentEL":"=r"(value));
++ else if(item==1)__asm__ volatile("mrs %0,sctlr_el1":"=r"(value));
++ else if(item==2)__asm__ volatile("mrs %0,cntfrq_el0":"=r"(value));
++ else if(item==3)value=__atomic_load_n(&wifi_dt_failure,__ATOMIC_ACQUIRE);
++ return value;
++}
 +static int cpu_context(void)
 +{
 + uint64_t el,sctlr,frequency;
 + __asm__ volatile("mrs %0,CurrentEL":"=r"(el));
 + __asm__ volatile("mrs %0,sctlr_el1":"=r"(sctlr));
 + __asm__ volatile("mrs %0,cntfrq_el0":"=r"(frequency));
-+ return el==4&&(sctlr&0x1005)==0x1005&&frequency==19200000;
++ int ok=el==4&&(sctlr&0x1005)==0x1005&&frequency==19200000;
++ if(!ok){failed(1);printf("ZWIFI context EL=%llu SCTLR=%llx CNTFRQ=%llu\n",el,sctlr,frequency);}
++ return ok;
 +}
 +int ziyi_wifi_native_binding(int initial)
 +{
 + unsigned state=__atomic_load_n(&wifi_bound,__ATOMIC_ACQUIRE);
 + if(initial&&state==0){
 +  unsigned zero=0;if(!__atomic_compare_exchange_n(&wifi_bound,&zero,1,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return 0;
-+  int ok=cpu_context()&&zadt_open(&wifi_dt,"/arm-io/ziyi-wifi-native",zwn_adt_properties,ZWN_ADT_COUNT);
-+  wifi_epoch=mach_absolute_time();if(!wifi_epoch)ok=0;
++  int ok=cpu_context();
++  if(ok&&!zadt_open(&wifi_dt,"/arm-io/ziyi-wifi-native",zwn_adt_properties,ZWN_ADT_COUNT)){
++   ok=0;__atomic_store_n(&wifi_dt_failure,wifi_dt.status|(wifi_dt.property<<8)|(wifi_dt.mode<<16),__ATOMIC_RELEASE);
++   failed(2);printf("ZWIFI DT open status=%u property=%u mode=%u\n",wifi_dt.status,wifi_dt.property,wifi_dt.mode);
++  }
++  wifi_epoch=mach_absolute_time();if(!wifi_epoch){ok=0;failed(6);}
 +  state=ok?2u:3u;__atomic_store_n(&wifi_bound,state,__ATOMIC_RELEASE);
 + }
 + if(state!=2||!cpu_context())return 0;
 + /* Read-only shared snapshot; concurrent readers use a local scratch copy. */
 + struct zadt_binding check=wifi_dt;
 + if(!zadt_recheck(&check,"/arm-io/ziyi-wifi-native",zwn_adt_properties,ZWN_ADT_COUNT)){
++  __atomic_store_n(&wifi_dt_failure,check.status|(check.property<<8)|(check.mode<<16),__ATOMIC_RELEASE);
++  failed(3);printf("ZWIFI DT recheck status=%u property=%u mode=%u\n",check.status,check.property,check.mode);
 +  __atomic_store_n(&wifi_bound,3u,__ATOMIC_RELEASE);return 0;
 + }
 + return __atomic_load_n(&wifi_bound,__ATOMIC_ACQUIRE)==2;
@@ -7396,8 +7513,9 @@
 +{
 + unsigned enabled=0,cold=0;
 + if(!PE_parse_boot_argn("wifi",&enabled,sizeof(enabled))||enabled!=1||
-+    !PE_parse_boot_argn("ziyi_wifi_coldboot",&cold,sizeof(cold))||cold!=1)return 0;
-+ if(!ziyi_wifi_native_binding(1)||!ziyi_wifi_bdf_begin(wifi_epoch,ZWN_NATIVE_SKU_GLOBAL))return 0;
++    !PE_parse_boot_argn("ziyi_wifi_coldboot",&cold,sizeof(cold))||cold!=1){failed(4);return 0;}
++ if(!ziyi_wifi_native_binding(1))return 0;
++ if(!ziyi_wifi_bdf_begin(wifi_epoch,ZWN_NATIVE_SKU_GLOBAL)){failed(5);return 0;}
 + printf("ZWIFI native ziyi/GL DT bound; coldboot operator attested, remote state still checked\n");
 + return 1;
 +}

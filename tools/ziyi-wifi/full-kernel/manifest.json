@@ -52,7 +52,7 @@
     },
     {
       "path": "bsd/dev/hakios.wifi.c",
-      "after": "eb86874f8e1e284e4393561187568f4fd5921ab299534d94bd8a5d4e3eeb8697",
+      "after": "89bdefd3c20a39a944261ecee2415d982cd0c49be20b08beedf201a8c6730dcc",
       "new": true
     },
     {
@@ -72,7 +72,7 @@
     },
     {
       "path": "bsd/dev/ziyi_wifi_binding.c",
-      "after": "b823bd8bdf00bb66c7caf1ef0b91008645a96b0d7dbaca17f8cf3c6f7a03d45d",
+      "after": "88400f3ac58ed636aef539620e69f03157f7286117c969530147db55f085e039",
       "new": true
     },
     {
@@ -194,5 +194,6 @@
   "ufsExactWifiLease": true,
   "baselineUnchanged": 72,
   "smmuStorageEpoch": true,
-  "smmuStickyMutationFailure": true
+  "smmuStickyMutationFailure": true,
+  "retainedWifiStatus": true
 }
