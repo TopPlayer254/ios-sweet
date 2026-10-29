@@ -78,7 +78,7 @@ def main():
  assert 'if(!leaving)sleep_ms(500);' in wifi
  assert 'SMMU lease quarantined until coldboot; no old CBAR replay' in wifi
  assert 'restore cbar' not in wifi
- scm=(xnu/'bsd/dev/ziyi_wifi_scm.c').read_text()
+ scm=(xnu/'bsd/dev/ziyi_wifi_pas.c').read_text()
  assert 'operation==ZWN_PAS_PROBE&&!s->calls&&function==INFO' in scm
  fsr=(xnu/'bsd/dev/ziyi_wifi_smmu.h').read_text()
  assert 'configured_aarch64?raw==ZWS_FSR_AARCH64:(raw&~ZWS_FSR_FORMAT_MASK)==0' in fsr
