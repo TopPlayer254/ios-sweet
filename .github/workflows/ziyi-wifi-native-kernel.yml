@@ -164,6 +164,11 @@ jobs:
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -DZWS_HOST -Itools/ziyi-wifi/native-kernel -Itools/ziyi-ufs tools/ziyi-wifi/native-kernel/smmu.c tools/ziyi-wifi/native-kernel/test_coexist.c -o u1-evidence/test-wifi-ufs-coexist
           ./u1-evidence/test-wifi-ufs-coexist | tee u1-evidence/wifi-ufs-coexist-tests.txt
 
+      - name: Exact atomic SCM convention and PAS transport
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -Itools/ziyi-wifi/native-kernel tools/ziyi-wifi/native-kernel/scm.c tools/ziyi-wifi/native-kernel/smp.c tools/ziyi-wifi/native-kernel/test_transport.c -o u1-evidence/test-wifi-pas
+          u1-evidence/test-wifi-pas > u1-evidence/test-wifi-pas.log
+
       - name: Fetch build script
         run: |
           git init -q dxb

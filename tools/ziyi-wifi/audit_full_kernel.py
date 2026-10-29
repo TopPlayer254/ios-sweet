@@ -61,7 +61,7 @@ def main():
  assert 'for(unsigned i=0;i<ZWS_SMRS;i++)' in ufs
  assert ufs.count('zws_storage_epoch()')==2 and 'if(epoch&1u)' in ufs
  wifi=(xnu/'bsd/dev/hakios.wifi.c').read_text()
- assert wifi.count('zws_storage_write_begin()')==2 and wifi.count('zws_storage_write_end(storage_token)')==2
+ assert wifi.count('zws_storage_write_begin()')==1 and wifi.count('zws_storage_write_end(storage_token)')==1
  assert 'if(zws_poisoned)goto out;' in wifi and 'radio_space.on=true;ok=true;' in wifi
  assert '!zws_context_matches(actual,wanted)' in wifi
  assert wifi.index('zyw_status_thread(')<wifi.index('\n#define printf say\n')
@@ -76,6 +76,10 @@ def main():
  assert 'zyw_map_receipt(b->name,b->phys,b->size,b->base);' in wifi
  assert 'ZWIFI W10 BEGIN step=%u done=%u' in wifi
  assert 'if(!leaving)sleep_ms(500);' in wifi
+ assert 'SMMU lease quarantined until coldboot; no old CBAR replay' in wifi
+ assert 'restore cbar' not in wifi
+ scm=(xnu/'bsd/dev/ziyi_wifi_scm.c').read_text()
+ assert 'operation==ZWN_PAS_PROBE&&!s->calls&&function==INFO' in scm
  fsr=(xnu/'bsd/dev/ziyi_wifi_smmu.h').read_text()
  assert 'configured_aarch64?raw==ZWS_FSR_AARCH64:(raw&~ZWS_FSR_FORMAT_MASK)==0' in fsr
  kernel=ROOT/'dxb/fakeroot/System/Library/Kernels/kernel.development.sweet';data=kernel.read_bytes();parsed=text_symbols(data)
@@ -115,6 +119,6 @@ def main():
   at+=size
  assert len(slots)==1
  report=dict(result='WIFI_NATIVE_FULL_XNU_SOURCE_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),baselineScopes=scopes,
-  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
+  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,atomicConventionProbeCompiled=True,bootLifetimeLeaseCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
  (out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(dict(result=report['result'],baseline72Unchanged=True,addedFiles=len(new),linkedFunctions=len(bodies))))
 if __name__=='__main__':main()

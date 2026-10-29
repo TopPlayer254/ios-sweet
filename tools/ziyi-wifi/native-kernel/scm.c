@@ -20,11 +20,14 @@ static int call(struct zwn_scm*s,const struct zwn_io*io,unsigned operation,
  uint32_t function,uint32_t arginfo,uint64_t a,uint64_t b,uint64_t c)
 {
  uint64_t session=0;
+ /* Xiaomi __get_convention passes QCOM_SCM_CALL_ATOMIC only for this
+  * first INFO query. PAS and later service queries remain standard calls. */
+ const uint64_t first=(operation==ZWN_PAS_PROBE&&!s->calls&&function==INFO)?(1ull<<31):0;
  s->operation=operation;
  for(unsigned attempt=0;attempt<100;attempt++){
   if(!io||!io->smc||!io->authority||!s->epoch||s->poison||
      !io->authority(io->ctx,s->epoch,operation))return fail(s,ZWN_OWNER,attempt!=0);
-  uint64_t r[8]={attempt?1:SIP|SMC64|function,arginfo,a,b,c,0,session,0};
+  uint64_t r[8]={attempt?1:SIP|SMC64|first|function,arginfo,a,b,c,0,session,0};
   io->smc(io->ctx,r);s->calls++;
   for(unsigned i=0;i<8;i++)s->last[i]=r[i];
   session=r[6];

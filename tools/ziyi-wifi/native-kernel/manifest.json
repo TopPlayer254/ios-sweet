@@ -8,8 +8,8 @@
     },
     {
       "path": "scm.c",
-      "sha256": "30b76a5b474c6409ff9e429539615e70653864b8a0baa7f215bba279713ad65f",
-      "bytes": 3757
+      "sha256": "de1b2de151c32814536f65cfd916982560c3d4ad223303c4b381fd5f2c2b022f",
+      "bytes": 4001
     },
     {
       "path": "qmp.c",
@@ -38,8 +38,8 @@
     },
     {
       "path": "hakios.wifi.c",
-      "sha256": "ffd4b15bdb7b6c08f4d12f8036743ca8ee70ae24919672f9c3bca239df95fa3b",
-      "bytes": 188440
+      "sha256": "44f183432a8b2112d242fa4da9bd5028e2a22f1d8104dec28822f627b3cae4b5",
+      "bytes": 187240
     },
     {
       "path": "ziyi_wifi_native_profile.h",

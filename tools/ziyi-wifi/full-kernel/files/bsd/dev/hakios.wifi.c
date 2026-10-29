@@ -229,7 +229,7 @@ static char kept[64 * 1024];
 static uint32_t kept_at;
 static bool kept_wrapped;
 
-/* W10: RAM-only status, retained independently of console scrollback.
+/* W11: RAM-only status, retained independently of console scrollback.
  * say_lock protects the ring. Atomic scalar fields never grant hardware access.
  * This is inserted BEFORE '#define printf say': reporter output must neither
  * recurse into the logger nor replace the retained transport messages.
@@ -288,7 +288,7 @@ zyw_status_thread(__unused void *parameter, __unused wait_result_t result)
   lck_mtx_unlock(&say_lock);
   /* One bounded block, seven short console rows. Do not hold say_lock
    * across console I/O and never call say/tell from this reporter. */
-  printf("ZWIFI W10 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
+  printf("ZWIFI W11 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
          "ZWIFI cpu=%llx/%llx/%llu dt=%llx\n"
          "ZWIFI log=%llu/%llu\n%.60s\n%.60s\n%.60s\n%.60s\n",
          phase,current,done,failed,error,ziyi_wifi_native_failure(),
@@ -1814,7 +1814,11 @@ scm(const char*what,uint64_t function,uint64_t arguments,uint64_t a,uint64_t b,u
  (void)what;
  if(a!=PAS_WPSS||!ziyi_wifi_native_binding(0))return -1;
  if(function==SCM_PAS_INIT_IMAGE&&arguments==SCM_VALUE_AND_BUFFER&&c==0){
-  if(!zw_native_pas.epoch&&!zwn_pas_probe(&zw_native_pas,ziyi_wifi_native_epoch(),&zw_pas_io))return -1;
+  if(!zw_native_pas.epoch&&!zwn_pas_probe(&zw_native_pas,ziyi_wifi_native_epoch(),&zw_pas_io)){
+   printf("ZWIFI PAS probe failed error%u poison%u calls%u ret%llx/%llx\n",
+    zw_native_pas.error,zw_native_pas.poison,zw_native_pas.calls,zw_native_pas.last[0],zw_native_pas.last[1]);
+   return -1;
+  }
   if(b!=zw_metadata_pa||!b)return -1;
   ok=zwn_pas_init(&zw_native_pas,b,PAGE_SIZE,image.header_size,&zw_pas_io);
  }else if(function==SCM_PAS_MEM_SETUP&&arguments==SCM_THREE_VALUES&&b==WPSS_MEMORY&&c==image.size){
@@ -3802,43 +3806,20 @@ static bool zws_still_free(void)
  return zws_owned&&!zws_touched&&zws_capture(&zws_before[1])&&
   zws_select(&zws_before[0],&zws_before[1],&c)&&c.match==radio_space.match&&c.context==radio_space.context;
 }
-/* Restoration is permitted only after the DSP is known not to be running.
- * W1C fault records and commands are not claimed as reversible controls. */
+/* A coldboot-only candidate keeps its context lease for the boot lifetime.
+ * W10 proved that replaying the disabled bank's old CBAR faults on this SoC.
+ * Its saved UNKNOWN/reset contents are evidence, not safe write commands.
+ * No stream/context replay, no TLB operation and no lease release here. The
+ * poison prevents every later DMA-map attempt from reusing this context.
+ * Allocation backing is retained by the prepared pool; DSP shutdown remains
+ * a separate, acknowledged PAS operation before any memory can be reclaimed. */
 static void zws_restore(void)
 {
  if(!zws_touched)return;
- if(dsp_started||(zw_native_pas.poison&&zw_native_pas.operation>=ZWN_PAS_START)||!ziyi_wifi_native_binding(0)){
-  tell("wifi: retain SMMU lease: DSP not stopped or board binding lost\n");return;
- }
- uint64_t storage_token=zws_storage_write_begin();
- if(!storage_token){zws_poisoned=true;return;}
- put(&apps_smmu,"remove stream",SMMU_SMR(radio_space.match),radio_space.old_smr);
- put(&apps_smmu,"old s2cr",SMMU_S2CR(radio_space.match),radio_space.old_s2cr);
- put(&apps_smmu_context,"disable context",SMMU_CB_SCTLR,0);
- put(&apps_smmu_context,"tlbiasid",SMMU_CB_TLBIASID,radio_space.context);
- put(&apps_smmu_context,"tlbsync",SMMU_CB_TLBSYNC,1);
- for(unsigned ms=0;rd(apps_smmu_context.base+SMMU_CB_TLBSTATUS)&1u;ms++){
-  if(ms==100){tell("wifi: retain SMMU lease: restore TLB sync timeout\n");zws_poisoned=true;goto storage_done;}sleep_ms(1);
- }
- for(unsigned n=1;n<ZWS_CB_WORDS;n++){
-  if(n==9)put(&apps_smmu_second,"restore cbar",SMMU_CBAR(radio_space.context),zws_original[n]);
-  else if(n==10)put(&apps_smmu_second,"restore cba2r",SMMU_CBA2R(radio_space.context),zws_original[n]);
-  else put(&apps_smmu_context,"restore context",zws_offsets[n],zws_original[n]);
- }
- put(&apps_smmu_context,"restore sctlr",SMMU_CB_SCTLR,zws_original[0]);
- for(unsigned n=0;n<ZWS_CB_WORDS;n++){
-  uint32_t v=n==9?get(&apps_smmu_second,"restored cbar",SMMU_CBAR(radio_space.context)):
-   n==10?get(&apps_smmu_second,"restored cba2r",SMMU_CBA2R(radio_space.context)):
-   get(&apps_smmu_context,"restored context",zws_offsets[n]);
-  if(v!=zws_original[n]){tell("wifi: SMMU restore differs at control %u\n",n);zws_poisoned=true;goto storage_done;}
- }
- if(rd(apps_smmu.base+SMMU_SMR(radio_space.match))!=radio_space.old_smr||
-    rd(apps_smmu.base+SMMU_S2CR(radio_space.match))!=radio_space.old_s2cr){zws_poisoned=true;goto storage_done;}
- zws_touched=zws_owned=radio_space.on=radio_space.found=false;
- zws_poisoned=false;
- tell("wifi: SMMU stream and all eleven context controls restored\n");
-storage_done:
- if(!zws_storage_write_end(storage_token))zws_poisoned=true;
+ zws_poisoned=true;
+ tell("wifi: SMMU lease quarantined until coldboot; no old CBAR replay\n");
+ tell("wifi: saved CBAR=%#x CBA2R=%#x; DSP started=%u PASop=%u poison=%u\n",
+  zws_original[9],zws_original[10],dsp_started,zw_native_pas.operation,zw_native_pas.poison);
 }
 
 /* What the SMMU has recorded of requests of the radio's that it could not serve. */
