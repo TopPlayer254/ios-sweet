@@ -128,7 +128,11 @@ def main():
     assert data[fileoff:fileoff+16]==b'ZIYI_WIFI_SLOT1\0';slots.append(dict(offset=fileoff,bytes=length,address=hex(addr)))
   at+=size
  assert len(slots)==1
+ driver_audit=json.loads((out/'driver-audit.json').read_text())
+ assert driver_audit['openJoinAdaptation']['result']=='ZIYI_OPEN_JOIN_SOURCE_ADAPTED'
+ assert b'OPEN association accepted; no RSN, handshake or keys required' in data
+ assert 'ZIYI_OPEN_JOIN_POLICY_PASS 458558 checks' in (ROOT/'u1-evidence/test-open-join.log').read_text()
  report=dict(result='WIFI_NATIVE_FULL_XNU_SOURCE_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),baselineScopes=scopes,
-  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,atomicConventionProbeCompiled=True,bootLifetimeLeaseCompiled=True,pasApiDiscoveryCompiled=True,vendorHostCapGPIOCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
+  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,atomicConventionProbeCompiled=True,bootLifetimeLeaseCompiled=True,pasApiDiscoveryCompiled=True,vendorHostCapGPIOCompiled=True,openJoinCompiled=True,driverSHA256=driver_audit['sha256'],openJoinAdaptation=driver_audit['openJoinAdaptation'],nativeRadio=False,association=False,phoneOperated=False)
  (out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(dict(result=report['result'],baseline72Unchanged=True,addedFiles=len(new),linkedFunctions=len(bodies))))
 if __name__=='__main__':main()

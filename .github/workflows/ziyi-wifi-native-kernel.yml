@@ -21,6 +21,8 @@ on:
       - "tools/ziyi-wifi/full-kernel/**"
       - "tools/ziyi-wifi/stage_full_kernel.py"
       - "tools/ziyi-wifi/audit_full_kernel.py"
+      - "tools/ziyi-wifi/open_join.h"
+      - "tools/ziyi-wifi/patch_open_join.py"
       - ".github/workflows/ziyi-wifi-native-kernel.yml"
 
 permissions:
@@ -208,13 +210,25 @@ jobs:
           echo "ZIYI_LEGACY_IIG_BUILD=$GITHUB_WORKSPACE/dxb/build" >> "$GITHUB_ENV"
           echo "IIG=$(command -v python3) $GITHUB_WORKSPACE/tools/legacy-iig.py" >> "$GITHUB_ENV"
 
-      - name: Pinned real ath11k DMA datapath
-        uses: actions/download-artifact@v4
-        with:
-          name: ziyi-wifi-driver-evidence
-          run-id: 40734456702
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: wifi-driver-input
+      - name: Open BSS policy sanitizer tests
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tools/ziyi-wifi/test_open_join.c -o u1-evidence/test-open-join
+          u1-evidence/test-open-join > u1-evidence/test-open-join.log
+      - name: LLVM inspection tools for fresh station build
+        run: |
+          brew list --versions llvm || brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+      - name: Compile pinned ath11k with explicit open station support
+        run: |
+          python3 tools/ziyi-wifi/prepare.py --stage "$RUNNER_TEMP/ziyi-wifi"
+          export PATH="$RUNNER_TEMP/ziyi-wifi/host-tools:$PATH"
+          export ZIYI_LD="$(xcrun --find ld)"
+          bash "$RUNNER_TEMP/ziyi-wifi/tools/mk-ath11k.sh" 2>&1 | tee u1-evidence/ath11k-build.log
+          python3 tools/ziyi-wifi/audit_object.py "$RUNNER_TEMP/ziyi-wifi"
+          mkdir wifi-driver-input
+          cp "$RUNNER_TEMP/ziyi-wifi/xnu-deps/build/ath11k/out/ath11k.o" wifi-driver-input/
+          cp "$RUNNER_TEMP/ziyi-wifi/xnu-deps/build/ath11k/out/ziyi-build-audit.json" wifi-driver-input/
+          cp "$RUNNER_TEMP/ziyi-wifi/open-join-adaptation.json" u1-evidence/
       - name: Stage exact native Wi-Fi source delta
         run: python3 tools/ziyi-wifi/stage_full_kernel.py --driver wifi-driver-input
 

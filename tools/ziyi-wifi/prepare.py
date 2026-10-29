@@ -1,6 +1,6 @@
 """Verify public inputs and adapt only the donor build's host paths for macOS."""
 from pathlib import Path
-import argparse,hashlib,json,shutil
+import argparse,hashlib,json,shutil,subprocess,sys
 
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('--stage',type=Path,required=True);a=ap.parse_args()
@@ -22,6 +22,7 @@ def main():
  script.write_text(text)
  shutil.copyfile(source/'patch_qmi_target.py',out/'tools/patch_qmi_target.py')
  shutil.copyfile(source/'qmi-source-sha256.txt',out/'qmi-source-sha256.txt')
+ subprocess.run([sys.executable,str(source/'patch_open_join.py'),str(out)],check=True)
  tools=out/'host-tools';tools.mkdir();shim=tools/'sha256sum';shim.write_text('#!/bin/sh\nexec shasum -a 256 "$@"\n');shim.chmod(0o755)
  (out/'build-adaptation.json').write_text(json.dumps(dict(donorRevision=m['revision'],changes=changes,
   unmodifiedDriverSources=False,driverChanges='Checked target-capabilities hook in qmi.c only',

@@ -27,7 +27,7 @@
     },
     {
       "path": "bsd/dev/hakios.apple80211.c",
-      "after": "338cd7246173f328346739de755f96a565baffd4c0932a8819e8de4febe1e8c8",
+      "after": "9c64842b409f70bbbdbd2a5768ed5b89e6e03a350bc6a95d0cc8daa1bcb0f6de",
       "new": true
     },
     {
@@ -196,5 +196,6 @@
   "smmuStorageEpoch": true,
   "smmuStickyMutationFailure": true,
   "retainedWifiStatus": true,
-  "vendorHostCapGPIO": true
+  "vendorHostCapGPIO": true,
+  "openStationJoin": true
 }
