@@ -4,6 +4,18 @@
 #define ZWS_SMRS 120u
 #define ZWS_CBS 78u
 #define ZWS_CB_WORDS 11u
+/* IHI0062D.c16.5.9: FSR[10:9] is read-only Format, not a fault flag.
+ * Before ownership its format can be unknown. Once our VA64 controls are
+ * qualified, require exactly AArch64 Format=2 and no other bit whatsoever.
+ * No W1C status is cleared and no real/unknown fault bit is accepted. */
+#define ZWS_FSR_FORMAT_MASK 0x600u
+#define ZWS_FSR_AARCH64 0x400u
+#define ZWS_FSR_FAULT_MASK 0xc00001feu
+static inline int zws_fsr_clean(uint32_t raw,unsigned configured_aarch64)
+{
+ if(configured_aarch64>1)return 0;
+ return configured_aarch64?raw==ZWS_FSR_AARCH64:(raw&~ZWS_FSR_FORMAT_MASK)==0;
+}
 /* A bounded HLOS snapshot, never the hardware's larger private register set. */
 struct zws_snapshot {
  uint32_t scr0,idr0,idr1;

@@ -53,6 +53,17 @@ int main(void)
  memcpy(actual,wanted,sizeof(actual));actual[1]=0x38011;CHECK(!zws_context_matches(actual,wanted));
  memcpy(actual,wanted,sizeof(actual));wanted[0]=0x1127;CHECK(!zws_context_matches(actual,wanted));wanted[0]=0x127;
  wanted[1]=0x38011;CHECK(!zws_context_matches(actual,wanted));wanted[1]=0x38071;
+ for(unsigned format=0;format<4;format++){
+  uint32_t raw=format<<9;
+  CHECK(zws_fsr_clean(raw,0));CHECK(zws_fsr_clean(raw,1)==(format==2));
+  for(unsigned bit=0;bit<32;bit++){
+   CHECK(zws_fsr_clean(raw^(1u<<bit),0)==(bit==9||bit==10));
+   CHECK(zws_fsr_clean(raw|(1u<<bit),1)==((raw|(1u<<bit))==ZWS_FSR_AARCH64));
+  }
+ }
+ CHECK(zws_fsr_clean(0x400,1));CHECK(!zws_fsr_clean(0,1));
+ CHECK(!zws_fsr_clean(0x400|ZWS_FSR_FAULT_MASK,1));
+ CHECK(!zws_fsr_clean(0x400,2));
  CHECK(!zws_context_matches(NULL,wanted));CHECK(!zws_context_matches(wanted,NULL));
  printf("WIFI_UFS_EXACT_LEASE_PASS %u checks; no native claim\n",checks);
 }

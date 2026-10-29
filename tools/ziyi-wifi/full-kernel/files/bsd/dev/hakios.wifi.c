@@ -229,7 +229,7 @@ static char kept[64 * 1024];
 static uint32_t kept_at;
 static bool kept_wrapped;
 
-/* W8: RAM-only status, retained independently of console scrollback.
+/* W9: RAM-only status, retained independently of console scrollback.
  * say_lock protects the ring. Atomic scalar fields never grant hardware access.
  * This is inserted BEFORE '#define printf say': reporter output must neither
  * recurse into the logger nor replace the retained transport messages.
@@ -288,7 +288,7 @@ zyw_status_thread(__unused void *parameter, __unused wait_result_t result)
   lck_mtx_unlock(&say_lock);
   /* One bounded block, seven short console rows. Do not hold say_lock
    * across console I/O and never call say/tell from this reporter. */
-  printf("ZWIFI W8 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
+  printf("ZWIFI W9 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
          "ZWIFI cpu=%llx/%llx/%llu dt=%llx\n"
          "ZWIFI log=%llu/%llu\n%.60s\n%.60s\n%.60s\n%.60s\n",
          phase,current,done,failed,error,ziyi_wifi_native_failure(),
@@ -3774,7 +3774,7 @@ radio_space_find(void)
     n==10?get(&apps_smmu_second,"old cba2r",SMMU_CBA2R(c.context)):
     get(&apps_smmu_context,"old context",zws_offsets[n]);
  }
- if(zws_original[0]!=radio_space.old_sctlr||get(&apps_smmu_context,"old fsr",SMMU_CB_FSR))return false;
+ if(zws_original[0]!=radio_space.old_sctlr||!zws_fsr_clean(get(&apps_smmu_context,"old fsr",SMMU_CB_FSR),0))return false;
  /* A final complete pass follows mapping/snapshot; no hardware store yet. */
  if(!zws_capture(&zws_before[1])||!zws_select(&zws_before[0],&zws_before[1],&c))return false;
  radio_space.found=zws_owned=true;return true;
@@ -3835,7 +3835,7 @@ radio_space_faults(void)
 	}
 	status = rd(apps_smmu_context.base + SMMU_CB_FSR);
 	global = rd(apps_smmu.base + SMMU_SGFSR);
-	if ((status & SMMU_FSR_ALL) == 0 && global == 0) {
+	if (zws_fsr_clean(status,1) && global == 0) {
 		printf("wifi: %u: the SMMU has refused the radio nothing (context %u: fsr %#x; sgfsr 0)\n", step, radio_space.context,
 		    status);
 		return;
@@ -3892,7 +3892,7 @@ radio_space_on(void)
  }
  if(get(&apps_smmu,"smr",smr)!=sees||
     get(&apps_smmu,"s2cr",s2cr)!=radio_space.context||
-    get(&apps_smmu_context,"fault",SMMU_CB_FSR))goto done;
+    !zws_fsr_clean(get(&apps_smmu_context,"fault",SMMU_CB_FSR),1))goto done;
  radio_space.on=true;ok=true;
 done:
  if(!zws_storage_write_end(storage_token))ok=false;
