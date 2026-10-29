@@ -229,7 +229,7 @@ static char kept[64 * 1024];
 static uint32_t kept_at;
 static bool kept_wrapped;
 
-/* W7: RAM-only status, retained independently of console scrollback.
+/* W8: RAM-only status, retained independently of console scrollback.
  * say_lock protects the ring. Atomic scalar fields never grant hardware access.
  * This is inserted BEFORE '#define printf say': reporter output must neither
  * recurse into the logger nor replace the retained transport messages.
@@ -288,7 +288,7 @@ zyw_status_thread(__unused void *parameter, __unused wait_result_t result)
   lck_mtx_unlock(&say_lock);
   /* One bounded block, seven short console rows. Do not hold say_lock
    * across console I/O and never call say/tell from this reporter. */
-  printf("ZWIFI W7 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
+  printf("ZWIFI W8 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
          "ZWIFI cpu=%llx/%llx/%llu dt=%llx\n"
          "ZWIFI log=%llu/%llu\n%.60s\n%.60s\n%.60s\n%.60s\n",
          phase,current,done,failed,error,ziyi_wifi_native_failure(),
@@ -3645,9 +3645,9 @@ smmu_look(void)
 #define SMMU_CB_TLBSYNC         0x7f0
 #define SMMU_CB_TLBSTATUS       0x7f4
 /* on; faults recorded, no interrupt, and a fault does not hold up the requests after it */
-#define SMMU_SCTLR_ON           (1u << 0 | 1u << 1 | 1u << 2 | 1u << 5 | 1u << 8 | 1u << 12)
+#define SMMU_SCTLR_ON           (1u << 0 | 1u << 1 | 1u << 2 | 1u << 5 | 1u << 8)
 #define SMMU_TCR_39_BITS        (25u | 1u << 8 | 1u << 10 | 3u << 12 | 1u << 23)   /* one table of 4K pages, cached walks */
-#define SMMU_TCR2               (1u | 1u << 4 | 7u << 15)       /* 36 bits of physical address, 16 of context tag */
+#define SMMU_TCR2               (1u | 1u << 4 | 3u << 5 | 7u << 15)       /* 36 bits of physical address, 16 of context tag */
 #define SMMU_MAIR0              0xf404ff44      /* Linux's: 0 uncached, 1 cached, 2 device */
 #define SMMU_FSR_ALL            0xc00001fe      /* every kind of fault, and "several" */
 

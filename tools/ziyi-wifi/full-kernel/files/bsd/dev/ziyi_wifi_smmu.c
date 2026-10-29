@@ -42,7 +42,9 @@ static unsigned storage_lease_state;
  * Prove AArch64 VA64 first; every other written control bit remains exact. */
 int zws_context_matches(const uint32_t a[ZWS_CB_WORDS],const uint32_t w[ZWS_CB_WORDS])
 {
- if(!a||!w||w[10]!=1||a[10]!=1||w[0]!=0x1127u||w[6]!=0x803519u||w[9]!=0x1f300u)return 0;
+ /* W8 explicitly writes common-ASID namespace and TBI0/1. These are NOT
+  * ignored readback bits: SCTLR.ASIDPNE=0 and TCR2=0x38071 must match. */
+ if(!a||!w||w[10]!=1||a[10]!=1||w[0]!=0x127u||w[1]!=0x38071u||w[6]!=0x803519u||w[9]!=0x1f300u)return 0;
  for(unsigned i=0;i<ZWS_CB_WORDS;i++){
   /* IHI0062D.c16-333: reserved TG1=00 may read an implementation-selected
    * granule. TTBR1 stays disabled by exact EPD1=1, all other TCR bits exact.

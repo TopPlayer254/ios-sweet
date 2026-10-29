@@ -18,8 +18,8 @@
     },
     {
       "path": "smmu.c",
-      "sha256": "9112aa16277716d531a1edaf28bc6aa2b4bb1ba75010b7fe4f32efcb2b5e05d2",
-      "bytes": 4843
+      "sha256": "063c803ce96c378ed2ca6827aaa0c4eeb6a7ed76e8745c4f17c806d6d23b708f",
+      "bytes": 5006
     },
     {
       "path": "native.h",
@@ -38,8 +38,8 @@
     },
     {
       "path": "hakios.wifi.c",
-      "sha256": "a52a9e58efd0691a6decb8733e15e2d24a593669f03ddd280dbbd8dbbd15e897",
-      "bytes": 187470
+      "sha256": "21c96faea6fa8ebd487aa778162faac4864dab444621b5ca4ea06b358260136a",
+      "bytes": 187469
     },
     {
       "path": "ziyi_wifi_native_profile.h",
@@ -73,8 +73,8 @@
     },
     {
       "path": "test_coexist.c",
-      "sha256": "b85346565b103556b78c1d442ab14a74fe40e980126baf874786554e279ad542",
-      "bytes": 2771
+      "sha256": "ec54cc07ceee4691f9c68bf3bc9c123cf1861c1bc304efc28f9a9b0fdcd1751a",
+      "bytes": 3343
     }
   ],
   "firmwareIncluded": false,

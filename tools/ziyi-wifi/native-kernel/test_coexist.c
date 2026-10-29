@@ -38,7 +38,7 @@ int main(void)
  CHECK(!zws_storage_write_begin());CHECK(!zws_storage_write_end(token+2));
  CHECK(zws_storage_epoch()==token);CHECK(zws_storage_write_end(token));
  CHECK(zws_storage_epoch()==initial+2);CHECK(!zws_storage_write_end(token));
- uint32_t wanted[ZWS_CB_WORDS]={0x1127,0x38011,0x5200000,0x10009,0,0,0x803519,0xf404ff44,0,0x1f300,1},actual[ZWS_CB_WORDS];
+ uint32_t wanted[ZWS_CB_WORDS]={0x127,0x38071,0x5200000,0x10009,0,0,0x803519,0xf404ff44,0,0x1f300,1},actual[ZWS_CB_WORDS];
  memcpy(actual,wanted,sizeof(actual));CHECK(zws_context_matches(actual,wanted));
  for(unsigned bits=0;bits<4;bits++){actual[0]=(wanted[0]&~6u)|(bits<<1);CHECK(zws_context_matches(actual,wanted));}
  for(unsigned word=0;word<ZWS_CB_WORDS;word++)for(unsigned bit=0;bit<32;bit++){
@@ -46,6 +46,13 @@ int main(void)
   CHECK(zws_context_matches(actual,wanted)==((word==0&&(bit==1||bit==2))||(word==6&&bit>=30)));
  }
  memcpy(actual,wanted,sizeof(actual));actual[9]&=~0x300u;CHECK(zws_context_matches(actual,wanted));
+ /* Actual W7 readback now matches an explicitly requested W8 profile. */
+ memcpy(actual,wanted,sizeof(actual));actual[2]=wanted[2]=0x48c8000;actual[3]=wanted[3]=0x50009;
+ CHECK(zws_context_matches(actual,wanted));
+ actual[0]=0x1127;CHECK(!zws_context_matches(actual,wanted));
+ memcpy(actual,wanted,sizeof(actual));actual[1]=0x38011;CHECK(!zws_context_matches(actual,wanted));
+ memcpy(actual,wanted,sizeof(actual));wanted[0]=0x1127;CHECK(!zws_context_matches(actual,wanted));wanted[0]=0x127;
+ wanted[1]=0x38011;CHECK(!zws_context_matches(actual,wanted));wanted[1]=0x38071;
  CHECK(!zws_context_matches(NULL,wanted));CHECK(!zws_context_matches(wanted,NULL));
  printf("WIFI_UFS_EXACT_LEASE_PASS %u checks; no native claim\n",checks);
 }
