@@ -229,7 +229,7 @@ static char kept[64 * 1024];
 static uint32_t kept_at;
 static bool kept_wrapped;
 
-/* W9: RAM-only status, retained independently of console scrollback.
+/* W10: RAM-only status, retained independently of console scrollback.
  * say_lock protects the ring. Atomic scalar fields never grant hardware access.
  * This is inserted BEFORE '#define printf say': reporter output must neither
  * recurse into the logger nor replace the retained transport messages.
@@ -288,7 +288,7 @@ zyw_status_thread(__unused void *parameter, __unused wait_result_t result)
   lck_mtx_unlock(&say_lock);
   /* One bounded block, seven short console rows. Do not hold say_lock
    * across console I/O and never call say/tell from this reporter. */
-  printf("ZWIFI W9 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
+  printf("ZWIFI W10 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
          "ZWIFI cpu=%llx/%llx/%llu dt=%llx\n"
          "ZWIFI log=%llu/%llu\n%.60s\n%.60s\n%.60s\n%.60s\n",
          phase,current,done,failed,error,ziyi_wifi_native_failure(),
@@ -479,11 +479,20 @@ struct block {
 	vm_offset_t base;
 };
 
+static void __attribute__((noinline))
+zyw_map_receipt(const char *name,uint64_t physical,uint64_t bytes,uint64_t virtual_address)
+{
+ tell("ZWIFI MAP %.24s PA=%llx N=%llx\n",name,physical,bytes);
+ tell("ZWIFI MAP VA=%llx END=%llx\n",virtual_address,virtual_address+bytes);
+ if(!leaving)sleep_ms(500);
+}
+
 static void
 need(struct block *b)
 {
 	if (b->base == 0) {
 		b->base = ml_io_map(b->phys, b->size);
+        zyw_map_receipt(b->name,b->phys,b->size,b->base);
 	}
 }
 
@@ -526,6 +535,8 @@ put(struct block *b, const char *name, uint32_t offset, uint32_t value)
 	printf("wifi: %u: about to write %s %s at %#x: %#x\n", step, b->name, name, b->phys + offset, value);
 	snprintf(last_write, sizeof(last_write), "step %u wrote %#x to %s %s at %#x", step, value, b->name, name, b->phys + offset);
 	hold(true);
+ /* The IPCC enable is outside SMEM/SMMU allocation critical sections. */
+ if(step==11&&offset==0x14&&!strcmp(b->name,"ipcc"))sleep_ms(500);
 	wr(b->base + offset, value);
 }
 
@@ -587,6 +598,7 @@ smem_peek(uint64_t offset, void *to, uint32_t size)
 	if (smem == NULL) {
 		/* memory, not registers; and from the kernel's own map: where ml_io_map() puts things there are 8 MB in all */
 		smem = (const volatile uint8_t *)ml_io_map_unmappable(SMEM_PHYS, SMEM_SIZE, VM_WIMG_WCOMB);
+        zyw_map_receipt("smem",SMEM_PHYS,SMEM_SIZE,(uint64_t)smem);
 	}
 	if (!smem || !to || offset > SMEM_SIZE || size > SMEM_SIZE - offset) {
 		return false;
@@ -1794,7 +1806,12 @@ static const struct zwn_io zw_pas_io={.smc=zw_smc_native,.authority=zw_pas_autho
 static int32_t
 scm(const char*what,uint64_t function,uint64_t arguments,uint64_t a,uint64_t b,uint64_t c,uint64_t*answer)
 {
- (void)what;int ok=0;*answer=~0ull;
+ int ok=0;*answer=~0ull;
+ if(!leaving){
+  printf("ZWIFI PAS BEGIN fn=%llx a=%llx b=%llx c=%llx\n",function,a,b,c);
+  sleep_ms(350);
+ }
+ (void)what;
  if(a!=PAS_WPSS||!ziyi_wifi_native_binding(0))return -1;
  if(function==SCM_PAS_INIT_IMAGE&&arguments==SCM_VALUE_AND_BUFFER&&c==0){
   if(!zw_native_pas.epoch&&!zwn_pas_probe(&zw_native_pas,ziyi_wifi_native_epoch(),&zw_pas_io))return -1;
@@ -4231,12 +4248,20 @@ whole_thread(__unused void *parameter, __unused wait_result_t result)
 	for (unsigned i = 0; i < sizeof(needed) && failed == 0; i++) {
 		step = needed[i];
 		zyw_mark(ZYW_STEP,step,done,0,0);
+        if(step>=7&&step<=11){
+         tell("ZWIFI W10 BEGIN step=%u done=%u\n",step,done);
+         sleep_ms(750);
+        }
 		if (step == 15) {
 			tell("wifi: the radio's DSP is up and linked, %llu ms in; now the driver\n", (now_us() - began) / 1000);
 		}
 		if (steps[step - 1]()) {
 			done = step;
 			zyw_mark(ZYW_STEP,step,done,0,0);
+            if(step>=7&&step<=11){
+             tell("ZWIFI W10 DONE step=%u\n",step);
+             sleep_ms(500);
+            }
 		} else {
 			failed = step;
 			zyw_mark(ZYW_FAILED,step,done,failed,0);

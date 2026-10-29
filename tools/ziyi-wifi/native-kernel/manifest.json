@@ -38,8 +38,8 @@
     },
     {
       "path": "hakios.wifi.c",
-      "sha256": "e66bc5dc3a95e23824f4ac9a3828341b80afee7ed09ee6492d92254960e55065",
-      "bytes": 187500
+      "sha256": "ffd4b15bdb7b6c08f4d12f8036743ca8ee70ae24919672f9c3bca239df95fa3b",
+      "bytes": 188440
     },
     {
       "path": "ziyi_wifi_native_profile.h",

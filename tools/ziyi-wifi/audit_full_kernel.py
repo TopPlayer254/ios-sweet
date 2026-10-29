@@ -73,13 +73,16 @@ def main():
  assert '#define SMMU_SCTLR_ON           (1u << 0 | 1u << 1 | 1u << 2 | 1u << 5 | 1u << 8)' in wifi
  assert '#define SMMU_TCR2               (1u | 1u << 4 | 3u << 5 | 7u << 15)' in wifi
  assert wifi.count('zws_fsr_clean(')==3
+ assert 'zyw_map_receipt(b->name,b->phys,b->size,b->base);' in wifi
+ assert 'ZWIFI W10 BEGIN step=%u done=%u' in wifi
+ assert 'if(!leaving)sleep_ms(500);' in wifi
  fsr=(xnu/'bsd/dev/ziyi_wifi_smmu.h').read_text()
  assert 'configured_aarch64?raw==ZWS_FSR_AARCH64:(raw&~ZWS_FSR_FORMAT_MASK)==0' in fsr
  kernel=ROOT/'dxb/fakeroot/System/Library/Kernels/kernel.development.sweet';data=kernel.read_bytes();parsed=text_symbols(data)
  names=hw['linkedFunctions']+['_hakios_wifi_init','_hakios_sta_ask_join_standing','_lx_start','_lx_transmit',
   '_lx_os_qmi_target','_zwn_pas_probe','_zwn_pas_start','_zwn_qmp_open','_zws_select','_ziyi_wifi_image_file','_HakiosWLANStart',
   '_zws_storage_lease','_zws_storage_coexists','_zws_context_matches',
-  '_zyw_status_thread','_ziyi_wifi_native_diagnostic']
+  '_zyw_status_thread','_ziyi_wifi_native_diagnostic','_zyw_map_receipt']
  bodies=[]
  for name in names:
   body=audited_function(data,parsed,name);body['sampleSHA256']=sha(body.pop('sample'));body['address']=hex(body['address']);bodies.append(body)
@@ -112,6 +115,6 @@ def main():
   at+=size
  assert len(slots)==1
  report=dict(result='WIFI_NATIVE_FULL_XNU_SOURCE_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),baselineScopes=scopes,
-  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
+  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
  (out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(dict(result=report['result'],baseline72Unchanged=True,addedFiles=len(new),linkedFunctions=len(bodies))))
 if __name__=='__main__':main()
