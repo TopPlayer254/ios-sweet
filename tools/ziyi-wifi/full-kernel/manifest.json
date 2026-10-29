@@ -52,7 +52,7 @@
     },
     {
       "path": "bsd/dev/hakios.wifi.c",
-      "after": "80b685d83a9c4864af319738930807dbf0aac56736ba905d8694691262225e08",
+      "after": "90b4e23cb2a47982fadc57cf46d94bb0fba940e744ad0477c0a347f5c7a57430",
       "new": true
     },
     {
@@ -102,7 +102,7 @@
     },
     {
       "path": "bsd/dev/ziyi_wifi_pas.c",
-      "after": "0a10dffdbf956d8f1d55093cfe71d2d040e6ed3ad95c1c3e70b820201675a0a5",
+      "after": "4c67ae72c7a127688fa5c046b1f513c58355d17255ea18f373a2d670bdbfed02",
       "new": true
     },
     {

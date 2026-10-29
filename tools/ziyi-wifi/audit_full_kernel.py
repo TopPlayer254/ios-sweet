@@ -80,6 +80,8 @@ def main():
  assert 'restore cbar' not in wifi
  scm=(xnu/'bsd/dev/ziyi_wifi_pas.c').read_text()
  assert 'operation==ZWN_PAS_PROBE&&!s->calls&&function==INFO' in scm
+ assert 'const uint32_t needed[]={INIT,MEM,START,STOP};' in scm
+ assert '#define SUPPORTED' not in scm and 'SIP|SUPPORTED' not in scm
  fsr=(xnu/'bsd/dev/ziyi_wifi_smmu.h').read_text()
  assert 'configured_aarch64?raw==ZWS_FSR_AARCH64:(raw&~ZWS_FSR_FORMAT_MASK)==0' in fsr
  kernel=ROOT/'dxb/fakeroot/System/Library/Kernels/kernel.development.sweet';data=kernel.read_bytes();parsed=text_symbols(data)
@@ -119,6 +121,6 @@ def main():
   at+=size
  assert len(slots)==1
  report=dict(result='WIFI_NATIVE_FULL_XNU_SOURCE_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),baselineScopes=scopes,
-  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,atomicConventionProbeCompiled=True,bootLifetimeLeaseCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
+  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,atomicConventionProbeCompiled=True,bootLifetimeLeaseCompiled=True,pasApiDiscoveryCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
  (out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(dict(result=report['result'],baseline72Unchanged=True,addedFiles=len(new),linkedFunctions=len(bodies))))
 if __name__=='__main__':main()

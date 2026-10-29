@@ -8,8 +8,8 @@
     },
     {
       "path": "scm.c",
-      "sha256": "de1b2de151c32814536f65cfd916982560c3d4ad223303c4b381fd5f2c2b022f",
-      "bytes": 4001
+      "sha256": "c816702c3cd6c5de8c3ae6b51e23a7791738fb601b81a27d9c208b1349a976fa",
+      "bytes": 4119
     },
     {
       "path": "qmp.c",
@@ -38,7 +38,7 @@
     },
     {
       "path": "hakios.wifi.c",
-      "sha256": "44f183432a8b2112d242fa4da9bd5028e2a22f1d8104dec28822f627b3cae4b5",
+      "sha256": "fe8f9b0dbc63f45e12c2a639193e4120a010e9cfcbb9c1d54a521b9cc967b0cf",
       "bytes": 187240
     },
     {

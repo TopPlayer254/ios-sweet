@@ -229,7 +229,7 @@ static char kept[64 * 1024];
 static uint32_t kept_at;
 static bool kept_wrapped;
 
-/* W11: RAM-only status, retained independently of console scrollback.
+/* W12: RAM-only status, retained independently of console scrollback.
  * say_lock protects the ring. Atomic scalar fields never grant hardware access.
  * This is inserted BEFORE '#define printf say': reporter output must neither
  * recurse into the logger nor replace the retained transport messages.
@@ -288,7 +288,7 @@ zyw_status_thread(__unused void *parameter, __unused wait_result_t result)
   lck_mtx_unlock(&say_lock);
   /* One bounded block, seven short console rows. Do not hold say_lock
    * across console I/O and never call say/tell from this reporter. */
-  printf("ZWIFI W11 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
+  printf("ZWIFI W12 phase=%u step=%u done=%u fail=%u err=%u bind=%u\n"
          "ZWIFI cpu=%llx/%llx/%llu dt=%llx\n"
          "ZWIFI log=%llu/%llu\n%.60s\n%.60s\n%.60s\n%.60s\n",
          phase,current,done,failed,error,ziyi_wifi_native_failure(),

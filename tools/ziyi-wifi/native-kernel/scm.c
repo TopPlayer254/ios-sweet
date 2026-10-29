@@ -11,7 +11,6 @@
 #define MEM 0x0202u
 #define START 0x0205u
 #define STOP 0x0206u
-#define SUPPORTED 0x0207u
 
 static int fail(struct zwn_scm*s,unsigned error,unsigned poison)
 { if(!s->error)s->error=error;s->poison|=poison;return 0; }
@@ -44,15 +43,18 @@ int zwn_pas_probe(struct zwn_scm*s,uint64_t epoch,const struct zwn_io*io)
 {
  if(!s||s->epoch||!epoch||!io||!io->authority||!io->smc)return 0;
  *s=(struct zwn_scm){.epoch=epoch};
- /* The exact ARM64 convention probe, then availability of PAS_SUPPORTED. No
-  * undocumented forced convention or legacy fallback on this 64-bit target. */
+ /* Match pinned diwali remoteproc startup: discover the convention and
+  * actual PAS operations, then let real INIT/MEM/AUTH replies authorize image6.
+  * That driver never calls the legacy per-peripheral PAS_IS_SUPPORTED query.
+  * W11 proved its negative result; it is not an INIT rejection. */
  if(!call(s,io,ZWN_PAS_PROBE,INFO,1,SIP|INFO,0,0))return 0;
  if(s->last[1]!=1)return fail(s,ZWN_SERVICE,0);
  s->convention64=1;
- if(!call(s,io,ZWN_PAS_PROBE,INFO,1,SIP|SUPPORTED,0,0))return 0;
- if(s->last[1]!=1)return fail(s,ZWN_SERVICE,0);
- if(!call(s,io,ZWN_PAS_PROBE,SUPPORTED,1,ZWN_PAS,0,0))return 0;
- if(!s->last[1])return fail(s,ZWN_SERVICE,0);
+ const uint32_t needed[]={INIT,MEM,START,STOP};
+ for(unsigned i=0;i<sizeof(needed)/sizeof(needed[0]);i++){
+  if(!call(s,io,ZWN_PAS_PROBE,INFO,1,SIP|needed[i],0,0))return 0;
+  if(s->last[1]!=1)return fail(s,ZWN_SERVICE,0);
+ }
  s->available=1;return 1;
 }
 
