@@ -15,6 +15,7 @@ def main():
   ('ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)', 'ROOT=$(cd "$(dirname "$0")/.." && pwd)'),
   ('LD=$ROOT/xnu-deps/host/bin/ld64', 'LD="${ZIYI_LD:?actual Apple linker required}"'),
   ('CC="clang -target arm64-apple-ios16.5"', 'CC="clang -target arm64-apple-macos14.0"'),
+  ('-std=gnu17 -O2 -g -w', '-std=gnu17 -O2 -gline-tables-only -w'),
   ('source "$ROOT/xnu-env.sh"', 'XNU_SRC="$ROOT/xnu-public-headers"'),
   ('fi\n[ "$1" = fetch ]', 'fi\npython3 "$ROOT/tools/patch_qmi_target.py" "$ROOT"\n[ "$1" = fetch ]'),
  ]:
@@ -27,6 +28,7 @@ def main():
  (out/'build-adaptation.json').write_text(json.dumps(dict(donorRevision=m['revision'],changes=changes,
   unmodifiedDriverSources=False,driverChanges='Checked target-capabilities hook in qmi.c only',
   target='arm64-apple-macos14.0, matches the actual current XNU kernel build platform',
+  driverDebug='Line tables retained; external FreeBSD atomic types excluded from legacy CTF conversion; XNU debug unchanged',
   unmodifiedLinuxKPI=True,phoneOperated=False),indent=2)+'\n')
  print(json.dumps(dict(result='WIFI_MACOS_BUILD_STAGED',stage=str(out),changes=len(changes))))
 if __name__=='__main__':main()
