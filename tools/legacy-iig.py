@@ -7,6 +7,7 @@ Unknown inputs/flags/paths fail. This is a host build tool, no device access.
 import hashlib,json,os,shutil,sys,tarfile
 from pathlib import Path
 TAR_SHA='1c7ee74a755a311c6e3b34bde7ba804e29b72295d2fd5c4d059df655290bd9ec'
+PINNED_MANIFEST_SHA='296ba0384dd7c38aa062ce1404a958d7a90f6074a4d5af2df33c92db00382d23'
 PREFIX='build/xnu.obj/DEVELOPMENT_ARM64_SWEET/iokit/DEVELOPMENT/DriverKit/'
 INPUTS=('xnu/iokit/','xnu/libkern/','xnu/osfmk/mach/','xnu/bsd/sys/')
 def sha(path):
@@ -39,6 +40,20 @@ def prepare(archive,out):
     manifest=dict(result='LEGACY_IIG_CACHE_PREPARED',archiveSha256=TAR_SHA,inputs=inputs,outputs=outputs,definitions=sorted(definitions))
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n');(out/'calls').mkdir()
     print(json.dumps(dict(result=manifest['result'],sourceFiles=len(inputs),generatedFiles=len(outputs),definitions=len(definitions))))
+def prepare_pinned(source,out):
+    # Exact public subset of the SHA-pinned U4 archive. No SDK or KDK bytes.
+    assert not out.exists() and sha(source/'manifest.json')==PINNED_MANIFEST_SHA
+    raw=(source/'manifest.json').read_bytes();m=json.loads(raw)
+    assert m['archiveSha256']==TAR_SHA and len(m['inputs'])==1164 and len(m['outputs'])==34 and len(m['definitions'])==17
+    assert {p.name for p in source.iterdir()}=={'manifest.json',*m['outputs']}
+    assert all(p.is_file() and not p.is_symlink() for p in source.iterdir())
+    for name,digest in m['outputs'].items():
+        assert Path(name).name==name and 0<(source/name).stat().st_size<16<<20
+        assert sha(source/name)==digest
+    out.mkdir();(out/'manifest.json').write_bytes(raw);(out/'calls').mkdir()
+    for name in m['outputs']:shutil.copyfile(source/name,out/name)
+    print('LEGACY_IIG_PINNED_CACHE_PASS sources=1164 outputs=34 definitions=17')
+
 # Reviewed private framebuffer/HID/CPU implementations are not IIG declarations
 # dependency. Its reviewed rendering-only change is pinned on both sides;
 # every other inherited source/header and every generated RPC byte stays exact.
@@ -87,6 +102,7 @@ def audit(cache):
         assert proof['implementationReview']=={p:dict(legacySha256=v[0],currentSha256=v[1],rpcDeclarationsUnchanged=True) for p,v in IMPLEMENTATION_OVERRIDE.items()}
     print('LEGACY_IIG_FULL_AUDIT_PASS definitions='+str(len(calls)))
 if __name__=='__main__':
-    if sys.argv[1:2]==['--prepare']:prepare(Path(sys.argv[2]),Path(sys.argv[3]))
+    if sys.argv[1:2]==['--prepare-pinned']:prepare_pinned(Path(sys.argv[2]),Path(sys.argv[3]))
+    elif sys.argv[1:2]==['--prepare']:prepare(Path(sys.argv[2]),Path(sys.argv[3]))
     elif sys.argv[1:2]==['--audit']:audit(Path(sys.argv[2]))
     else:invoke(sys.argv[1:])

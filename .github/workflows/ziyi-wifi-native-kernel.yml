@@ -200,17 +200,9 @@ jobs:
           xcodebuild -version
           xcrun --find iig
 
-      - name: Fetch exact successful U4 generated-source archive
-        uses: actions/download-artifact@v4
-        with:
-          name: xnu-buildtree
-          run-id: 39820863072
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: legacy-input
-
       - name: Prepare pinned legacy IIG bindings
         run: |
-          python3 tools/legacy-iig.py --prepare legacy-input/buildtree.tgz "$RUNNER_TEMP/legacy-iig"
+          python3 tools/legacy-iig.py --prepare-pinned tools/legacy-iig-cache "$RUNNER_TEMP/legacy-iig"
           chmod +x tools/legacy-iig.py
           echo "ZIYI_LEGACY_IIG_CACHE=$RUNNER_TEMP/legacy-iig" >> "$GITHUB_ENV"
           echo "ZIYI_LEGACY_IIG_BUILD=$GITHUB_WORKSPACE/dxb/build" >> "$GITHUB_ENV"
