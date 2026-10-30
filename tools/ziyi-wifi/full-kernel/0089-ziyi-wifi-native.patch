@@ -3077,7 +3077,7 @@
 +}
 --- /dev/null
 +++ b/bsd/dev/hakios.wifi.c
-@@ -0,0 +1,4331 @@
+@@ -0,0 +1,4333 @@
 +/*
 + * The Wi-Fi of the POCO X5 Pro (redwood), from nothing and step by step. Every address below
 + * belongs to this phone, and nothing here is touched unless a boot-arg asks for it.
@@ -3384,6 +3384,8 @@
 +static void
 +say_line(const char *line, bool aloud)
 +{
++	/* Scan entries contain network names/addresses: never retain or print them. */
++	if (!strncmp(line, "lx: heard: ", 11)) line = "ZWIFI scan entry withheld (private network data)\n";
 +	if (leaving) {
 +		printf("%s", line);
 +		return;

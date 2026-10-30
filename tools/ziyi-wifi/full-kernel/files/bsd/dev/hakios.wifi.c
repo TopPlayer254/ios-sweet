@@ -304,6 +304,8 @@ zyw_status_thread(__unused void *parameter, __unused wait_result_t result)
 static void
 say_line(const char *line, bool aloud)
 {
+	/* Scan entries contain network names/addresses: never retain or print them. */
+	if (!strncmp(line, "lx: heard: ", 11)) line = "ZWIFI scan entry withheld (private network data)\n";
 	if (leaving) {
 		printf("%s", line);
 		return;

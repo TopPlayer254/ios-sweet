@@ -52,7 +52,7 @@
     },
     {
       "path": "bsd/dev/hakios.wifi.c",
-      "after": "6cf849e2ecc1a1f5aff09848d2b5ce1051aba3b927e7a5dcad7c33c571242c73",
+      "after": "866f9716f5a2f4c30b553b2747e1c265c5e7e7de58fa50765653b65a71d83e36",
       "new": true
     },
     {
@@ -208,5 +208,6 @@
   "retainedWifiStatus": true,
   "vendorHostCapGPIO": true,
   "openStationJoin": true,
-  "createOnlyPrivateNetworkStore": true
+  "createOnlyPrivateNetworkStore": true,
+  "privateScanLogsRedacted": true
 }

@@ -68,6 +68,8 @@ def main():
  assert '\t\tprintf("%s", line);\n\t\tprintf("%s", line);' not in wifi
  assert 'zyw_mark(ZYW_PREPARE' in wifi and 'zyw_mark(ZYW_CAPSULE' in wifi
  assert 'zyw_remember(line);' in wifi and 'tick<180' in wifi
+ assert wifi.index('if (!strncmp(line, "lx: heard: ", 11))')<wifi.index('zyw_remember(line);')
+ assert 'ZWIFI scan entry withheld (private network data)' in wifi
  context=(xnu/'bsd/dev/ziyi_wifi_smmu.c').read_text()
  assert 'w[0]!=0x127u||w[1]!=0x38071u' in context
  assert '#define SMMU_SCTLR_ON           (1u << 0 | 1u << 1 | 1u << 2 | 1u << 5 | 1u << 8)' in wifi
