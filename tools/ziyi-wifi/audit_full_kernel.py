@@ -94,14 +94,14 @@ def main():
  assert 'ei, structure, buffer, largest+QMI_HEADER_SIZE)' in qmi
  assert 'ziyi_hostcap && (largest>65535u || txn->qmi!=qmi)' in qmi
  assert 'ZIYI_HOST_CAP_GPIO_PASS 1655 checks' in (ROOT/'u1-evidence/test-wifi-hostcap.log').read_text()
- assert manifest['createOnlyPrivateNetworkStore'] and hw['g9QualifiedBusRelease']
+ assert manifest['createOnlyPrivateNetworkStore'] and hw['g9QualifiedBusRelease'] and hw['g10NativeStickyAckRelease']
  assert 'ZIYI_NETWORK_FORMAT_PASS 98919 checks' in (ROOT/'u1-evidence/network-format.log').read_text()
  assert 'ZIYI_NETWORK_VFS_MODEL_PASS 48 checks' in (ROOT/'u1-evidence/network-store.log').read_text()
  for row in hw['sources']:
   if row['target'] in ['bsd/dev/ziyi_g8_engine.c','bsd/dev/ziyi_g8_fwinit.h','bsd/dev/ziyi_gpu_probe.c']:
    assert sha((xnu/row['target']).read_bytes())==row['sha256']
  kernel=ROOT/'dxb/fakeroot/System/Library/Kernels/kernel.development.sweet';data=kernel.read_bytes();parsed=text_symbols(data)
- assert b'ZIYI GMU G9 bus observations' in data
+ assert b'ZIYI GMU G10 bus observations' in data
  assert b'ZWIFI network persistence status=' in data
  names=hw['linkedFunctions']+['_hakios_wifi_init','_hakios_sta_ask_join_standing','_lx_start','_lx_transmit',
   '_lx_os_qmi_target','_zwn_pas_probe','_zwn_pas_start','_zwn_qmp_open','_zws_select','_ziyi_wifi_image_file','_HakiosWLANStart',
@@ -143,6 +143,6 @@ def main():
  assert b'OPEN association accepted; no RSN, handshake or keys required' in data
  assert 'ZIYI_OPEN_JOIN_POLICY_PASS 458558 checks' in (ROOT/'u1-evidence/test-open-join.log').read_text()
  report=dict(result='WIFI_NATIVE_FULL_XNU_SOURCE_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),baselineScopes=scopes,
-  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,atomicConventionProbeCompiled=True,bootLifetimeLeaseCompiled=True,pasApiDiscoveryCompiled=True,vendorHostCapGPIOCompiled=True,openJoinCompiled=True,driverSHA256=driver_audit['sha256'],openJoinAdaptation=driver_audit['openJoinAdaptation'],g9BusReleaseCompiled=True,wifiNetworkPersistenceCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
+  addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,atomicConventionProbeCompiled=True,bootLifetimeLeaseCompiled=True,pasApiDiscoveryCompiled=True,vendorHostCapGPIOCompiled=True,openJoinCompiled=True,driverSHA256=driver_audit['sha256'],openJoinAdaptation=driver_audit['openJoinAdaptation'],g9BusReleaseCompiled=True,g10NativeStickyAckReleaseCompiled=True,wifiNetworkPersistenceCompiled=True,nativeRadio=False,association=False,phoneOperated=False)
  (out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(dict(result=report['result'],baseline72Unchanged=True,addedFiles=len(new),linkedFunctions=len(bodies))))
 if __name__=='__main__':main()

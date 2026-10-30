@@ -22,9 +22,10 @@ static int fsr_faults(const struct g8_workspace*w,uint32_t raw,uint32_t*out){
  if((raw&format)!=(w->record.expected[25]?0x400u:0u))return 0;
  *out=raw&faults;return 1;
 }
-/* Complete source-defined halt states only. A partial halt or unexplained
- * ACK is not silently accepted. A6xx GMU boot explicitly deasserts HALT. */
-static int inherited_bus(uint32_t halt,uint32_t ack){return (!halt&&!ack)||((halt==2||halt==3)&&ack==3);}
+/* G9 native measured HALT0/ACK3 with CM3 held in reset. Vendor boot writes
+ * HALT0 unconditionally, even when its control already reads zero. Accept
+ * this exact sticky ACK tuple only; partial/unknown ACK states still stop. */
+static int inherited_bus(uint32_t halt,uint32_t ack){return (!halt&&!ack)||((halt==0||halt==2||halt==3)&&ack==3);}
 static int fail(struct g8_record*r,unsigned code,unsigned poison){if(!r->error)r->error=code;r->poison|=poison;return 0;}
 static uint32_t old_crc(const struct g8_record*r){uint32_t h=2166136261u;for(unsigned i=0;i<G8_REGS;i++)for(unsigned j=0;j<8;j++){h^=(uint8_t)(r->old[i]>>(8*j));h*=16777619u;}return h;}
 static int index_of(uint64_t at,unsigned width){for(unsigned i=0;i<G8_REGS;i++)if(g8_regs[i].address==at&&g8_regs[i].width==width)return (int)i;return -1;}
@@ -98,7 +99,7 @@ static int bus_wait(struct g8_workspace*w,const struct g8_io*io,uint32_t wanted)
 static int bus_release(struct g8_workspace*w,const struct g8_io*io){
  if(!inherited_bus(w->record.initial_halt,w->record.initial_ack)||w->record.old[23]!=w->record.initial_halt)return fail(&w->record,G8_OWNER,1);
  w->record.phase=G9_RELEASE_BUS;
- if(!set_reg(w,io,23,0)||!bus_wait(w,io,0))return 0;
+ if(!put(w,io,GD_HALT,4,0)||!bus_wait(w,io,0))return 0;
  w->record.bus_released=1;return 1;
 }
 static int quiet(struct g8_workspace*w,const struct g8_io*io){uint64_t cx=read_value(w,io,0x03d9953c,4),gx=read_value(w,io,0x03d9905c,4),reset=read_value(w,io,SYSRESET,4),hfi=read_value(w,io,HFI_CTRL,4);return !w->record.poison&&((cx&0x80000000u)&&!(gx&0x80000000u)&&reset==1&&!hfi)?1:fail(&w->record,G8_PREREQ,1);}
@@ -137,7 +138,9 @@ static int cleanup(struct g8_workspace*w,const struct g8_io*io){
  for(unsigned i=0;i<24;i++){if(i==19||i==23)continue;if(!set_reg(w,io,i,r->old[i]))return 0;}
  if(!set_reg(w,io,23,r->old[23]))return 0;
  for(unsigned i=0;i<G8_REGS;i++)if(read_value(w,io,g8_regs[i].address,g8_regs[i].width)!=r->old[i]||r->poison)return fail(r,G8_RESTORE,1);
- if(!hashes_valid(w)||!bus_wait(w,io,r->initial_ack)||!quiet(w,io))return fail(r,G8_RESTORE,1);r->restored=1;r->flags|=G8_RESTORED;return 1;
+ /* ACK is read-only status: initial HALT0/ACK3 is deliberately normalized
+  * to idle0 by the vendor release. Restore controls/TCM exactly, not stale ACK3. */
+ if(!hashes_valid(w)||!bus_wait(w,io,r->initial_halt?3u:0u)||!quiet(w,io))return fail(r,G8_RESTORE,1);r->restored=1;r->flags|=G8_RESTORED;return 1;
 }
 int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io){
  if(!w||!q||!io||!io->read||!io->write||!io->ticks||!io->delay||!io->barrier||!io->lease||!io->proof||!io->owned||(w->record.flags&G8_LEASE&&!w->record.lease_released)||w->memory.state)return 0;

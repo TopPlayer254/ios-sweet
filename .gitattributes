@@ -9,3 +9,5 @@
 /xnu/patches/0088-ziyi-cx-enable-settle.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0090-ziyi-g9-qualified-gbif-release.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0091-ziyi-g10-sticky-ack-release.patch -text whitespace=cr-at-eol

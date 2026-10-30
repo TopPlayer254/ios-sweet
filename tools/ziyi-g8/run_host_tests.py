@@ -7,7 +7,7 @@ env=os.environ.copy();env['ASAN_OPTIONS']='abort_on_error=1';env['UBSAN_OPTIONS'
 cc=Path(a.cc)
 if cc.is_file():env['PATH']=str(cc.resolve().parent)+os.pathsep+env['PATH']
 flags=['-std=c11','-O1','-g','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(K)]
-tests=[('engine',['test_g8_engine.c'],['ziyi_g8_engine.c','ziyi_g8_registers.c','ziyi_g8_memory.c','ziyi_g8_translation.c','ziyi_g8_drain.c','ziyi_g8_contract.c','ziyi_g7_sha256.c'],'G9_SYNTHETIC_ENGINE_PASS'),('slot',['test_g8_slot.c'],['ziyi_g8_slot.c','ziyi_g7_sha256.c'],'G8_SLOT_SYNTHETIC_PASS')];rows=[]
+tests=[('engine',['test_g8_engine.c'],['ziyi_g8_engine.c','ziyi_g8_registers.c','ziyi_g8_memory.c','ziyi_g8_translation.c','ziyi_g8_drain.c','ziyi_g8_contract.c','ziyi_g7_sha256.c'],'G10_SYNTHETIC_ENGINE_PASS'),('slot',['test_g8_slot.c'],['ziyi_g8_slot.c','ziyi_g7_sha256.c'],'G8_SLOT_SYNTHETIC_PASS')];rows=[]
 for name,local,core,marker in tests:
  exe=a.out/(name+('.exe' if os.name=='nt' else ''));command=[a.cc]+flags+[str(P/n) for n in local]+[str(K/n) for n in core]+['-o',str(exe)]
  p=subprocess.run(command,capture_output=True,text=True,env=env);(a.out/(name+'-compile.log')).write_text(p.stdout+p.stderr);assert p.returncode==0,p.stdout+p.stderr
