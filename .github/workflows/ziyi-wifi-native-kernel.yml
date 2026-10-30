@@ -161,6 +161,13 @@ jobs:
       - name: G8 exact-source public firmware transaction tests
         run: python3 tools/ziyi-g8/run_host_tests.py --out u1-evidence/g8-public-host
 
+      - name: Create-only network store synthetic fault tests
+        run: |
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -Itools/ziyi-wifi/full-kernel/files/bsd/dev tools/ziyi-wifi/persist-tests/test_network.c -o u1-evidence/test-network-format
+          ./u1-evidence/test-network-format > u1-evidence/network-format.log
+          cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -Itools/ziyi-wifi/full-kernel/files/bsd/dev -Itools/ziyi-wifi/persist-tests tools/ziyi-wifi/persist-tests/test_store.c -o u1-evidence/test-network-store
+          ./u1-evidence/test-network-store > u1-evidence/network-store.log
+
       - name: UFS and Wi-Fi exact disjoint SMMU lease
         run: |
           cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -DZWS_HOST -Itools/ziyi-wifi/native-kernel -Itools/ziyi-ufs tools/ziyi-wifi/native-kernel/smmu.c tools/ziyi-wifi/native-kernel/test_coexist.c -o u1-evidence/test-wifi-ufs-coexist

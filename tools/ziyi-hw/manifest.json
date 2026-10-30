@@ -89,8 +89,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
       "target": "bsd/dev/ziyi_gpu_probe.c",
-      "sha256": "d1bea06b8db75a461f9f414cf3fe118c9b30d5087ff95199b3ac88ae759713e3",
-      "bytes": 18716
+      "sha256": "09c367a86d7b6631a6d5ffdeca2e0040a7ea6f74241d570519b1f6b3d1492e4b",
+      "bytes": 19225
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -185,14 +185,14 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_fwinit.h",
       "target": "bsd/dev/ziyi_g8_fwinit.h",
-      "sha256": "5a82556d813e90088b777ae4601d330759c65501d3b02d97f913d94d46fb8303",
-      "bytes": 2973
+      "sha256": "90d3e92bc93243e90923e8b27e72ca0660748f056aa836632cdf66668b484e7c",
+      "bytes": 3062
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_engine.c",
       "target": "bsd/dev/ziyi_g8_engine.c",
-      "sha256": "177f6aa54b17cd96acd634a361764b9aff552f9ff66b40cc0d409ba5a4733070",
-      "bytes": 18727
+      "sha256": "7fe6ad3744097684e6cdd4c3b42398f5a19cb1beaeef84010dbb4e1c2dcd2a40",
+      "bytes": 21714
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_registers.c",
@@ -337,8 +337,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
-      "sha256": "d1bea06b8db75a461f9f414cf3fe118c9b30d5087ff95199b3ac88ae759713e3",
-      "bytes": 18716
+      "sha256": "09c367a86d7b6631a6d5ffdeca2e0040a7ea6f74241d570519b1f6b3d1492e4b",
+      "bytes": 19225
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -542,13 +542,13 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_fwinit.h",
-      "sha256": "5a82556d813e90088b777ae4601d330759c65501d3b02d97f913d94d46fb8303",
-      "bytes": 2973
+      "sha256": "90d3e92bc93243e90923e8b27e72ca0660748f056aa836632cdf66668b484e7c",
+      "bytes": 3062
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_engine.c",
-      "sha256": "177f6aa54b17cd96acd634a361764b9aff552f9ff66b40cc0d409ba5a4733070",
-      "bytes": 18727
+      "sha256": "7fe6ad3744097684e6cdd4c3b42398f5a19cb1beaeef84010dbb4e1c2dcd2a40",
+      "bytes": 21714
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_registers.c",
@@ -597,8 +597,8 @@
     },
     {
       "path": "tools/ziyi-g8/test_g8_engine.c",
-      "sha256": "34062e17558792b9c630f4b9b5bf8219fc77788fc48630fd8aed3c4d49d39685",
-      "bytes": 7893
+      "sha256": "49d299c8bcf265fdd6c23ac7e3a43cfe7074fde08b1afa567348a03ae814b263",
+      "bytes": 10094
     },
     {
       "path": "tools/ziyi-g8/test_g8_slot.c",
@@ -607,7 +607,7 @@
     },
     {
       "path": "tools/ziyi-g8/run_host_tests.py",
-      "sha256": "8b47dfdea389d3986b82cb03016e846e6c1785c8cae3fc0ef20d85dda3a2dbf9",
+      "sha256": "8f36219841424ffcd3cce6a3d160595c981618d705b34488de1f5b95a3612956",
       "bytes": 1930
     }
   ],
@@ -641,7 +641,8 @@
     "ZWIFI RO DONE crc",
     "ZIYI GPU probe SpringBoard",
     "ZIYI GMU FW100 begin",
-    "ZIYI GMU result"
+    "ZIYI GMU result",
+    "ZIYI GMU G9 bus observations"
   ],
   "linkedFunctions": [
     "_ziyi_gpu_probe_start",
@@ -656,7 +657,7 @@
   ],
   "patch": "xnu/patches/0085-ziyi-hw-in-system.patch",
   "patchSHA256": "21cb6dd39f645a80fc5b5209434a8a75395167ac4371650eb0fa7946eeed2c9d",
-  "featureScope": "Vendor CX enable:8XO delay, bounded HW_CTRL PWR_ON, stable GDSCR qualification; G8 firmware and exact diagnostics",
+  "featureScope": "G9 qualified inherited GBIF release and FSR read-only format; FW100 transaction only, no GPU UI claim",
   "unchangedAPISources": [
     {
       "path": "pexpert/gen/device_tree.c",
@@ -673,5 +674,8 @@
   "g8Patch": "xnu/patches/0087-ziyi-gmu-fwinit.patch",
   "g8PatchSHA256": "599dd7baa739583087c5f96c91f5cf1321b24756675f6f2836f88bcbe7b1b884",
   "cxEnablePatch": "xnu/patches/0088-ziyi-cx-enable-settle.patch",
-  "cxEnablePatchSHA256": "c6161532056e5ab7be5f5a05b90a2c3d48e59b160cbb5c24b230cc97c51a99c1"
+  "cxEnablePatchSHA256": "c6161532056e5ab7be5f5a05b90a2c3d48e59b160cbb5c24b230cc97c51a99c1",
+  "g9Patch": "xnu/patches/0090-ziyi-g9-qualified-gbif-release.patch",
+  "g9PatchSHA256": "5d5a2e646e6d4b0a20a29e44610fd6e4798ecfb81c0abc083292df31cbd16401",
+  "g9QualifiedBusRelease": true
 }

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "ziyi_wifi_capsule.h"
+#include "ziyi_wifi_store.inc"
 #if defined(__APPLE__)
 #define ATTR __attribute__((section("__DATA_CONST,__ziyi_wifi"),used,aligned(16384)))
 #else
@@ -19,7 +20,9 @@ const uint8_t *ziyi_wifi_image_file(const char*dir,const char*name,uint64_t*size
    state=zwf_validate(zwf_slot,sizeof(zwf_slot),&zwf_kernel_view)?2:3;__atomic_store_n(&zwf_state,state,__ATOMIC_RELEASE);
   }else state=wanted;}
  /* A parallel caller may retry; never expose a half-validated directory. */
- if(state!=2)return 0;return zwf_find(&zwf_kernel_view,name,size);
+ if(state!=2)return 0;
+ if(name&&!strcmp(name,"network")){uint64_t n=0;const uint8_t*p=zwf_find(&zwf_kernel_view,name,&n);return znp_file(p,n,size);}
+ return zwf_find(&zwf_kernel_view,name,size);
 }
 const uint8_t *redwood_image_file(const char*dir,const char*name,uint64_t*size,int*disk_out){
  const uint8_t*p=ziyi_wifi_image_file(dir,name,size);if(disk_out)*disk_out=-1;return p;

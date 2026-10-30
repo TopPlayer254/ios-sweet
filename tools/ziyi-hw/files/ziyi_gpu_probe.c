@@ -140,6 +140,7 @@ static void zg_g8_write(void*ctx,uint64_t at,unsigned width,uint64_t value,int*o
  uint64_t observe=0;int mode=g8_observation_address(at,width,&observe),good=1;if(mode<0)return;uint64_t now=mode?zg_g8_load(s,observe,width,&good):0;if(!good)return;
  uint32_t reset=(uint32_t)zg_g8_load(s,GD_RESET,4,&good);if(!good)return;uint32_t pending=0;
  if(s->firmware.record.phase==G8_CONFIG_RESTORE&&(at==0x3d7e64c||at==0x3d8ec18)){pending=(uint32_t)zg_g8_load(s,at==0x3d7e64c?0x3d7e648:0x3d8ec14,4,&good);if(!good)return;}
+ if(s->firmware.record.phase==G9_RELEASE_BUS&&at==GD_HALT){pending=(uint32_t)zg_g8_load(s,GD_ACK,4,&good);if(!good)return;}
  if(!g8_store_guard(&s->firmware,at,width,value,now,reset,pending))return;void*p=zg_g8_pointer(s,at,width,1);if(!p)return;
  if(width==8)*(volatile uint64_t*)p=value;else *(volatile uint32_t*)p=(uint32_t)value;zg_barrier(s);*ok=1;
 }
@@ -163,6 +164,7 @@ static int zg_g8_run(struct zg_state*s){
  printf("ZIYI GMU FW100 begin: ACD/QDSS/LM/BCL/HFI/GX off; inherited DDR bandwidth probe\n");int success=g8_run(&s->firmware,&q,&io);struct g8_record*r=&s->firmware.record;
  printf("ZIYI GMU result%u phase%u flags%x err%u poison%u reads%u writes%u FW%x reset%u drain%u/%u restore%u lease%u retained%u accel0\n",success,r->phase,r->flags,r->error,r->poison,r->reads,r->writes,(unsigned)r->expected[3],!!(r->flags&G8_HELD_RESET),r->drain.client_ack,r->drain.arb_ack,r->restored,r->lease_released,r->retain_allocations);
  printf("ZIYI GMU faults HFI%x AO%x fence%x SMMU%x last%llx/%llx\n",r->last_host,r->last_ao,r->last_fence,r->last_fsr,(unsigned long long)r->last_address,(unsigned long long)r->last_value);
+ printf("ZIYI GMU G9 bus observations%u initial HALT%x ACK%x finalACK%x released%u\n",r->bus_observations,r->initial_halt,r->initial_ack,r->final_ack,r->bus_released);
  if(r->poison||r->retain_allocations||!r->lease_released)s->clocks.poison=1;return success;
 }
 static int zg_qualified(void*ctx,struct g7c_record*clocks){

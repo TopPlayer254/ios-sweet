@@ -7,3 +7,5 @@
 /xnu/patches/0087-ziyi-gmu-fwinit.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0088-ziyi-cx-enable-settle.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0090-ziyi-g9-qualified-gbif-release.patch -text whitespace=cr-at-eol

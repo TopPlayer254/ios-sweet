@@ -87,7 +87,7 @@
     },
     {
       "path": "bsd/dev/ziyi_wifi_capsule_kernel.c",
-      "after": "f172974b58a89c3e6726d5cec6cfd846b6cf09b001351fa7553c0b07cf08ee4f",
+      "after": "99fe314815c1b86a06f82104d8d52963bb4fb6348329e020c08a0c126c435718",
       "new": true
     },
     {
@@ -166,6 +166,16 @@
       "before": "27dc0c04317285c084dbfbf6ec7096e2ba0cc4946e9d3d60e1f5c51f166301cc",
       "after": "935e1cff1fb9243f81b7410d714b3dbef4088f95f3c198f5428d22bf832f4b31",
       "new": false
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_network.h",
+      "after": "366b1a708cb7b1deb7b8e436288122219e10793301545a22c1277b6fd4ce35f5",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_wifi_store.inc",
+      "after": "5d516e7719deb5b311e2b0e40dc88742bcaf3333089e3dca09594fd8a93bbb84",
+      "new": true
     }
   ],
   "cUnits": [
@@ -197,5 +207,6 @@
   "smmuStickyMutationFailure": true,
   "retainedWifiStatus": true,
   "vendorHostCapGPIO": true,
-  "openStationJoin": true
+  "openStationJoin": true,
+  "createOnlyPrivateNetworkStore": true
 }
