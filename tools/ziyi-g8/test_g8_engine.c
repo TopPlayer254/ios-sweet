@@ -13,6 +13,7 @@ static int idx(uint64_t at,unsigned width){for(unsigned i=0;i<G8_REGS;i++)if(g8_
 static uint64_t raw(uint64_t at,unsigned width){
  if(at==0x3d9953c)return 0x80001fe0;if(at==0x3d9905c)return 0x22f001;if(at==0x3d7e600)return 0;
  if(at==GD_ACK)return m.missing_ack?0:m.ack;
+ if(at==0x3db2010)return m.regs[28]|(m.regs[25]&1?0x60u:0u);
  if(at==0x3db2058)return m.regs[36]|(m.regs[25]&1?0x400u:0u);
  if(at==0x3da0000)return 0x210406;if(at==0x3da0020)return 0x4c017e09;if(at==0x3da0024)return 0x30000007;if(at==0x3da0028)return 0x5511;
  if(at>=0x3da0804&&at<0x3da0818)return 0;if(at>=0x3da0c04&&at<0x3da0c18)return 0x20000;
@@ -65,6 +66,13 @@ static void unused_bank(void){
  m.regs[31]=0xf6aca022c064f06ULL;m.regs[32]=0x532681cc;m.regs[33]=0x766a0a00;
  m.regs[15]=0x9c40402;m.regs[16]=0xa2710;m.regs[17]=0xa2710;m.regs[23]=8;m.ack=3;m.format_flip=1;m.tcr_flip=1;
 }
+#ifdef G14_G13_NEGATIVE_CONTROL
+int main(void){struct g8_prereq q;struct g8_io io;setup(&q,&io);unused_bank();
+ CHECK(!g8_run(&w,&q,&io));CHECK(w.record.phase==G8_INSTALL&&w.record.error==G8_OWNER&&w.record.poison&&w.record.writes==7&&w.record.reads==16620);
+ CHECK(w.record.last_address==0x3db2010&&w.record.last_value==0x38071&&w.record.pending_value==0x38011);
+ CHECK((w.record.flags&G13_CONTEXT_REBASED)&&!(w.record.flags&G13_CONTEXT_TCR_READY)&&!(w.record.flags&G8_LOADED)&&w.record.retain_allocations&&m.locked);
+ printf("G14_ACTUAL_G13_REGRESSION_CONTROL_PASS checks=%u writes7 readback38071 pending38011 noFirmware=1\n",checks);return 0;}
+#else
 int main(void){struct g8_prereq q;struct g8_io io;setup(&q,&io);CHECK(g8_run(&w,&q,&io));CHECK(!m.locked&&!m.forbidden&&w.record.restored&&w.record.lease_released&&!memcmp(m.initial,m.tcm,sizeof(m.tcm)));CHECK(w.record.drain.client_ack&&w.record.drain.arb_ack);unsigned totalr=m.reads,totalw=m.writes;
  for(unsigned halt=2;halt<=3;halt++){setup(&q,&io);m.regs[23]=halt;m.ack=3;CHECK(g8_run(&w,&q,&io));CHECK(w.record.initial_halt==halt&&w.record.initial_ack==3&&w.record.bus_released&&w.record.final_ack==3&&m.regs[23]==halt&&m.ack==3&&w.record.restored&&w.record.lease_released&&!m.forbidden);}
  setup(&q,&io);m.regs[23]=0;m.ack=3;CHECK(g8_run(&w,&q,&io));CHECK(w.record.initial_halt==0&&w.record.initial_ack==3&&w.record.bus_observations==2&&w.record.bus_released&&w.record.final_ack==0&&m.regs[23]==0&&m.ack==0&&w.record.restored&&!m.forbidden);
@@ -96,6 +104,8 @@ int main(void){struct g8_prereq q;struct g8_io io;setup(&q,&io);CHECK(g8_run(&w,
  for(unsigned bits=0;bits<8;bits++){setup(&q,&io);m.regs[15]=0x9c40400|bits;CHECK(g8_run(&w,&q,&io));CHECK(m.regs[15]==(0x9c40400|bits)&&!m.forbidden);}
  setup(&q,&io);m.regs[15]=0x9c40408;CHECK(!g8_run(&w,&q,&io));CHECK(!m.writes&&w.record.lease_released);
  setup(&q,&io);m.regs[16]=0x100000000ULL;CHECK(!g8_run(&w,&q,&io));CHECK(!m.writes&&w.record.lease_released);
+ setup(&q,&io);CHECK(g8_regs[28].mask==0x3807f&&g8_regs[28].literal==0x38071);CHECK(g8_run(&w,&q,&io));CHECK(raw(0x3db2010,4)==w.record.old[28]);
+ setup(&q,&io);m.regs[28]=0x80;CHECK(!g8_run(&w,&q,&io));CHECK(!m.writes&&w.record.lease_released);
  const unsigned rejected[][2]={{8,0},{8,1},{8,2},{8,7},{9,3},{10,3},{11,3},{0x80000008u,3},{0,1},{0,2},{1,0},{1,1},{1,3},{2,0},{2,1},{2,2},{3,0},{3,1},{3,2},{4,3},{2,7}};
  for(unsigned i=0;i<sizeof(rejected)/sizeof(rejected[0]);i++){setup(&q,&io);m.regs[23]=rejected[i][0];m.ack=rejected[i][1];CHECK(!g8_run(&w,&q,&io));CHECK(!m.writes&&w.record.lease_released&&!w.record.retain_allocations);}
 
@@ -110,4 +120,6 @@ int main(void){struct g8_prereq q;struct g8_io io;setup(&q,&io);CHECK(g8_run(&w,
  for(test=1;test<=18;test++){setup(&q,&io);if(test==1)m.timeout=1;if(test==2)m.missing_ack=1;if(test==3)m.bad_proof=1;if(test==4)m.bad_owned=1;if(test==5)m.regs[3]=0x100;if(test==6)m.regs[34]=0x80000005;if(test==7)m.regs[26]=1;if(test==8)m.regs[36]=1;if(test==9)w.firmware[300]^=1;if(test==10)m.corrupt_backup=1;if(test==11)m.pending=0x80000000;if(test==12)m.release_fail=1;if(test==13)m.cache_fail=1;if(test==14)m.physical_fail=40;if(test==15)q.hfi_off=0;if(test==16)q.hlos_cb=7;if(test==17)q.sctlr=0;if(test==18)m.regs[27]=0x10;CHECK(!g8_run(&w,&q,&io));if(test==1)CHECK(w.record.restored&&w.record.lease_released&&!(w.record.flags&G8_FW100));if(test==2||test==10||test==11)CHECK(w.record.retain_allocations&&!w.record.lease_released&&m.locked);if(test==3||test==4||test==9||test==15||test==16||test==17)CHECK(!m.reads&&!m.writes);}
  const unsigned positions[]={1,2,50,100,500,8000,16000,16400,16500,17000,20000,30000};for(test=0;test<sizeof(positions)/sizeof(positions[0]);test++){if(positions[test]>totalr)continue;setup(&q,&io);m.fail_read=positions[test];CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&m.reads==positions[test]);}
  const unsigned stores[]={1,2,5,10,20,40,100,4000,8192,10000,16000};for(test=0;test<sizeof(stores)/sizeof(stores[0]);test++){if(stores[test]>totalw)continue;setup(&q,&io);m.fail_write=stores[test];CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&m.writes==stores[test]&&w.record.retain_allocations&&m.locked);setup(&q,&io);m.race_write=stores[test];CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&m.writes==stores[test]&&m.locked);}
- setup(&q,&io);m.pending=2;CHECK(!g8_run(&w,&q,&io));CHECK(w.record.restored&&w.record.lease_released&&!m.pending&&w.record.error==G8_DEVICE_FAULT);printf("G13_SYNTHETIC_ENGINE_PASS checks=%u positiveReads=%u positiveWrites=%u fullTCMRestore=1 inheritedHaltAck=0/3,2/3,3/3 exact8/3NormalizedNoRawRestore=1 contextFormatRebase=stable normalizedContextCleanupNoRawRestore=1 idleAckNormalized=0 FSRformat=qualified releaseRace=reject releaseTimeout=retain\n",checks,totalr,totalw);return 0;}
+ setup(&q,&io);m.pending=2;CHECK(!g8_run(&w,&q,&io));CHECK(w.record.restored&&w.record.lease_released&&!m.pending&&w.record.error==G8_DEVICE_FAULT);printf("G14_SYNTHETIC_ENGINE_PASS checks=%u positiveReads=%u positiveWrites=%u fullTCMRestore=1 inheritedHaltAck=0/3,2/3,3/3 exact8/3NormalizedNoRawRestore=1 contextFormatRebase=stable normalizedContextCleanupNoRawRestore=1 idleAckNormalized=0 FSRformat=qualified releaseRace=reject releaseTimeout=retain\n",checks,totalr,totalw);return 0;}
+
+#endif

@@ -43,7 +43,7 @@ static int g13_unused_context(const struct g8_workspace*w){
 static uint64_t restore_target(const struct g8_record*r,unsigned i){
  if(r->flags&G13_CONTEXT_REINIT){
   switch(i){case 24:return 0x1f300;case 25:return 1;case 26:return 0;
-   case 27:return 0x32b;case 28:return 0x38011;case 29:return 0x803519;
+   case 27:return 0x32b;case 28:return 0x38071;case 29:return 0x803519;
    case 30:case 31:return 0;case 32:return 0xf404ff44;case 33:return 0xefe4;case 36:return 0x400;}
  }
  return i==23&&(r->flags&G12_BUS_NORMALIZED)?0:r->old[i];

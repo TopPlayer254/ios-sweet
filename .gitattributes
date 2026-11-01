@@ -17,3 +17,5 @@
 /xnu/patches/0093-ziyi-g12-vendor-halt-zero.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0094-ziyi-g13-unassigned-context-init.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0095-ziyi-g14-tcr2-named-tbi.patch -text whitespace=cr-at-eol

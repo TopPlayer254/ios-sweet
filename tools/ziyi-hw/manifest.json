@@ -191,14 +191,14 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_engine.c",
       "target": "bsd/dev/ziyi_g8_engine.c",
-      "sha256": "42a28e7dbc28a83388113cf032aeaaa161bc0cd43b5efe8b6456b21e17a2bca0",
+      "sha256": "d38bba3d1e1d0cfb6df36b135e06823c82a7102ad93ae314fb89b824d5feb563",
       "bytes": 26328
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_registers.c",
       "target": "bsd/dev/ziyi_g8_registers.c",
-      "sha256": "4a6e27aff1db63832bd58487792bac91c99ded4ee26bb8523f919ce4092cfe1c",
-      "bytes": 1363
+      "sha256": "6d914675ac4d15e1a3b80e81d6f57d976a8437a15735d1b5bc5a904e36a94196",
+      "bytes": 1445
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_memory.h",
@@ -547,13 +547,13 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_engine.c",
-      "sha256": "42a28e7dbc28a83388113cf032aeaaa161bc0cd43b5efe8b6456b21e17a2bca0",
+      "sha256": "d38bba3d1e1d0cfb6df36b135e06823c82a7102ad93ae314fb89b824d5feb563",
       "bytes": 26328
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_registers.c",
-      "sha256": "4a6e27aff1db63832bd58487792bac91c99ded4ee26bb8523f919ce4092cfe1c",
-      "bytes": 1363
+      "sha256": "6d914675ac4d15e1a3b80e81d6f57d976a8437a15735d1b5bc5a904e36a94196",
+      "bytes": 1445
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_memory.h",
@@ -597,8 +597,8 @@
     },
     {
       "path": "tools/ziyi-g8/test_g8_engine.c",
-      "sha256": "a209a39ea191ebe9080e0e4cb57313e436981e8986a812c67b720208cfbf18dd",
-      "bytes": 16037
+      "sha256": "ad60a9452be6edec0c4393a7580d97ad6a67ecaef9917cb6f2086b21d2c38111",
+      "bytes": 17017
     },
     {
       "path": "tools/ziyi-g8/test_g8_slot.c",
@@ -607,7 +607,7 @@
     },
     {
       "path": "tools/ziyi-g8/run_host_tests.py",
-      "sha256": "5e8dbb93b37c3bb158066cb194a4041477d0af14526228bf98f854db71416ca3",
+      "sha256": "d511e3fa27acbae4dcd888aba4880dedc476eaf6e9d8ab4e43ae418ff1594abe",
       "bytes": 2083
     },
     {
@@ -671,7 +671,7 @@
   ],
   "patch": "xnu/patches/0085-ziyi-hw-in-system.patch",
   "patchSHA256": "21cb6dd39f645a80fc5b5209434a8a75395167ac4371650eb0fa7946eeed2c9d",
-  "featureScope": "Initialize only disabled wholly unrouted CB2 from Stage2/AArch32; fresh rebase after format and TCR; explicit normalized closure, no raw restore claim; full37-value retained CRC; bounded FW100 only, not GPU UI",
+  "featureScope": "TCR2 named TBI0/TBI1 configured with strict38071 readback; mask excludes all other reserved bits; same G13 guarded FW100 and full retained snapshot, no GPU UI claim",
   "unchangedAPISources": [
     {
       "path": "pexpert/gen/device_tree.c",
@@ -704,5 +704,8 @@
   "g13Patch": "xnu/patches/0094-ziyi-g13-unassigned-context-init.patch",
   "g13PatchSHA256": "b3e7b0c1aeebbf37d8f9a675e07d0248bb06f60eb309c22a000ec8a68805aa58",
   "g13ContextFormatReinit": true,
-  "g13FullSnapshotCrc": true
+  "g13FullSnapshotCrc": true,
+  "g14Patch": "xnu/patches/0095-ziyi-g14-tcr2-named-tbi.patch",
+  "g14PatchSHA256": "21bebfc87ef09b3a12594fcd78ef7c9244f6eaab5180342207872b44ba1ea71a",
+  "g14TcrNamedTbi": true
 }
