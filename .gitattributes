@@ -13,3 +13,5 @@
 /xnu/patches/0091-ziyi-g10-sticky-ack-release.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0092-ziyi-g11-retained-gpu-record.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0093-ziyi-g12-vendor-halt-zero.patch -text whitespace=cr-at-eol

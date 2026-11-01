@@ -224,7 +224,8 @@ static int zg_g8_run(struct zg_state*s){
  printf("ZIYI GMU FW100 begin: ACD/QDSS/LM/BCL/HFI/GX off; inherited DDR bandwidth probe\n");int success=g8_run(&s->firmware,&q,&io);struct g8_record*r=&s->firmware.record;
  printf("ZIYI GMU result%u phase%u flags%x err%u poison%u reads%u writes%u FW%x reset%u drain%u/%u restore%u lease%u retained%u accel0\n",success,r->phase,r->flags,r->error,r->poison,r->reads,r->writes,(unsigned)r->expected[3],!!(r->flags&G8_HELD_RESET),r->drain.client_ack,r->drain.arb_ack,r->restored,r->lease_released,r->retain_allocations);
  printf("ZIYI GMU faults HFI%x AO%x fence%x SMMU%x last%llx/%llx\n",r->last_host,r->last_ao,r->last_fence,r->last_fsr,(unsigned long long)r->last_address,(unsigned long long)r->last_value);
- printf("ZIYI GMU G11 bus observations%u initial HALT%x ACK%x finalACK%x released%u\n",r->bus_observations,r->initial_halt,r->initial_ack,r->final_ack,r->bus_released);
+ printf("ZIYI GMU G12 bus observations%u initial HALT%x ACK%x finalACK%x released%u\n",r->bus_observations,r->initial_halt,r->initial_ack,r->final_ack,r->bus_released);
+ printf("ZIYI GMU G12 normalized%u cleanup%u rawRestore%u\n",!!(r->flags&G12_BUS_NORMALIZED),!!(r->flags&G12_NORMALIZED_CLEANUP),r->restored);
  /* Retain and repeat the completed transaction summary so concurrent IOKit
   * chatter cannot erase the only camera sample. No additional MMIO here. */
  /* Snapshot the completed CPU record once. No new MMIO, no guard change.

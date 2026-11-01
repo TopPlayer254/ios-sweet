@@ -12,6 +12,10 @@ on:
       machine_config:
         description: xnu MACHINE_CONFIG
         default: SWEET
+      upload_buildtree:
+        description: Upload optional large source build tree for local compiles
+        type: boolean
+        default: false
       keep_going:
         description: make -k (collect all compile errors in one run)
         default: "true"
@@ -275,7 +279,7 @@ jobs:
           path: u1-evidence/
 
       - name: Package build tree for local compiles
-        if: always()
+        if: ${{ always() && inputs.upload_buildtree == true }}
         run: |
           # Generated headers, config option headers, mig output and the patched
           # source: enough to re-run any single compile command from the log locally.
@@ -290,7 +294,7 @@ jobs:
           ls -la buildtree.tgz
 
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && inputs.upload_buildtree == true }}
         with:
           name: xnu-buildtree
           path: buildtree.tgz

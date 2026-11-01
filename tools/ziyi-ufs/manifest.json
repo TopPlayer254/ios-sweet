@@ -173,7 +173,7 @@
   },
   "bsd/dev/ziyi_gpu_probe.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "07ee3f935e2ff6f4546e767932b61126d490d7f25c6f5aac13ec9bed6aad49a6"
+    "after": "540e410083943a1b53e407a04b0d4236c43b492547221fd3d2f3c39a612c4fea"
   },
   "bsd/dev/ziyi_gpu_probe.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -257,11 +257,11 @@
   },
   "bsd/dev/ziyi_g8_fwinit.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "90d3e92bc93243e90923e8b27e72ca0660748f056aa836632cdf66668b484e7c"
+    "after": "cfe1fad98d3e889292660dacdad48bbfbc4edac4c6765eb0a51d4f030a2617f4"
   },
   "bsd/dev/ziyi_g8_engine.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "8c726ad8d3973d338884a42c91be6344090302c8bcb099affe93832ff7791141"
+    "after": "c474af9ca481801f73cdca4538b51120663518b1f135b56353b9a993e28ede4b"
   },
   "bsd/dev/ziyi_g8_registers.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
