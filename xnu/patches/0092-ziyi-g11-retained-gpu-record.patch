@@ -1,0 +1,88 @@
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -156,6 +156,66 @@
+  /* Re-decode fixed immutable file-backed section, never a boot pointer/flag. */
+  return g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&actual)&&memcmp(&actual,b,sizeof(actual))==0;
+ }
++/* G11_RETAINED_CODEC_BEGIN */
++/* SPDX-License-Identifier: MIT */
++#include <stddef.h>
++#include <stdint.h>
++#define GDR_BYTES 64u
++#define GDR_PARTS 4u
++#define GDR_PART_CHARS 32u
++/* Retained CPU state only. No MMIO or private network information. */
++struct gdr_state {
++ uint32_t phase,error,flags,reads,writes,old_halt,initial_halt,initial_ack;
++ uint32_t qualified_snapshots,bus_released,final_ack,restored,poison;
++};
++uint32_t gdr_crc32(const uint8_t*,size_t);
++int gdr_encode(const struct gdr_state*,char [GDR_PARTS][GDR_PART_CHARS+1]);
++int gdr_decode(const char [GDR_PARTS][GDR_PART_CHARS+1],struct gdr_state*);
++
++/* SPDX-License-Identifier: MIT */
++/* No digits, I or O: in particular, HALT0 and HALT8 encode as A and J. */
++static const char alphabet[]="ABCDEFGHJKLMNPQR";
++uint32_t gdr_crc32(const uint8_t*p,size_t n){
++ uint32_t crc=~0u;
++ for(size_t i=0;i<n;i++){crc^=p[i];for(unsigned j=0;j<8;j++)crc=(crc>>1)^(0xedb88320u&-(crc&1u));}
++ return ~crc;
++}
++static void put(uint8_t*p,uint32_t v){for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(v>>(8*i));}
++static uint32_t get(const uint8_t*p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++static unsigned nibble(char c){for(unsigned i=0;i<16;i++)if(c==alphabet[i])return i;return 16;}
++int gdr_encode(const struct gdr_state*s,char out[GDR_PARTS][GDR_PART_CHARS+1]){
++ if(!s||!out)return 0;
++ const uint32_t fields[15]={0x3152475a,1,s->phase,s->error,s->flags,s->reads,s->writes,
++  s->old_halt,s->initial_halt,s->initial_ack,s->qualified_snapshots,s->bus_released,s->final_ack,s->restored,s->poison};
++ uint8_t raw[GDR_BYTES];for(unsigned i=0;i<15;i++)put(raw+4*i,fields[i]);put(raw+60,gdr_crc32(raw,60));
++ for(unsigned i=0;i<GDR_BYTES;i++){unsigned part=i/16,at=2*(i%16);out[part][at]=alphabet[raw[i]>>4];out[part][at+1]=alphabet[raw[i]&15];}
++ for(unsigned i=0;i<GDR_PARTS;i++)out[i][GDR_PART_CHARS]=0;
++ return 1;
++}
++int gdr_decode(const char in[GDR_PARTS][GDR_PART_CHARS+1],struct gdr_state*out){
++ if(!in||!out)return 0;
++ uint8_t raw[GDR_BYTES];
++ for(unsigned part=0;part<GDR_PARTS;part++){
++  if(in[part][GDR_PART_CHARS])return 0;
++  for(unsigned i=0;i<16;i++){unsigned a=nibble(in[part][2*i]),b=nibble(in[part][2*i+1]);if(a>15||b>15)return 0;raw[16*part+i]=(uint8_t)(a*16+b);}
++ }
++ if(get(raw)!=0x3152475a||get(raw+4)!=1||get(raw+60)!=gdr_crc32(raw,60))return 0;
++ /* Do not modify the destination on malformed, incomplete or mixed records. */
++ *out=(struct gdr_state){get(raw+8),get(raw+12),get(raw+16),get(raw+20),get(raw+24),get(raw+28),
++  get(raw+32),get(raw+36),get(raw+40),get(raw+44),get(raw+48),get(raw+52),get(raw+56)};
++ return 1;
++}
++
++static int zg_gdr_capture(const struct g8_record*r,char out[GDR_PARTS][GDR_PART_CHARS+1]){
++ const struct gdr_state s={.phase=r->phase,.error=r->error,.flags=r->flags,
++  .reads=r->reads,.writes=r->writes,.old_halt=(uint32_t)r->old[23],
++  .initial_halt=r->initial_halt,.initial_ack=r->initial_ack,
++  .qualified_snapshots=r->bus_observations,.bus_released=r->bus_released,
++  .final_ack=r->final_ack,.restored=r->restored,.poison=r->poison};
++ return gdr_encode(&s,out);
++}
++/* G11_RETAINED_CODEC_END */
++
+ static int zg_g8_run(struct zg_state*s){
+  if(!g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&s->firmware.blob)){printf("ZIYI GMU STOP private slot absent/invalid; no firmware stores\n");return 0;}
+  struct g8_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr(),.acd_off=1,.qdss_off=1,.lm_bcl_off=1,.hfi_off=1,.inherited_ddr_probe=1};
+@@ -164,10 +224,16 @@
+  printf("ZIYI GMU FW100 begin: ACD/QDSS/LM/BCL/HFI/GX off; inherited DDR bandwidth probe\n");int success=g8_run(&s->firmware,&q,&io);struct g8_record*r=&s->firmware.record;
+  printf("ZIYI GMU result%u phase%u flags%x err%u poison%u reads%u writes%u FW%x reset%u drain%u/%u restore%u lease%u retained%u accel0\n",success,r->phase,r->flags,r->error,r->poison,r->reads,r->writes,(unsigned)r->expected[3],!!(r->flags&G8_HELD_RESET),r->drain.client_ack,r->drain.arb_ack,r->restored,r->lease_released,r->retain_allocations);
+  printf("ZIYI GMU faults HFI%x AO%x fence%x SMMU%x last%llx/%llx\n",r->last_host,r->last_ao,r->last_fence,r->last_fsr,(unsigned long long)r->last_address,(unsigned long long)r->last_value);
+- printf("ZIYI GMU G10 bus observations%u initial HALT%x ACK%x finalACK%x released%u\n",r->bus_observations,r->initial_halt,r->initial_ack,r->final_ack,r->bus_released);
++ printf("ZIYI GMU G11 bus observations%u initial HALT%x ACK%x finalACK%x released%u\n",r->bus_observations,r->initial_halt,r->initial_ack,r->final_ack,r->bus_released);
+  /* Retain and repeat the completed transaction summary so concurrent IOKit
+   * chatter cannot erase the only camera sample. No additional MMIO here. */
+- for(unsigned n=0;n<3;n++){zg_sleep(500);printf("ZIYI GMU G10 snapshot phase%u err%u FW%u writes%u HALT%x ACK%x/%x obs%u release%u restore%u poison%u\n",r->phase,r->error,!!(r->flags&G8_FW100),r->writes,r->initial_halt,r->initial_ack,r->final_ack,r->bus_observations,r->bus_released,r->restored,r->poison);}
++ /* Snapshot the completed CPU record once. No new MMIO, no guard change.
++  * Four short lines repeated for optical recovery; CRC rejects mixed sets. */
++ char record[GDR_PARTS][GDR_PART_CHARS+1];
++ if(zg_gdr_capture(r,record))for(unsigned repeat=0;repeat<5;repeat++){
++  for(unsigned part=0;part<GDR_PARTS;part++)printf("ZGDR%u %s\n",part+1,record[part]);
++  zg_sleep(2000);
++ }
+  if(r->poison||r->retain_allocations||!r->lease_released)s->clocks.poison=1;return success;
+ }
+ static int zg_qualified(void*ctx,struct g7c_record*clocks){
