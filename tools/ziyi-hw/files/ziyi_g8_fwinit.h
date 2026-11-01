@@ -7,9 +7,9 @@
 #define G8_REGS 37u
 #define G8_TCM_BYTES 32768u
 enum g8_phase {G8_ACQUIRE=1,G8_SAVE,G8_MEMORY,G8_INSTALL,G8_LOAD,G8_CONFIG,G8_START,G8_WAIT,G8_STOP,G8_DRAIN,G8_CLEAR,G8_UNROUTE,G8_CONTEXT_RESTORE,G8_TCM_RESTORE,G8_CONFIG_RESTORE,G8_DONE,G9_RELEASE_BUS};
-enum g8_flags {G8_LEASE=1,G8_SAVED=2,G8_MEMORY_READY=4,G8_PUBLISHED=8,G8_MAPPED=16,G8_LOADED=32,G8_RELEASED_RESET=64,G8_FW100=128,G8_HELD_RESET=256,G8_BUS_DRAINED=512,G8_RESTORED=1024,G8_LEASE_RELEASED=2048,G8_SCOPED=4096,G12_BUS_NORMALIZED=8192,G12_NORMALIZED_CLEANUP=16384};
+enum g8_flags {G8_LEASE=1,G8_SAVED=2,G8_MEMORY_READY=4,G8_PUBLISHED=8,G8_MAPPED=16,G8_LOADED=32,G8_RELEASED_RESET=64,G8_FW100=128,G8_HELD_RESET=256,G8_BUS_DRAINED=512,G8_RESTORED=1024,G8_LEASE_RELEASED=2048,G8_SCOPED=4096,G12_BUS_NORMALIZED=8192,G12_NORMALIZED_CLEANUP=16384,G13_CONTEXT_REINIT=32768,G13_CONTEXT_CLEANUP=65536,G13_CONTEXT_REBASED=131072,G13_CONTEXT_TCR_READY=262144};
 enum g8_error {G8_OK=0,G8_ARGUMENT,G8_PREREQ,G8_IO,G8_OWNER,G8_BACKUP,G8_MEMORY_ERROR,G8_FIRMWARE,G8_TIMEOUT,G8_DEVICE_FAULT,G8_RESTORE};
-enum g8_kind {G8_LITERAL=1,G8_MASK,G8_INTERFRAME,G8_RESET,G8_FWSTATUS,G8_ARCH,G8_ROUTE,G8_GBIF};
+enum g8_kind {G8_LITERAL=1,G8_MASK,G8_INTERFRAME,G8_RESET,G8_FWSTATUS,G8_ARCH,G8_ROUTE,G8_GBIF,G13_HYST};
 struct g8_reg {uint64_t address,mask,literal;uint32_t width,kind;};
 extern const struct g8_reg g8_regs[G8_REGS];
 struct g8_prereq {uint64_t epoch;uint32_t board,hlos_cb,hlos_smr,rates[4],current_el;uint64_t sctlr;uint32_t acd_off,qdss_off,lm_bcl_off,hfi_off,inherited_ddr_probe;};
@@ -26,3 +26,6 @@ int g8_transaction_complete(const struct g8_workspace*);
 /* Structural selection for the proven EL1/MMU-on contract. No legacy offline
  * GA_REQUIRED_FACTS assertion and no hardware write authority is returned. */
 int g8_kernel_plan(const struct g8_prereq*,const struct ga_snapshot*,struct ga_plan*);
+
+/* Pure retained-snapshot classification, without MMIO. */
+uint64_t g8_invalid_registers(const struct g8_workspace*);

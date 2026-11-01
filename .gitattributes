@@ -15,3 +15,5 @@
 /xnu/patches/0092-ziyi-g11-retained-gpu-record.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0093-ziyi-g12-vendor-halt-zero.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0094-ziyi-g13-unassigned-context-init.patch -text whitespace=cr-at-eol

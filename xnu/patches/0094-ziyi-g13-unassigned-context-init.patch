@@ -1,0 +1,220 @@
+--- a/bsd/dev/ziyi_g8_engine.c
++++ b/bsd/dev/ziyi_g8_engine.c
+@@ -28,8 +28,30 @@
+  * No write ever restores/asserts unknown bit3. A successful 8->0 handoff
+  * closes at vendor HALT0/ACK0, separately from byte-exact restoration. */
+ static int inherited_bus(uint32_t halt,uint32_t ack){return (!halt&&!ack)||((halt==0||halt==2||halt==3||halt==8)&&ack==3);}
+-static uint64_t restore_target(const struct g8_record*r,unsigned i){return i==23&&(r->flags&G12_BUS_NORMALIZED)?0:r->old[i];}
+-static int closed(const struct g8_record*r){return r->restored||!!(r->flags&G12_NORMALIZED_CLEANUP);}
++/* A disabled, wholly unrouted Stage-2/AArch32 bank is unassigned.
++ * IHI0062D.c chapters16/17: many reset fields are UNKNOWN; TCR2,
++ * TTBR1 and MAIR are reserved in Stage2. Do not validate/restore those
++ * reads as an already configured Stage1/AArch64 bank. Own only CB2,
++ * initialize it while reset is held and every HLOS stream faults, and
++ * leave a documented disabled/unrouted Stage1 bank after cleanup. */
++static int g13_unused_context(const struct g8_workspace*w){
++ const struct g8_record*r=&w->record;
++ if(!(r->flags&G8_SAVED)||r->old[24]||r->old[25]||(r->old[26]&1))return 0;
++ for(unsigned p=0;p<2;p++)for(unsigned i=0;i<6;i++)if(w->snapshot.smr[p][i]||w->snapshot.s2cr[p][i]!=0x20000)return 0;
++ return 1;
++}
++static uint64_t restore_target(const struct g8_record*r,unsigned i){
++ if(r->flags&G13_CONTEXT_REINIT){
++  switch(i){case 24:return 0x1f300;case 25:return 1;case 26:return 0;
++   case 27:return 0x32b;case 28:return 0x38011;case 29:return 0x803519;
++   case 30:case 31:return 0;case 32:return 0xf404ff44;case 33:return 0xefe4;case 36:return 0x400;}
++ }
++ return i==23&&(r->flags&G12_BUS_NORMALIZED)?0:r->old[i];
++}
++static int closed(const struct g8_record*r){
++ if(r->flags&G13_CONTEXT_REINIT)return (r->flags&G13_CONTEXT_CLEANUP)&&(!(r->flags&G12_BUS_NORMALIZED)||(r->flags&G12_NORMALIZED_CLEANUP));
++ return r->restored||!!(r->flags&G12_NORMALIZED_CLEANUP);
++}
+ static int fail(struct g8_record*r,unsigned code,unsigned poison){if(!r->error)r->error=code;r->poison|=poison;return 0;}
+ static uint32_t old_crc(const struct g8_record*r){uint32_t h=2166136261u;for(unsigned i=0;i<G8_REGS;i++)for(unsigned j=0;j<8;j++){h^=(uint8_t)(r->old[i]>>(8*j));h*=16777619u;}return h;}
+ static int index_of(uint64_t at,unsigned width){for(unsigned i=0;i<G8_REGS;i++)if(g8_regs[i].address==at&&g8_regs[i].width==width)return (int)i;return -1;}
+@@ -67,9 +89,9 @@
+  if(d->kind==G8_GBIF){if(r->phase==G8_DRAIN)return gd_store_guard(&r->drain,at,(uint32_t)value,(uint32_t)now);if(r->phase==G9_RELEASE_BUS)return value==0&&now==r->initial_halt&&r->old[i]==now&&pending==r->initial_ack&&r->bus_observations==2&&inherited_bus(r->initial_halt,r->initial_ack)&&(r->flags&(G8_PUBLISHED|G8_MAPPED|G8_LOADED))==(G8_PUBLISHED|G8_MAPPED|G8_LOADED)&&!(r->flags&G8_RELEASED_RESET)&&!r->bus_released;return r->phase==G8_CONFIG_RESTORE&&(r->flags&G8_BUS_DRAINED)&&!(r->flags&G8_MAPPED)&&!(value&~3u)&&value==restore_target(r,i);}
+  if(d->kind==G8_FWSTATUS)return value==0&&((r->phase==G8_CONFIG&&now==0)||(r->phase==G8_CONFIG_RESTORE&&(now==0||now==0x100)));
+  if(r->phase==G8_CONFIG_RESTORE){if(i>=24||value!=r->old[i]||(i==20||i==21?pending!=0:0))return 0;return d->kind!=G8_MASK||!((value^now)&~d->mask);}
+- if(r->phase==G8_CONTEXT_RESTORE){if(i<24||i==36)return 0;if(i==26&&value==0)return 1;return value==r->old[i]&&(!(r->flags&G8_MAPPED));}
++ if(r->phase==G8_CONTEXT_RESTORE){if(i<24||i==36)return 0;if(i==26&&value==0)return 1;return value==restore_target(r,i)&&(!(r->flags&G8_MAPPED));}
+  if(r->phase==G8_UNROUTE)return (i==34&&value==0)||(i==35&&value==0x20000&&r->expected[34]==0);
+- if(r->phase==G8_INSTALL){if(i<24||i==36)return 0;if(i==26&&value==0)return 1;if(i==34)return value==0x84000005&&r->expected[26]==0xc01027&&r->expected[35]==0x302;return value==target(w,i);}
++ if(r->phase==G8_INSTALL){if(i<24||i==36)return 0;if((r->flags&G13_CONTEXT_REINIT)&&((i>=27&&i<=33)||(i==26&&value))&&!(r->flags&G13_CONTEXT_REBASED))return 0;if(i==26&&value==0)return 1;if((r->flags&G13_CONTEXT_REINIT)&&(i==30||i==31||(i==26&&value))&&!(r->flags&G13_CONTEXT_TCR_READY))return 0;if(i==34)return value==0x84000005&&r->expected[26]==0xc01027&&r->expected[35]==0x302;return value==target(w,i);}
+  if(r->phase!=G8_CONFIG||i>=24)return 0;
+  if(d->kind==G8_MASK)return value==(r->old[i]|d->mask)&&!((value^now)&~d->mask);
+  if(d->kind==G8_INTERFRAME)return value==0x9c40400||(value==0x9c40403&&now==0x9c40400)||(value==0x9c40407&&now==0x9c40403);
+@@ -121,7 +143,36 @@
+  for(unsigned pass=0;pass<2;pass++){for(unsigned i=0;i<4;i++)s->gr0[pass][i]=(uint32_t)read_value(w,io,ids[i],4);for(unsigned i=0;i<6;i++){s->smr[pass][i]=(uint32_t)read_value(w,io,0x3da0800+4*i,4);s->s2cr[pass][i]=(uint32_t)read_value(w,io,0x3da0c00+4*i,4);if(s->s2cr[pass][i]!=0x20000)return fail(&w->record,G8_OWNER,1);}}
+  if(w->record.poison||!g8_kernel_plan(q,s,&w->lease_plan)||w->lease_plan.cb!=2||w->lease_plan.smr!=0||w->lease_plan.software_context_map!=7||s->smr[0][0])return fail(&w->record,G8_OWNER,1);return 1;
+ }
+-static int old_valid(struct g8_workspace*w,unsigned i){uint64_t old=w->record.old[i];const struct g8_reg*d=&g8_regs[i];if(d->kind==G8_RESET)return old==1;if(d->kind==G8_GBIF)return old==w->record.initial_halt&&inherited_bus(w->record.initial_halt,w->record.initial_ack);if(i==36){uint32_t faults;return fsr_faults(w,(uint32_t)old,&faults)&&!faults;}if(d->kind==G8_FWSTATUS)return old==0;if(i==34)return old==0;if(i==35)return old==0x20000;if(d->kind==G8_ARCH)return !(old&~d->mask)&&!(i==26&&(old&1));if(d->kind==G8_MASK)return old<=0xffffffffu;if(d->kind==G8_INTERFRAME)return old==0||old==0x9c40400||old==0x9c40403||old==0x9c40407;return old==0||old==target(w,i);}
++static int old_valid(const struct g8_workspace*w,unsigned i){
++ uint64_t old=w->record.old[i];const struct g8_reg*d=&g8_regs[i];
++ if(i>=24&&i<=33&&g13_unused_context(w))return 1;
++ if(d->kind==G8_RESET)return old==1;
++ if(d->kind==G8_GBIF)return old==w->record.initial_halt&&inherited_bus(w->record.initial_halt,w->record.initial_ack);
++ if(i==36)return w->record.old[25]<=1&&old==(w->record.old[25]?0x400u:0u);
++ if(d->kind==G8_FWSTATUS)return old==0;
++ if(i==34)return old==0;if(i==35)return old==0x20000;
++ if(d->kind==G8_ARCH)return !(old&~d->mask)&&!(i==26&&(old&1));
++ if(d->kind==G8_MASK||d->kind==G13_HYST)return old<=0xffffffffu;
++ /* Vendor IFPC and SPTP masks span bits0..2; all other bits stay literal. */
++ if(d->kind==G8_INTERFRAME)return old==0||(old&~7ULL)==0x9c40400;
++ return old==0||old==target(w,i);
++}
++uint64_t g8_invalid_registers(const struct g8_workspace*w){
++ if(!w)return ~0ULL;uint64_t invalid=0;for(unsigned i=0;i<G8_REGS;i++)if(!old_valid(w,i))invalid|=1ULL<<i;return invalid;
++}
++static int g13_rebase_context(struct g8_workspace*w,const struct g8_io*io,unsigned ready){
++ struct g8_record*r=&w->record;
++ if(!g13_unused_context(w)||read_value(w,io,SYSRESET,4)!=1||read_value(w,io,GD_HALT,4)!=r->initial_halt||read_value(w,io,GD_ACK,4)!=r->initial_ack||read_value(w,io,g8_regs[26].address,4)||read_value(w,io,g8_regs[25].address,4)!=1||read_value(w,io,g8_regs[24].address,4)!=0x1f300)return fail(r,G8_OWNER,1);
++ for(unsigned i=0;i<6;i++)if(read_value(w,io,0x3da0800+4*i,4)||read_value(w,io,0x3da0c00+4*i,4)!=0x20000)return fail(r,G8_OWNER,1);
++ if(ready&&(!(r->flags&G13_CONTEXT_REBASED)||read_value(w,io,g8_regs[27].address,4)!=target(w,27)||read_value(w,io,g8_regs[28].address,4)!=target(w,28)||read_value(w,io,g8_regs[29].address,4)!=target(w,29)))return fail(r,G8_OWNER,1);
++ /* Format has changed under the exclusive lease. These now-defined registers
++  * must have two stable fresh observations; original raw reads stay retained. */
++ for(unsigned p=0;p<2;p++){
++  for(unsigned i=27;i<=33;i++){uint64_t v=read_value(w,io,g8_regs[i].address,g8_regs[i].width);if(r->poison)return 0;if(p&&r->expected[i]!=v)return fail(r,G8_OWNER,1);r->expected[i]=v;}
++  io->barrier(io->ctx);
++ }
++ uint32_t fsr=(uint32_t)read_value(w,io,FSR,4);if(r->poison||fsr!=0x400)return fail(r,G8_OWNER,1);r->expected[36]=fsr;r->flags|=G13_CONTEXT_REBASED;if(ready)r->flags|=G13_CONTEXT_TCR_READY;return 1;
++}
+ static int hashes_valid(struct g8_workspace*w){uint8_t h[32];for(unsigned i=0;i<2;i++){g7_sha256(w->backup[i],G8_TCM_BYTES,h);if(!same(h,w->record.tcm_sha[i],32))return 0;}return same(w->backup[0],w->backup[1],G8_TCM_BYTES);}
+ static int tlbi(struct g8_workspace*w,const struct g8_io*io){io->barrier(io->ctx);if(!put(w,io,TLBI,4,2)||!put(w,io,TLBSYNC,4,0))return 0;for(unsigned i=0;i<10000;i++){uint64_t v=read_value(w,io,TLB_STATUS,4);if(w->record.poison)return 0;if(v&~1u)return fail(&w->record,G8_OWNER,1);if(!v)return 1;io->delay(io->ctx,1);}return fail(&w->record,G8_TIMEOUT,1);}
+ struct g8_drain_ctx {struct g8_workspace*w;const struct g8_io*io;};
+@@ -136,7 +187,7 @@
+  for(unsigned i=0;i<4;i++){uint32_t pending=(uint32_t)read_value(w,io,irq_status[i],4);if(i==0)r->last_host=pending;if(i==1)r->last_ao=pending;if(i==2)r->last_fence=pending;if(i==3)r->last_fsr=pending;if(r->poison)return 0;if((i==3&&!fsr_faults(w,pending,&pending))||pending&~irq_mask[i]||(i==3&&(pending&0x40000000u)))return fail(r,G8_OWNER,1);if(pending){if(!r->error)r->error=G8_DEVICE_FAULT;if(!put(w,io,irq_clear[i],4,pending))return 0;}}
+  if(r->flags&G8_MAPPED){r->phase=G8_UNROUTE;if(!set_reg(w,io,34,0)||!set_reg(w,io,35,0x20000))return 0;r->flags&=~G8_MAPPED;}
+  r->phase=G8_CONTEXT_RESTORE;if(!set_reg(w,io,26,0)||!tlbi(w,io))return 0;
+- const unsigned order[]={25,24,28,29,30,31,32,33,27,26};for(unsigned n=0;n<sizeof(order)/sizeof(order[0]);n++)if(!set_reg(w,io,order[n],r->old[order[n]]))return 0;if(!tlbi(w,io))return 0;
++ const unsigned order[]={25,24,28,29,30,31,32,33,27,26};for(unsigned n=0;n<sizeof(order)/sizeof(order[0]);n++)if(!set_reg(w,io,order[n],restore_target(r,order[n])))return 0;if(!tlbi(w,io))return 0;
+  if(r->tcmmodified){if(!hashes_valid(w))return fail(r,G8_BACKUP,1);r->phase=G8_TCM_RESTORE;for(unsigned off=0;off<G8_TCM_BYTES;off+=4){r->tcm_cursor=off;if(!put(w,io,tcm_address(off),4,word(w->backup[0]+off)))return 0;}for(unsigned off=0;off<G8_TCM_BYTES;off+=4)if(read_value(w,io,tcm_address(off),4)!=word(w->backup[1]+off)||r->poison)return fail(r,G8_RESTORE,1);}
+  r->phase=G8_CONFIG_RESTORE;
+  for(unsigned i=0;i<24;i++){if(i==19||i==23)continue;if(!set_reg(w,io,i,r->old[i]))return 0;}
+@@ -146,7 +197,8 @@
+   * to idle0 by the vendor release. Restore controls/TCM exactly, not stale ACK3. */
+  if(!hashes_valid(w)||!bus_wait(w,io,r->initial_halt&&!(r->flags&G12_BUS_NORMALIZED)?3u:0u)||!quiet(w,io))return fail(r,G8_RESTORE,1);
+  if(r->flags&G12_BUS_NORMALIZED)r->flags|=G12_NORMALIZED_CLEANUP;
+- else {r->restored=1;r->flags|=G8_RESTORED;}return 1;
++ if(r->flags&G13_CONTEXT_REINIT)r->flags|=G13_CONTEXT_CLEANUP;
++ if(!(r->flags&(G12_BUS_NORMALIZED|G13_CONTEXT_REINIT))){r->restored=1;r->flags|=G8_RESTORED;}return 1;
+ }
+ int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io){
+  if(!w||!q||!io||!io->read||!io->write||!io->ticks||!io->delay||!io->barrier||!io->lease||!io->proof||!io->owned||(w->record.flags&G8_LEASE&&!w->record.lease_released)||w->memory.state)return 0;
+@@ -168,10 +220,16 @@
+  for(unsigned pass=0;pass<2;pass++){for(unsigned off=0;off<G8_TCM_BYTES;off+=4){if(!(off&0xfff)&&!quiet(w,io))goto done;bytes(w->backup[pass]+off,(uint32_t)read_value(w,io,tcm_address(off),4));if(r->poison)goto done;}g7_sha256(w->backup[pass],G8_TCM_BYTES,r->tcm_sha[pass]);}
+  if(!hashes_valid(w)){fail(r,G8_BACKUP,1);goto done;}r->saved_crc=old_crc(r);r->flags|=G8_SAVED;r->phase=G8_MEMORY;
+  if(!gm_memory_prepare(&w->memory,&w->firmware_plan,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_MEMORY_READY;
+- for(unsigned i=0;i<G8_REGS;i++)if(!old_valid(w,i)){fail(r,G8_PREREQ,0);goto done;}
++ if(g8_invalid_registers(w)){fail(r,G8_PREREQ,0);goto done;}
+  for(unsigned i=0;i<w->firmware_plan.block_count;i++){const struct gn_block*b=&w->firmware_plan.blocks[i];if(b->size&&b->kind!=GN_ITCM&&b->kind!=GN_DTCM){uint8_t*dst=gm_memory_owned_va(&w->memory,b->address,b->size);if(!dst){fail(r,G8_MEMORY_ERROR,0);goto done;}for(unsigned j=0;j<b->size;j++)dst[j]=w->firmware[b->data_offset+j];if(!same(dst,w->firmware+b->data_offset,b->size)){fail(r,G8_BACKUP,1);goto done;}}}
+  if(gn_hfi_init(gm_memory_owned_va(&w->memory,w->firmware_plan.hfi_address,GN_HFI_BYTES),GN_HFI_BYTES,w->firmware_plan.hfi_address)!=GN_OK||!gm_memory_publish(&w->memory,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_PUBLISHED;r->phase=G8_INSTALL;
+- if(!set_reg(w,io,26,0)||!set_reg(w,io,27,target(w,27))||!tlbi(w,io))goto done;
++ if(g13_unused_context(w))r->flags|=G13_CONTEXT_REINIT;
++ if(!set_reg(w,io,26,0))goto done;
++ if((r->flags&G13_CONTEXT_REINIT)&&(!set_reg(w,io,25,target(w,25))||!set_reg(w,io,24,target(w,24))||!g13_rebase_context(w,io,0)))goto done;
++ if(!set_reg(w,io,27,target(w,27))||!tlbi(w,io))goto done;
++ /* TCR2 controls visibility of ASID[15:8] in TTBR reads: program it first,
++  * then qualify fresh TTBR observations before either 64-bit store. */
++ if((r->flags&G13_CONTEXT_REINIT)&&(!set_reg(w,io,28,target(w,28))||!set_reg(w,io,29,target(w,29))||!g13_rebase_context(w,io,1)))goto done;
+  const unsigned setup[]={25,24,28,29,30,31,32,33,26,35,34};for(unsigned n=0;n<sizeof(setup)/sizeof(setup[0]);n++)if(!set_reg(w,io,setup[n],target(w,setup[n])))goto done;r->flags|=G8_MAPPED;
+  if(!hashes_valid(w)){fail(r,G8_BACKUP,1);goto done;}r->phase=G8_LOAD;for(unsigned off=0;off<G8_TCM_BYTES;off+=4){uint32_t value;if(payload_word(w,off,&value)){r->tcm_cursor=off;if(!put(w,io,tcm_address(off),4,value))goto done;}}
+  const uint32_t version[]={0x30020004,0xffffffff,0x30010002,0,0x20010000};for(unsigned i=0;i<5;i++)if(read_value(w,io,0x3d74fe0+4*i,4)!=version[i]||r->poison){fail(r,G8_FIRMWARE,0);goto restore;}r->flags|=G8_LOADED;r->phase=G8_CONFIG;
+--- a/bsd/dev/ziyi_g8_fwinit.h
++++ b/bsd/dev/ziyi_g8_fwinit.h
+@@ -7,9 +7,9 @@
+ #define G8_REGS 37u
+ #define G8_TCM_BYTES 32768u
+ enum g8_phase {G8_ACQUIRE=1,G8_SAVE,G8_MEMORY,G8_INSTALL,G8_LOAD,G8_CONFIG,G8_START,G8_WAIT,G8_STOP,G8_DRAIN,G8_CLEAR,G8_UNROUTE,G8_CONTEXT_RESTORE,G8_TCM_RESTORE,G8_CONFIG_RESTORE,G8_DONE,G9_RELEASE_BUS};
+-enum g8_flags {G8_LEASE=1,G8_SAVED=2,G8_MEMORY_READY=4,G8_PUBLISHED=8,G8_MAPPED=16,G8_LOADED=32,G8_RELEASED_RESET=64,G8_FW100=128,G8_HELD_RESET=256,G8_BUS_DRAINED=512,G8_RESTORED=1024,G8_LEASE_RELEASED=2048,G8_SCOPED=4096,G12_BUS_NORMALIZED=8192,G12_NORMALIZED_CLEANUP=16384};
++enum g8_flags {G8_LEASE=1,G8_SAVED=2,G8_MEMORY_READY=4,G8_PUBLISHED=8,G8_MAPPED=16,G8_LOADED=32,G8_RELEASED_RESET=64,G8_FW100=128,G8_HELD_RESET=256,G8_BUS_DRAINED=512,G8_RESTORED=1024,G8_LEASE_RELEASED=2048,G8_SCOPED=4096,G12_BUS_NORMALIZED=8192,G12_NORMALIZED_CLEANUP=16384,G13_CONTEXT_REINIT=32768,G13_CONTEXT_CLEANUP=65536,G13_CONTEXT_REBASED=131072,G13_CONTEXT_TCR_READY=262144};
+ enum g8_error {G8_OK=0,G8_ARGUMENT,G8_PREREQ,G8_IO,G8_OWNER,G8_BACKUP,G8_MEMORY_ERROR,G8_FIRMWARE,G8_TIMEOUT,G8_DEVICE_FAULT,G8_RESTORE};
+-enum g8_kind {G8_LITERAL=1,G8_MASK,G8_INTERFRAME,G8_RESET,G8_FWSTATUS,G8_ARCH,G8_ROUTE,G8_GBIF};
++enum g8_kind {G8_LITERAL=1,G8_MASK,G8_INTERFRAME,G8_RESET,G8_FWSTATUS,G8_ARCH,G8_ROUTE,G8_GBIF,G13_HYST};
+ struct g8_reg {uint64_t address,mask,literal;uint32_t width,kind;};
+ extern const struct g8_reg g8_regs[G8_REGS];
+ struct g8_prereq {uint64_t epoch;uint32_t board,hlos_cb,hlos_smr,rates[4],current_el;uint64_t sctlr;uint32_t acd_off,qdss_off,lm_bcl_off,hfi_off,inherited_ddr_probe;};
+@@ -26,3 +26,6 @@
+ /* Structural selection for the proven EL1/MMU-on contract. No legacy offline
+  * GA_REQUIRED_FACTS assertion and no hardware write authority is returned. */
+ int g8_kernel_plan(const struct g8_prereq*,const struct ga_snapshot*,struct ga_plan*);
++
++/* Pure retained-snapshot classification, without MMIO. */
++uint64_t g8_invalid_registers(const struct g8_workspace*);
+--- a/bsd/dev/ziyi_g8_registers.c
++++ b/bsd/dev/ziyi_g8_registers.c
+@@ -10,7 +10,7 @@
+  L(0x3d7e614,0),L(0x3d7e610,1),L(0x3d8ec44,0x80a008a0),L(0x3d7e0b4,0x4052),
+  L(0x3d7e404,0),L(0x3d7e608,0x06062100),L(0x3d7e400,0),
+  L(0x3d7d03c,1),L(0x3d7d000,1),L(0x3d7d004,1),
+- {0x3d7e300,7,0x9c40400,4,G8_INTERFRAME},L(0x3d7e304,0xa1680),L(0x3d7e308,0xa1680),
++ {0x3d7e300,7,0x9c40400,4,G8_INTERFRAME},{0x3d7e304,0xffffffff,0xa1680,4,G13_HYST},{0x3d7e308,0xffffffff,0xa1680,4,G13_HYST},
+  {0x3d7e3a0,0xf11,0xf11,4,G8_MASK},
+  {0x3d7e000,1,0,4,G8_RESET},L(0x3d7e64c,0xffffffff),L(0x3d8ec18,0xffffffff),L(0x3d8ec40,0),
+  {0x3d0f114,3,0,4,G8_GBIF},
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -216,6 +216,46 @@
+ }
+ /* G11_RETAINED_CODEC_END */
+ 
++/* G13_SNAPSHOT_CODEC_BEGIN */
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include <stdint.h>
++#define GSR_REGS 37u
++#define GSR_PAGES 8u
++#define GSR_PARTS 4u
++#define GSR_CHARS 32u
++struct gsr_page {uint32_t page,snapshot_crc;uint64_t invalid,values[5];};
++int gsr_encode(const uint64_t old[GSR_REGS],uint64_t invalid,char out[GSR_PAGES][GSR_PARTS][GSR_CHARS+1]);
++int gsr_decode_page(const char in[GSR_PARTS][GSR_CHARS+1],struct gsr_page*out);
++int gsr_assemble(const struct gsr_page in[GSR_PAGES],uint64_t out[GSR_REGS],uint64_t*invalid);
++
++/* SPDX-License-Identifier: GPL-2.0-only */
++static uint32_t gsr_crc(const uint8_t*p,unsigned n){uint32_t c=~0u;for(unsigned i=0;i<n;i++){c^=p[i];for(unsigned b=0;b<8;b++)c=(c>>1)^((0u-(c&1u))&0xedb88320u);}return ~c;}
++static void gsr_put(uint8_t*p,uint32_t n){for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(n>>(8*i));}
++static uint32_t gsr_get(const uint8_t*p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++static uint64_t gsr_u64(const uint8_t*p){return gsr_get(p)|(uint64_t)gsr_get(p+4)<<32;}
++static unsigned gsr_nibble(char c){const char*a="ABCDEFGHJKLMNPQR";for(unsigned i=0;i<16;i++)if(a[i]==c)return i;return 16;}
++static uint32_t gsr_snapshot_crc(const uint64_t old[GSR_REGS]){uint8_t raw[GSR_REGS*8];for(unsigned i=0;i<GSR_REGS;i++){gsr_put(raw+8*i,(uint32_t)old[i]);gsr_put(raw+8*i+4,(uint32_t)(old[i]>>32));}return gsr_crc(raw,sizeof(raw));}
++int gsr_encode(const uint64_t old[GSR_REGS],uint64_t invalid,char out[GSR_PAGES][GSR_PARTS][GSR_CHARS+1]){
++ if(!old||!out||invalid>>GSR_REGS)return 0;uint32_t crc=gsr_snapshot_crc(old);const char*a="ABCDEFGHJKLMNPQR";
++ for(unsigned page=0;page<GSR_PAGES;page++){uint8_t raw[64]={0};gsr_put(raw,0x3153475a);gsr_put(raw+4,page);gsr_put(raw+8,crc);gsr_put(raw+12,(uint32_t)invalid);gsr_put(raw+16,(uint32_t)(invalid>>32));
++  for(unsigned j=0;j<5;j++){unsigned i=page*5+j;uint64_t v=i<GSR_REGS?old[i]:0;gsr_put(raw+20+8*j,(uint32_t)v);gsr_put(raw+24+8*j,(uint32_t)(v>>32));}gsr_put(raw+60,gsr_crc(raw,60));
++  for(unsigned p=0;p<GSR_PARTS;p++){for(unsigned i=0;i<16;i++){unsigned v=raw[p*16+i];out[page][p][2*i]=a[v>>4];out[page][p][2*i+1]=a[v&15];}out[page][p][GSR_CHARS]=0;}
++ }return 1;
++}
++int gsr_decode_page(const char in[GSR_PARTS][GSR_CHARS+1],struct gsr_page*out){
++ if(!in||!out)return 0;uint8_t raw[64];for(unsigned p=0;p<GSR_PARTS;p++){if(in[p][GSR_CHARS])return 0;for(unsigned i=0;i<16;i++){unsigned a=gsr_nibble(in[p][2*i]),b=gsr_nibble(in[p][2*i+1]);if(a>15||b>15)return 0;raw[p*16+i]=(uint8_t)(a*16+b);}}
++ if(gsr_get(raw)!=0x3153475a||gsr_get(raw+4)>=GSR_PAGES||gsr_get(raw+60)!=gsr_crc(raw,60))return 0;
++ struct gsr_page result={.page=gsr_get(raw+4),.snapshot_crc=gsr_get(raw+8),.invalid=gsr_u64(raw+12)};if(result.invalid>>GSR_REGS)return 0;
++ for(unsigned i=0;i<5;i++){result.values[i]=gsr_u64(raw+20+8*i);if(result.page*5+i>=GSR_REGS&&result.values[i])return 0;}*out=result;return 1;
++}
++int gsr_assemble(const struct gsr_page in[GSR_PAGES],uint64_t out[GSR_REGS],uint64_t*invalid){
++ if(!in||!out||!invalid||in[0].invalid>>GSR_REGS)return 0;uint64_t old[GSR_REGS];
++ for(unsigned p=0;p<GSR_PAGES;p++){if(in[p].page!=p||in[p].snapshot_crc!=in[0].snapshot_crc||in[p].invalid!=in[0].invalid)return 0;for(unsigned j=0;j<5;j++){unsigned i=p*5+j;if(i<GSR_REGS)old[i]=in[p].values[j];else if(in[p].values[j])return 0;}}
++ if(gsr_snapshot_crc(old)!=in[0].snapshot_crc)return 0;for(unsigned i=0;i<GSR_REGS;i++)out[i]=old[i];*invalid=in[0].invalid;return 1;
++}
++
++/* G13_SNAPSHOT_CODEC_END */
++
+ static int zg_g8_run(struct zg_state*s){
+  if(!g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&s->firmware.blob)){printf("ZIYI GMU STOP private slot absent/invalid; no firmware stores\n");return 0;}
+  struct g8_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr(),.acd_off=1,.qdss_off=1,.lm_bcl_off=1,.hfi_off=1,.inherited_ddr_probe=1};
+@@ -235,6 +275,15 @@
+   for(unsigned part=0;part<GDR_PARTS;part++)printf("ZGDR%u %s\n",part+1,record[part]);
+   zg_sleep(2000);
+  }
++ /* CPU-only snapshot. No additional MMIO, including on a poisoned lease. */
++ if(r->flags&G8_SAVED){
++  char pages[GSR_PAGES][GSR_PARTS][GSR_CHARS+1];
++  if(gsr_encode(r->old,g8_invalid_registers(&s->firmware),pages))for(unsigned repeat=0;repeat<3;repeat++)for(unsigned page=0;page<GSR_PAGES;page++){
++   for(unsigned part=0;part<GSR_PARTS;part++)printf("ZGSP%u%u %s\n",page+1,part+1,pages[page][part]);
++   zg_sleep(1500);
++  }
++ }
++ printf("ZIYI GMU G13 context selected%u rebased%u cleanup%u rawRestore%u\n",!!(r->flags&G13_CONTEXT_REINIT),!!(r->flags&G13_CONTEXT_REBASED),!!(r->flags&G13_CONTEXT_CLEANUP),r->restored);
+  if(r->poison||r->retain_allocations||!r->lease_released)s->clocks.poison=1;return success;
+ }
+ static int zg_qualified(void*ctx,struct g7c_record*clocks){

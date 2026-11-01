@@ -89,8 +89,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
       "target": "bsd/dev/ziyi_gpu_probe.c",
-      "sha256": "540e410083943a1b53e407a04b0d4236c43b492547221fd3d2f3c39a612c4fea",
-      "bytes": 23060
+      "sha256": "923ee47f11bbfedd6bed10dd03f0551686fa3d3cc70f73e37502aac32f5b6257",
+      "bytes": 27216
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -185,20 +185,20 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_fwinit.h",
       "target": "bsd/dev/ziyi_g8_fwinit.h",
-      "sha256": "cfe1fad98d3e889292660dacdad48bbfbc4edac4c6765eb0a51d4f030a2617f4",
-      "bytes": 3115
+      "sha256": "e49d980ea755beb5b3bb2fb9071a1467d7d5ef0ccf5818826077b996bbc2af69",
+      "bytes": 3353
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_engine.c",
       "target": "bsd/dev/ziyi_g8_engine.c",
-      "sha256": "c474af9ca481801f73cdca4538b51120663518b1f135b56353b9a993e28ede4b",
-      "bytes": 22575
+      "sha256": "42a28e7dbc28a83388113cf032aeaaa161bc0cd43b5efe8b6456b21e17a2bca0",
+      "bytes": 26328
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_registers.c",
       "target": "bsd/dev/ziyi_g8_registers.c",
-      "sha256": "44369c93acaf43e6993f1d323df7e072a6d479921df2c5dd014b41ccfd7ad042",
-      "bytes": 1321
+      "sha256": "4a6e27aff1db63832bd58487792bac91c99ded4ee26bb8523f919ce4092cfe1c",
+      "bytes": 1363
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_memory.h",
@@ -337,8 +337,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
-      "sha256": "540e410083943a1b53e407a04b0d4236c43b492547221fd3d2f3c39a612c4fea",
-      "bytes": 23060
+      "sha256": "923ee47f11bbfedd6bed10dd03f0551686fa3d3cc70f73e37502aac32f5b6257",
+      "bytes": 27216
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -542,18 +542,18 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_fwinit.h",
-      "sha256": "cfe1fad98d3e889292660dacdad48bbfbc4edac4c6765eb0a51d4f030a2617f4",
-      "bytes": 3115
+      "sha256": "e49d980ea755beb5b3bb2fb9071a1467d7d5ef0ccf5818826077b996bbc2af69",
+      "bytes": 3353
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_engine.c",
-      "sha256": "c474af9ca481801f73cdca4538b51120663518b1f135b56353b9a993e28ede4b",
-      "bytes": 22575
+      "sha256": "42a28e7dbc28a83388113cf032aeaaa161bc0cd43b5efe8b6456b21e17a2bca0",
+      "bytes": 26328
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_registers.c",
-      "sha256": "44369c93acaf43e6993f1d323df7e072a6d479921df2c5dd014b41ccfd7ad042",
-      "bytes": 1321
+      "sha256": "4a6e27aff1db63832bd58487792bac91c99ded4ee26bb8523f919ce4092cfe1c",
+      "bytes": 1363
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_memory.h",
@@ -597,8 +597,8 @@
     },
     {
       "path": "tools/ziyi-g8/test_g8_engine.c",
-      "sha256": "07d9fb7ef2cdbcb7fc6f52b43ae370e2f23fd02861f5f5f5ecb95811555f7b36",
-      "bytes": 12349
+      "sha256": "a209a39ea191ebe9080e0e4cb57313e436981e8986a812c67b720208cfbf18dd",
+      "bytes": 16037
     },
     {
       "path": "tools/ziyi-g8/test_g8_slot.c",
@@ -607,13 +607,18 @@
     },
     {
       "path": "tools/ziyi-g8/run_host_tests.py",
-      "sha256": "3ff5dff2857860fb8c14c23e67ca55353301bcb0ccf5d62ae824f9fc607ef3dc",
-      "bytes": 2008
+      "sha256": "5e8dbb93b37c3bb158066cb194a4041477d0af14526228bf98f854db71416ca3",
+      "bytes": 2083
     },
     {
       "path": "tools/ziyi-g8/test_g11_record.c",
       "sha256": "712bae315446290740ced4c8a00313461d95215e64d2d47d463af8cf288fe911",
       "bytes": 3963
+    },
+    {
+      "path": "tools/ziyi-g8/test_g13_snapshot.c",
+      "sha256": "b2377233e69747ed963221f73152c19164a02007432a4eda04b3998cf3c0c577",
+      "bytes": 5248
     }
   ],
   "startupHook": {
@@ -649,7 +654,9 @@
     "ZIYI GMU result",
     "ZIYI GMU G12 bus observations",
     "ZGDR%u %s",
-    "ZIYI GMU G12 normalized"
+    "ZIYI GMU G12 normalized",
+    "ZIYI GMU G13 context selected",
+    "ZGSP%u%u %s"
   ],
   "linkedFunctions": [
     "_ziyi_gpu_probe_start",
@@ -664,7 +671,7 @@
   ],
   "patch": "xnu/patches/0085-ziyi-hw-in-system.patch",
   "patchSHA256": "21cb6dd39f645a80fc5b5209434a8a75395167ac4371650eb0fa7946eeed2c9d",
-  "featureScope": "CRC4866830f observed old8/fresh8/ACK3; exact inherited tuple, vendor HALT0 only, forbid bit3 stores, normalized cleanup distinct from raw restoration",
+  "featureScope": "Initialize only disabled wholly unrouted CB2 from Stage2/AArch32; fresh rebase after format and TCR; explicit normalized closure, no raw restore claim; full37-value retained CRC; bounded FW100 only, not GPU UI",
   "unchangedAPISources": [
     {
       "path": "pexpert/gen/device_tree.c",
@@ -693,5 +700,9 @@
   "g11RetainedCrcRecord": true,
   "g12Patch": "xnu/patches/0093-ziyi-g12-vendor-halt-zero.patch",
   "g12PatchSHA256": "f6754c886647de509602f67ae4711c30a11f0b79734f73df40bf2ce2cc523e56",
-  "g12ExactTupleVendorZero": true
+  "g12ExactTupleVendorZero": true,
+  "g13Patch": "xnu/patches/0094-ziyi-g13-unassigned-context-init.patch",
+  "g13PatchSHA256": "b3e7b0c1aeebbf37d8f9a675e07d0248bb06f60eb309c22a000ec8a68805aa58",
+  "g13ContextFormatReinit": true,
+  "g13FullSnapshotCrc": true
 }
