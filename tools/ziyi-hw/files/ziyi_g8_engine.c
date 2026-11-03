@@ -91,7 +91,7 @@ int g8_store_guard(const struct g8_workspace*w,uint64_t at,unsigned width,uint64
  if(r->phase==G8_CONFIG_RESTORE){if(i>=24||value!=r->old[i]||(i==20||i==21?pending!=0:0))return 0;return d->kind!=G8_MASK||!((value^now)&~d->mask);}
  if(r->phase==G8_CONTEXT_RESTORE){if(i<24||i==36)return 0;if(i==26&&value==0)return 1;return value==restore_target(r,i)&&(!(r->flags&G8_MAPPED));}
  if(r->phase==G8_UNROUTE)return (i==34&&value==0)||(i==35&&value==0x20000&&r->expected[34]==0);
- if(r->phase==G8_INSTALL){if(i<24||i==36)return 0;if((r->flags&G13_CONTEXT_REINIT)&&((i>=27&&i<=33)||(i==26&&value))&&!(r->flags&G13_CONTEXT_REBASED))return 0;if(i==26&&value==0)return 1;if((r->flags&G13_CONTEXT_REINIT)&&(i==30||i==31||(i==26&&value))&&!(r->flags&G13_CONTEXT_TCR_READY))return 0;if(i==34)return value==0x84000005&&r->expected[26]==0xc01027&&r->expected[35]==0x302;return value==target(w,i);}
+ if(r->phase==G8_INSTALL){if(i<24||i==36)return 0;if((r->flags&G13_CONTEXT_REINIT)&&((i>=27&&i<=33)||(i==26&&value))&&!(r->flags&G13_CONTEXT_REBASED))return 0;if(i==26&&value==0)return 1;if((r->flags&G13_CONTEXT_REINIT)&&(i==30||i==31||(i==26&&value))&&!(r->flags&G13_CONTEXT_TCR_READY))return 0;if(i==34)return value==0x84000005&&r->expected[26]==0xc00027&&r->expected[35]==0x302;return value==target(w,i);}
  if(r->phase!=G8_CONFIG||i>=24)return 0;
  if(d->kind==G8_MASK)return value==(r->old[i]|d->mask)&&!((value^now)&~d->mask);
  if(d->kind==G8_INTERFRAME)return value==0x9c40400||(value==0x9c40403&&now==0x9c40400)||(value==0x9c40407&&now==0x9c40403);

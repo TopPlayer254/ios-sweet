@@ -1,0 +1,31 @@
+--- a/bsd/dev/ziyi_g8_engine.c
++++ b/bsd/dev/ziyi_g8_engine.c
+@@ -91,7 +91,7 @@
+  if(r->phase==G8_CONFIG_RESTORE){if(i>=24||value!=r->old[i]||(i==20||i==21?pending!=0:0))return 0;return d->kind!=G8_MASK||!((value^now)&~d->mask);}
+  if(r->phase==G8_CONTEXT_RESTORE){if(i<24||i==36)return 0;if(i==26&&value==0)return 1;return value==restore_target(r,i)&&(!(r->flags&G8_MAPPED));}
+  if(r->phase==G8_UNROUTE)return (i==34&&value==0)||(i==35&&value==0x20000&&r->expected[34]==0);
+- if(r->phase==G8_INSTALL){if(i<24||i==36)return 0;if((r->flags&G13_CONTEXT_REINIT)&&((i>=27&&i<=33)||(i==26&&value))&&!(r->flags&G13_CONTEXT_REBASED))return 0;if(i==26&&value==0)return 1;if((r->flags&G13_CONTEXT_REINIT)&&(i==30||i==31||(i==26&&value))&&!(r->flags&G13_CONTEXT_TCR_READY))return 0;if(i==34)return value==0x84000005&&r->expected[26]==0xc01027&&r->expected[35]==0x302;return value==target(w,i);}
++ if(r->phase==G8_INSTALL){if(i<24||i==36)return 0;if((r->flags&G13_CONTEXT_REINIT)&&((i>=27&&i<=33)||(i==26&&value))&&!(r->flags&G13_CONTEXT_REBASED))return 0;if(i==26&&value==0)return 1;if((r->flags&G13_CONTEXT_REINIT)&&(i==30||i==31||(i==26&&value))&&!(r->flags&G13_CONTEXT_TCR_READY))return 0;if(i==34)return value==0x84000005&&r->expected[26]==0xc00027&&r->expected[35]==0x302;return value==target(w,i);}
+  if(r->phase!=G8_CONFIG||i>=24)return 0;
+  if(d->kind==G8_MASK)return value==(r->old[i]|d->mask)&&!((value^now)&~d->mask);
+  if(d->kind==G8_INTERFRAME)return value==0x9c40400||(value==0x9c40403&&now==0x9c40400)||(value==0x9c40407&&now==0x9c40403);
+--- a/bsd/dev/ziyi_g8_registers.c
++++ b/bsd/dev/ziyi_g8_registers.c
+@@ -5,6 +5,8 @@
+ #define L(a,v) {a,0,v,4,G8_LITERAL}
+ #define A(a,m,v,w) {a,m,v,w,G8_ARCH}
+ /* TCR2: PASize36, AS16, named TBI0/TBI1, upstream SEP; no reserved-bit mask. */
++/* G15: ASIDPNE=0 is the explicit coordinated namespace. Full readback
++ * remains exact; no general RAZ/WI assumption or ignored-bit policy. */
+ const struct g8_reg g8_regs[G8_REGS]={
+  L(0x3d7e3c4,1),L(0x3d7e3c0,1),L(0x3d7e730,1),
+  {0x3d7e070,0,0,4,G8_FWSTATUS},L(0x3d7e004,2),
+@@ -16,7 +18,7 @@
+  {0x3d7e000,1,0,4,G8_RESET},L(0x3d7e64c,0xffffffff),L(0x3d8ec18,0xffffffff),L(0x3d8ec40,0),
+  {0x3d0f114,3,0,4,G8_GBIF},
+  A(0x3da1008,0x3f3ff,0x1f300,4),A(0x3da1808,1,1,4),
+- A(0x3db2000,0x0fdf11f7,0xc01027,4),L(0x3db2004,0x32b),
++ A(0x3db2000,0x0fdf11f7,0xc00027,4),L(0x3db2004,0x32b),
+  A(0x3db2010,0x3807f,0x38071,4),A(0x3db2030,0x80c0ffbf,0x803519,4),
+  A(0x3db2020,0xffff000ffffff000ULL,0,8),A(0x3db2028,0xffff000ffffff000ULL,0x2000000000000ULL,8),
+  A(0x3db2038,0xffffffff,0xf404ff44,4),A(0x3db203c,0xffffffff,0xefe4,4),

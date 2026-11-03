@@ -261,11 +261,11 @@
   },
   "bsd/dev/ziyi_g8_engine.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "d38bba3d1e1d0cfb6df36b135e06823c82a7102ad93ae314fb89b824d5feb563"
+    "after": "c6a44346556d5f23e977c821325d29e897e33478ba7800079a524c0cec136b39"
   },
   "bsd/dev/ziyi_g8_registers.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "6d914675ac4d15e1a3b80e81d6f57d976a8437a15735d1b5bc5a904e36a94196"
+    "after": "0dbf51e2ced56098e4a7fbd3a321692e321d06ca992424d9338c744d8fceb955"
   },
   "bsd/dev/ziyi_g8_memory.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
