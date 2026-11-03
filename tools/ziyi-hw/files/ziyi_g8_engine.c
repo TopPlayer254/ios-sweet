@@ -92,9 +92,10 @@ int g8_store_guard(const struct g8_workspace*w,uint64_t at,unsigned width,uint64
  if(r->phase==G8_CONTEXT_RESTORE){if(i<24||i==36)return 0;if(i==26&&value==0)return 1;return value==restore_target(r,i)&&(!(r->flags&G8_MAPPED));}
  if(r->phase==G8_UNROUTE)return (i==34&&value==0)||(i==35&&value==0x20000&&r->expected[34]==0);
  if(r->phase==G8_INSTALL){if(i<24||i==36)return 0;if((r->flags&G13_CONTEXT_REINIT)&&((i>=27&&i<=33)||(i==26&&value))&&!(r->flags&G13_CONTEXT_REBASED))return 0;if(i==26&&value==0)return 1;if((r->flags&G13_CONTEXT_REINIT)&&(i==30||i==31||(i==26&&value))&&!(r->flags&G13_CONTEXT_TCR_READY))return 0;if(i==34)return value==0x84000005&&r->expected[26]==0xc00027&&r->expected[35]==0x302;return value==target(w,i);}
- if(r->phase!=G8_CONFIG||i>=24)return 0;
+ if(r->phase!=G8_CONFIG||i>=24||i==16||i==17)return 0;
  if(d->kind==G8_MASK)return value==(r->old[i]|d->mask)&&!((value^now)&~d->mask);
- if(d->kind==G8_INTERFRAME)return value==0x9c40400||(value==0x9c40403&&now==0x9c40400)||(value==0x9c40407&&now==0x9c40403);
+ /* GPU_HW_ACTIVE: IFPC/SPTP are not enabled in this bounded probe. */
+ if(d->kind==G8_INTERFRAME)return value==0x9c40400;
  return value==target(w,i);
 }
 static uint64_t read_value(struct g8_workspace*w,const struct g8_io*io,uint64_t at,unsigned width){
@@ -233,7 +234,8 @@ int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io)
  const unsigned setup[]={25,24,28,29,30,31,32,33,26,35,34};for(unsigned n=0;n<sizeof(setup)/sizeof(setup[0]);n++)if(!set_reg(w,io,setup[n],target(w,setup[n])))goto done;r->flags|=G8_MAPPED;
  if(!hashes_valid(w)){fail(r,G8_BACKUP,1);goto done;}r->phase=G8_LOAD;for(unsigned off=0;off<G8_TCM_BYTES;off+=4){uint32_t value;if(payload_word(w,off,&value)){r->tcm_cursor=off;if(!put(w,io,tcm_address(off),4,value))goto done;}}
  const uint32_t version[]={0x30020004,0xffffffff,0x30010002,0,0x20010000};for(unsigned i=0;i<5;i++)if(read_value(w,io,0x3d74fe0+4*i,4)!=version[i]||r->poison){fail(r,G8_FIRMWARE,0);goto restore;}r->flags|=G8_LOADED;r->phase=G8_CONFIG;
- for(unsigned i=0;i<23;i++){if(i==19)continue;uint64_t value=g8_regs[i].kind==G8_MASK?r->old[i]|g8_regs[i].mask:target(w,i);if(!set_reg(w,io,i,value))goto done;if(i==15&&(!set_reg(w,io,15,0x9c40403)||!set_reg(w,io,15,0x9c40407)))goto done;}
+ /* Vendor active-mode baseline omits both IFPC/SPTP hysteresis writes. */
+ for(unsigned i=0;i<23;i++){if(i==19||i==16||i==17)continue;uint64_t value=g8_regs[i].kind==G8_MASK?r->old[i]|g8_regs[i].mask:target(w,i);if(!set_reg(w,io,i,value))goto done;}
  g7_sha256(w->firmware,G8_FW_BYTES,hash);if(!same(hash,w->blob.firmware_sha256,32)){fail(r,G8_FIRMWARE,0);goto restore;}
  if(read_value(w,io,FW_RESULT,4)||r->poison){fail(r,G8_FIRMWARE,0);goto restore;}
  if(!bus_release(w,io))goto done;

@@ -21,3 +21,5 @@
 /xnu/patches/0095-ziyi-g14-tcr2-named-tbi.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0096-ziyi-g15-sctlr-coordinated-asid.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0097-ziyi-g16-gmu-active-mode.patch -text whitespace=cr-at-eol
