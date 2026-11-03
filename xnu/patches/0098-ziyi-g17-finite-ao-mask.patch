@@ -1,0 +1,20 @@
+--- a/bsd/dev/ziyi_g8_registers.c
++++ b/bsd/dev/ziyi_g8_registers.c
+@@ -7,6 +7,8 @@
+ /* TCR2: PASize36, AS16, named TBI0/TBI1, upstream SEP; no reserved-bit mask. */
+ /* G15: ASIDPNE=0 is the explicit coordinated namespace. Full readback
+  * remains exact; no general RAZ/WI assumption or ignored-bit policy. */
++/* G17: finite observed all-masked AO value for this qualified A662 board.
++ * Whole readback remains exact. No generic reserved-bit/RazWi permission. */
+ const struct g8_reg g8_regs[G8_REGS]={
+  L(0x3d7e3c4,1),L(0x3d7e3c0,1),L(0x3d7e730,1),
+  {0x3d7e070,0,0,4,G8_FWSTATUS},L(0x3d7e004,2),
+@@ -15,7 +17,7 @@
+  L(0x3d7d03c,1),L(0x3d7d000,1),L(0x3d7d004,1),
+  {0x3d7e300,7,0x9c40400,4,G8_INTERFRAME},{0x3d7e304,0xffffffff,0xa1680,4,G13_HYST},{0x3d7e308,0xffffffff,0xa1680,4,G13_HYST},
+  {0x3d7e3a0,0xf11,0xf11,4,G8_MASK},
+- {0x3d7e000,1,0,4,G8_RESET},L(0x3d7e64c,0xffffffff),L(0x3d8ec18,0xffffffff),L(0x3d8ec40,0),
++ {0x3d7e000,1,0,4,G8_RESET},L(0x3d7e64c,0xffffffff),L(0x3d8ec18,0x3f),L(0x3d8ec40,0),
+  {0x3d0f114,3,0,4,G8_GBIF},
+  A(0x3da1008,0x3f3ff,0x1f300,4),A(0x3da1808,1,1,4),
+  A(0x3db2000,0x0fdf11f7,0xc00027,4),L(0x3db2004,0x32b),

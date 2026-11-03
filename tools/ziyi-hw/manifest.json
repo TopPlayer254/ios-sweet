@@ -197,8 +197,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_registers.c",
       "target": "bsd/dev/ziyi_g8_registers.c",
-      "sha256": "0dbf51e2ced56098e4a7fbd3a321692e321d06ca992424d9338c744d8fceb955",
-      "bytes": 1591
+      "sha256": "121d9a6aa1ccf855ec5a6fddc2dc14bb385c578164b7725446afbfdcec8c7cc2",
+      "bytes": 1740
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_memory.h",
@@ -552,8 +552,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_registers.c",
-      "sha256": "0dbf51e2ced56098e4a7fbd3a321692e321d06ca992424d9338c744d8fceb955",
-      "bytes": 1591
+      "sha256": "121d9a6aa1ccf855ec5a6fddc2dc14bb385c578164b7725446afbfdcec8c7cc2",
+      "bytes": 1740
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_memory.h",
@@ -597,8 +597,8 @@
     },
     {
       "path": "tools/ziyi-g8/test_g8_engine.c",
-      "sha256": "b81758323efcb20729d92acb3c18c869a60b3638155b41fce56f1c0470008840",
-      "bytes": 19334
+      "sha256": "1f8af2ced85775a3bbc3a9e8698bbdd1f4cfbf514a919dc2a289bdea6523e97f",
+      "bytes": 19935
     },
     {
       "path": "tools/ziyi-g8/test_g8_slot.c",
@@ -607,7 +607,7 @@
     },
     {
       "path": "tools/ziyi-g8/run_host_tests.py",
-      "sha256": "dfc9db0a82a9f8d4ecd261a53428021a7f6e7477ba08f5020a4dc6e8baceb218",
+      "sha256": "b756a7ff35737e7afa52d2ea5590b7f8030f4c857015d1038877ad16ae8c5a85",
       "bytes": 2083
     },
     {
@@ -671,7 +671,7 @@
   ],
   "patch": "xnu/patches/0085-ziyi-hw-in-system.patch",
   "patchSHA256": "21cb6dd39f645a80fc5b5209434a8a75395167ac4371650eb0fa7946eeed2c9d",
-  "featureScope": "Bounded FW100 in vendor GPU_HW_ACTIVE mode: omit IFPC/SPTP enables and hysteresis stores; exact readback/reset/ownership retained; table/adapter/callbacks unchanged; no native FW execution or UI claim",
+  "featureScope": "Explicit finite board-qualified AO interrupt mask0x3f, exact complete readback; engine/adapter/codec byte-exact G16; no generic reserved-bit semantics or native execution/UI claim",
   "unchangedAPISources": [
     {
       "path": "pexpert/gen/device_tree.c",
@@ -713,5 +713,8 @@
   "g15SctlrCoordinatedAsid": true,
   "g16Patch": "xnu/patches/0097-ziyi-g16-gmu-active-mode.patch",
   "g16PatchSHA256": "ccf44c71a8cc6f856c8474deeb9e493d1197f89bb1beb38b25265265eeca3c04",
-  "g16ActiveGmuMode": true
+  "g16ActiveGmuMode": true,
+  "g17Patch": "xnu/patches/0098-ziyi-g17-finite-ao-mask.patch",
+  "g17PatchSHA256": "eab88c530d2f3f26cba4537c402d003f1f7c0daabe047c7e6ad99afbd34edd8b",
+  "g17FiniteAoMask": true
 }

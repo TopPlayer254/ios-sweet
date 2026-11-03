@@ -265,7 +265,7 @@
   },
   "bsd/dev/ziyi_g8_registers.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "0dbf51e2ced56098e4a7fbd3a321692e321d06ca992424d9338c744d8fceb955"
+    "after": "121d9a6aa1ccf855ec5a6fddc2dc14bb385c578164b7725446afbfdcec8c7cc2"
   },
   "bsd/dev/ziyi_g8_memory.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
