@@ -637,8 +637,8 @@
     },
     {
       "path": "tools/ziyi-ui/audit.py",
-      "sha256": "0455fac4f1fe83243719b51926dd9f5a6fbbc0df1bebb6389b33013b4074e43f",
-      "bytes": 3291
+      "sha256": "639fa5df2c70c657ad3c4482345be565b1f391470cd21fe329c029ee23d5d4db",
+      "bytes": 3503
     },
     {
       "path": "tools/ziyi-ui/files/bsd/dev/sweet_touch.c",

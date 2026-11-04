@@ -9,7 +9,8 @@ def branch_to(data,parsed,caller,target,link):
  addr,code=body(data,parsed,caller);dest,_=body(data,parsed,target);found=[]
  for off in range(0,len(code)-3,4):
   w=struct.unpack_from('<I',code,off)[0]
-  if w&0xfc000000!=(0x94000000 if link else 0x14000000):continue
+  allowed=(0x94000000,0x14000000) if link is None else (0x94000000 if link else 0x14000000,)
+  if w&0xfc000000 not in allowed:continue
   imm=w&0x3ffffff;imm=(imm^0x2000000)-0x2000000
   if addr+off+4*imm==dest:found.append(hex(addr+off))
  assert found,(caller,target,'required actual branch absent');return found
@@ -20,7 +21,9 @@ def validate_kernel(data,parsed,function_bytes):
  for name in [method,aks,'_zt_thread']:
   r=function_bytes(data,parsed,name);r['sampleSHA256']=sha(r.pop('sample'));r['address']=hex(r['address']);receipts.append(r)
  address,wrapper=body(data,parsed,'_sweet_hid_touch_frame');assert 16<=len(wrapper)<=128
- return dict(linkedFunctions=receipts,wrapper=dict(address=hex(address),bytes=len(wrapper),sha256=sha(wrapper),actualTailCalls=branch_to(data,parsed,'_sweet_hid_touch_frame',method,False)),actualDriverCalls=branch_to(data,parsed,'_zt_thread','_sweet_hid_touch_frame',True))
+ # The C wrapper returns int while touchFrame returns bool. ARM64 may use
+ # BL + epilogue rather than a tail B; both must reach the exact method.
+ return dict(linkedFunctions=receipts,wrapper=dict(address=hex(address),bytes=len(wrapper),sha256=sha(wrapper),actualCalls=branch_to(data,parsed,'_sweet_hid_touch_frame',method,None)),actualDriverCalls=branch_to(data,parsed,'_zt_thread','_sweet_hid_touch_frame',True))
 def audit(root,data,parsed):
  root=Path(root);sys.path.insert(0,str(root/'tools/ziyi-hw'));from macho_text import function_bytes
  kit=root/'tools/ziyi-ui';m=json.loads((kit/'manifest.json').read_text());assert m['baseCommit']=='df4b84452d5ffb35ab475e8fa1739dc0cf927ac4' and len(m['sources'])==3
