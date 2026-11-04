@@ -57,7 +57,7 @@ def prepare_pinned(source,out):
 # Reviewed private framebuffer/HID/CPU implementations are not IIG declarations
 # dependency. Its reviewed rendering-only change is pinned on both sides;
 # every other inherited source/header and every generated RPC byte stays exact.
-IMPLEMENTATION_OVERRIDE={'iokit/Kernel/arm/SweetFramebuffer.cpp': ('aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f', '66176b469e1eacfd0a386db7c087b4615880eac4cd2242c325948adcf079a8c2'), 'iokit/Kernel/arm/hid/SweetHID.cpp': ('cb8afe01c324d084d95e46bfe42575a2e1200f07155326bdd1448ee4c71ccb8a', '330eacf65469f17d73eac782a2b936c36ba6a4766035a08fb4a292551acefd3e'), 'iokit/Kernel/arm/SweetCPU.cpp': ('73e4e1e0dfb0af5b82581d44d34ec0130b84b7bbcc86198a5e63540df148086d', '0aed0c5cd7a25fdd4a908f5be9334e7e7f30458fc79e595a91680fb6def82902')}
+IMPLEMENTATION_OVERRIDE={'iokit/Kernel/arm/SweetFramebuffer.cpp': ('aa561c09542267087427deee903fb7afacb20e2265044a8e1b12586b5337565f', '66176b469e1eacfd0a386db7c087b4615880eac4cd2242c325948adcf079a8c2'), 'iokit/Kernel/arm/hid/SweetHID.cpp': ('cb8afe01c324d084d95e46bfe42575a2e1200f07155326bdd1448ee4c71ccb8a', 'aea7839978f70c90c556dd76396ab40cb38df4d60416ea7f5e18c98603f29a5d'), 'iokit/Kernel/arm/SweetCPU.cpp': ('73e4e1e0dfb0af5b82581d44d34ec0130b84b7bbcc86198a5e63540df148086d', '0aed0c5cd7a25fdd4a908f5be9334e7e7f30458fc79e595a91680fb6def82902'), 'iokit/Kernel/arm/SweetKeyStore.cpp': ('0224ef7ac3fd78511b4cb4369f9099352f80a9b434ae3fd15b5a3dbd1f145d55', '7d67ae95a3ebfc4d2c403facf7a85c3950d6401ac68f0c16eb431d1c0bdaa6c2')}
 def verify_inputs(root,manifest):
     reviewed={}
     for p,digest in manifest['inputs'].items():

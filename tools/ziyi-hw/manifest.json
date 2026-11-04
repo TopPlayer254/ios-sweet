@@ -89,8 +89,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
       "target": "bsd/dev/ziyi_gpu_probe.c",
-      "sha256": "923ee47f11bbfedd6bed10dd03f0551686fa3d3cc70f73e37502aac32f5b6257",
-      "bytes": 27216
+      "sha256": "832bb7847bfd05e4602521a038950133f9142d9b721ad7564779a612215c2a52",
+      "bytes": 27485
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -185,14 +185,14 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_fwinit.h",
       "target": "bsd/dev/ziyi_g8_fwinit.h",
-      "sha256": "e49d980ea755beb5b3bb2fb9071a1467d7d5ef0ccf5818826077b996bbc2af69",
-      "bytes": 3353
+      "sha256": "990df16fb02a3c177a628c79b14117e7cf8b6efcfbc8072705d888e53e4326cf",
+      "bytes": 3379
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_engine.c",
       "target": "bsd/dev/ziyi_g8_engine.c",
-      "sha256": "43b2e10b0b104d97842e1811297c1e68c6a571526fea30e19e21670339bc72f9",
-      "bytes": 26353
+      "sha256": "83c3f68f3330afc9d8f1a00141e96f82e5c741a4c30a04238fce5df5053b8f1d",
+      "bytes": 27595
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_registers.c",
@@ -337,8 +337,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
-      "sha256": "923ee47f11bbfedd6bed10dd03f0551686fa3d3cc70f73e37502aac32f5b6257",
-      "bytes": 27216
+      "sha256": "832bb7847bfd05e4602521a038950133f9142d9b721ad7564779a612215c2a52",
+      "bytes": 27485
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -542,13 +542,13 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_fwinit.h",
-      "sha256": "e49d980ea755beb5b3bb2fb9071a1467d7d5ef0ccf5818826077b996bbc2af69",
-      "bytes": 3353
+      "sha256": "990df16fb02a3c177a628c79b14117e7cf8b6efcfbc8072705d888e53e4326cf",
+      "bytes": 3379
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_engine.c",
-      "sha256": "43b2e10b0b104d97842e1811297c1e68c6a571526fea30e19e21670339bc72f9",
-      "bytes": 26353
+      "sha256": "83c3f68f3330afc9d8f1a00141e96f82e5c741a4c30a04238fce5df5053b8f1d",
+      "bytes": 27595
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_registers.c",
@@ -597,8 +597,8 @@
     },
     {
       "path": "tools/ziyi-g8/test_g8_engine.c",
-      "sha256": "1f8af2ced85775a3bbc3a9e8698bbdd1f4cfbf514a919dc2a289bdea6523e97f",
-      "bytes": 19935
+      "sha256": "430731498491a9c2f9f15516ee3f2cea555588f4d5216e5997d0f877c249d540",
+      "bytes": 21019
     },
     {
       "path": "tools/ziyi-g8/test_g8_slot.c",
@@ -607,8 +607,8 @@
     },
     {
       "path": "tools/ziyi-g8/run_host_tests.py",
-      "sha256": "b756a7ff35737e7afa52d2ea5590b7f8030f4c857015d1038877ad16ae8c5a85",
-      "bytes": 2083
+      "sha256": "af22133573449fb037cdae67f14a3f84fffbcd5aede5bcfb8b3c5ad08ebd90c5",
+      "bytes": 2292
     },
     {
       "path": "tools/ziyi-g8/test_g11_record.c",
@@ -619,6 +619,61 @@
       "path": "tools/ziyi-g8/test_g13_snapshot.c",
       "sha256": "b2377233e69747ed963221f73152c19164a02007432a4eda04b3998cf3c0c577",
       "bytes": 5248
+    },
+    {
+      "path": "tools/ziyi-g8/test_g18_native_start.c",
+      "sha256": "b2e638e5fddb1a727e902fdaf1ab54cf7532bcb41bb6fb8ef1140b0e120ae63b",
+      "bytes": 3615
+    },
+    {
+      "path": "tools/ziyi-ui/aks-host-main.inc",
+      "sha256": "28e8a28601445d9d051145a5f6da90ba259f3455de203442b708676585001866",
+      "bytes": 1888
+    },
+    {
+      "path": "tools/ziyi-ui/aks-host-prelude.inc",
+      "sha256": "cd606de21ba5ed5bad380de0446f01d1a9c822d928dde0120271cad2c0890641",
+      "bytes": 1019
+    },
+    {
+      "path": "tools/ziyi-ui/audit.py",
+      "sha256": "0455fac4f1fe83243719b51926dd9f5a6fbbc0df1bebb6389b33013b4074e43f",
+      "bytes": 3291
+    },
+    {
+      "path": "tools/ziyi-ui/files/bsd/dev/sweet_touch.c",
+      "sha256": "f54f3630b6788f169e1832105ecc2ecc9ad971412653716510011e55e4e6e8aa",
+      "bytes": 10599
+    },
+    {
+      "path": "tools/ziyi-ui/files/iokit/Kernel/arm/hid/SweetHID.cpp",
+      "sha256": "aea7839978f70c90c556dd76396ab40cb38df4d60416ea7f5e18c98603f29a5d",
+      "bytes": 19983
+    },
+    {
+      "path": "tools/ziyi-ui/files/iokit/Kernel/arm/SweetKeyStore.cpp",
+      "sha256": "7d67ae95a3ebfc4d2c403facf7a85c3950d6401ac68f0c16eb431d1c0bdaa6c2",
+      "bytes": 8433
+    },
+    {
+      "path": "tools/ziyi-ui/hid-host-main.inc",
+      "sha256": "243c23bee15702701bfbdcd39581564ccffca6dc08c0ae1451c9c6e3809c1f58",
+      "bytes": 2769
+    },
+    {
+      "path": "tools/ziyi-ui/hid-host-prelude.inc",
+      "sha256": "2016d22a988315ae8a8fb5c09308a2e084307cb9aef18360b9c2318a913439a4",
+      "bytes": 2677
+    },
+    {
+      "path": "tools/ziyi-ui/manifest.json",
+      "sha256": "3cb546f235ad898d695600ad0da3110e658e6e726f505710997d5c27e3007aae",
+      "bytes": 1181
+    },
+    {
+      "path": "tools/ziyi-ui/run_host_tests.py",
+      "sha256": "13bea5989d7c46c961d9a745e40b11f4b60a24da92386da98cc30ed328cd6f7f",
+      "bytes": 2262
     }
   ],
   "startupHook": {
@@ -671,7 +726,7 @@
   ],
   "patch": "xnu/patches/0085-ziyi-hw-in-system.patch",
   "patchSHA256": "21cb6dd39f645a80fc5b5209434a8a75395167ac4371650eb0fa7946eeed2c9d",
-  "featureScope": "Explicit finite board-qualified AO interrupt mask0x3f, exact complete readback; engine/adapter/codec byte-exact G16; no generic reserved-bit semantics or native execution/UI claim",
+  "featureScope": "Finite vendor pre-CM3 HALT0/ACK3 handoff for qualified initial8/3, with fresh actual native HALT+ACK guards; observed release remains separate; retained memory on uncertainty; no native FW100/UI claim",
   "unchangedAPISources": [
     {
       "path": "pexpert/gen/device_tree.c",
@@ -716,5 +771,10 @@
   "g16ActiveGmuMode": true,
   "g17Patch": "xnu/patches/0098-ziyi-g17-finite-ao-mask.patch",
   "g17PatchSHA256": "eab88c530d2f3f26cba4537c402d003f1f7c0daabe047c7e6ad99afbd34edd8b",
-  "g17FiniteAoMask": true
+  "g17FiniteAoMask": true,
+  "g18Patch": "xnu/patches/0099-ziyi-g18-vendor-start.patch",
+  "g18PatchSHA256": "9a71f59646497742c3a991a5b182bc5adcdc2fe1c4f529b2ff57d1a090bb44e0",
+  "g18VendorStart": true,
+  "uiInputFrame": true,
+  "aksBoundedPoll": true
 }

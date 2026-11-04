@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "baseCommit": "df4b84452d5ffb35ab475e8fa1739dc0cf927ac4",
+  "historicalBaselineScopes": 75,
+  "additionalLegacyScopes": [
+    "iokit/Kernel/arm/SweetKeyStore.cpp"
+  ],
+  "sources": [
+    {
+      "target": "iokit/Kernel/arm/hid/SweetHID.cpp",
+      "repository": "tools/ziyi-ui/files/iokit/Kernel/arm/hid/SweetHID.cpp",
+      "beforeSHA256": "330eacf65469f17d73eac782a2b936c36ba6a4766035a08fb4a292551acefd3e",
+      "afterSHA256": "aea7839978f70c90c556dd76396ab40cb38df4d60416ea7f5e18c98603f29a5d"
+    },
+    {
+      "target": "bsd/dev/sweet_touch.c",
+      "repository": "tools/ziyi-ui/files/bsd/dev/sweet_touch.c",
+      "beforeSHA256": "4448f79c3d8360cd37201d0a3cba416645b5601d05f60cbfd8da6e9da1d465af",
+      "afterSHA256": "f54f3630b6788f169e1832105ecc2ecc9ad971412653716510011e55e4e6e8aa"
+    },
+    {
+      "target": "iokit/Kernel/arm/SweetKeyStore.cpp",
+      "repository": "tools/ziyi-ui/files/iokit/Kernel/arm/SweetKeyStore.cpp",
+      "beforeSHA256": "0224ef7ac3fd78511b4cb4369f9099352f80a9b434ae3fd15b5a3dbd1f145d55",
+      "afterSHA256": "7d67ae95a3ebfc4d2c403facf7a85c3950d6401ac68f0c16eb431d1c0bdaa6c2"
+    }
+  ],
+  "nativeOutcomeProven": false
+}

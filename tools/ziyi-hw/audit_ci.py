@@ -7,13 +7,18 @@ OUT.mkdir(parents=True,exist_ok=True)
 manifest=json.loads((KIT/'manifest.json').read_text());base=json.loads((KIT/'base-u25-manifest.json').read_text());full=json.loads((ROOT/'tools/ziyi-ufs/manifest.json').read_text())
 sha=lambda b:hashlib.sha256(b).hexdigest()
 assert len(base)==31 and len(full)==75
+ui=json.loads((ROOT/'tools/ziyi-ui/manifest.json').read_text());ui_rows={r['target']:r for r in ui['sources'] if r['target'] in base};assert len(ui_rows)==2
+reviewed=[]
 unchanged=[]
 for name,row in base.items():
     if name=='bsd/kern/bsd_init.c':continue
+    if name in ui_rows:
+        r=ui_rows[name];assert row['after']==r['beforeSHA256'] and full[name]['before']==row['before'] and full[name]['after']==r['afterSHA256']
+        assert sha((XNU/name).read_bytes())==r['afterSHA256'];reviewed.append(name);continue
     assert full[name]==row,(name,'baseline manifest changed')
     assert sha((XNU/name).read_bytes())==row['after'],name
     unchanged.append(name)
-assert len(unchanged)==30
+assert len(unchanged)==28 and sorted(reviewed)==sorted(ui_rows)
 checks=[]
 for row in manifest['sources']:
     source=ROOT/row['repository'];target=XNU/row['target'];a=source.read_bytes();b=target.read_bytes()
@@ -41,5 +46,5 @@ parsed=text_symbols(data)
 linked=[]
 for name in manifest['linkedFunctions']:
     body=function_bytes(data,parsed,name);sample=body.pop('sample');body['address']=hex(body['address']);body['sampleSHA256']=sha(sample);linked.append(body)
-report=dict(result='ZIYI_HW_IN_SYSTEM_FULL_CI_SOURCE_AND_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),preservedU25Bodies=unchanged,newSources=checks,linkedFunctions=linked,markers=manifest['linkedMarkers'],phoneTested=False,GPUAcceleration=False,WiFiRadio=False)
+report=dict(result='ZIYI_HW_IN_SYSTEM_FULL_CI_SOURCE_AND_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),preservedU25Bodies=unchanged,reviewedUIBodies=reviewed,newSources=checks,linkedFunctions=linked,markers=manifest['linkedMarkers'],phoneTested=False,GPUAcceleration=False,WiFiRadio=False)
 (OUT/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))

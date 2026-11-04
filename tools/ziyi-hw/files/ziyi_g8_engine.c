@@ -80,7 +80,7 @@ int g8_read_allowed(const struct g8_workspace*w,uint64_t at,unsigned width){
 int g8_store_guard(const struct g8_workspace*w,uint64_t at,unsigned width,uint64_t value,uint64_t now,uint32_t reset,uint32_t pending){
  if(!w)return 0;const struct g8_record*r=&w->record;
  if(r->poison||r->lease_released||!r->epoch||(r->flags&(G8_LEASE|G8_SAVED|G8_SCOPED))!=(G8_LEASE|G8_SAVED|G8_SCOPED)||r->saved_crc!=old_crc(r)||r->pending_address!=at||r->pending_value!=value||r->pending_width!=width)return 0;
- if(at==SYSRESET){if(width!=4||now!=r->expected[19]||now>1)return 0;return (r->phase==G8_START&&value==0&&reset==1&&(r->flags&(G8_PUBLISHED|G8_MAPPED|G8_LOADED))==(G8_PUBLISHED|G8_MAPPED|G8_LOADED)&&r->bus_released&&r->expected[23]==0&&r->final_ack==0)||(r->phase==G8_STOP&&value==1&&reset==0&&(r->flags&G8_RELEASED_RESET));}
+ if(at==SYSRESET){if(width!=4||now!=r->expected[19]||now>1)return 0;return (r->phase==G8_START&&value==0&&reset==1&&(r->flags&(G8_PUBLISHED|G8_MAPPED|G8_LOADED))==(G8_PUBLISHED|G8_MAPPED|G8_LOADED)&&r->expected[23]==0&&pending==r->final_ack&&((r->bus_released&&pending==0)||((r->flags&G18_VENDOR_HANDOFF)&&r->initial_halt==8&&r->initial_ack==3&&r->bus_observations==2&&pending==3)))||(r->phase==G8_STOP&&value==1&&reset==0&&(r->flags&G8_RELEASED_RESET));}
  if(reset!=1)return 0;
  int off=tcm_offset(at);if(width==4&&off>=0){if((unsigned)off!=r->tcm_cursor)return 0;if(r->phase==G8_LOAD){uint32_t want;return (r->flags&G8_MAPPED)&&payload_word(w,(unsigned)off,&want)&&value==want;}return r->phase==G8_TCM_RESTORE&&(r->flags&G8_BUS_DRAINED)&&word(w->backup[0]+off)==word(w->backup[1]+off)&&value==word(w->backup[0]+off);}
  if(width==4&&(at==TLBI||at==TLBSYNC))return (r->phase==G8_INSTALL||r->phase==G8_CONTEXT_RESTORE)&&value==(at==TLBI?2u:0u)&&(r->flags&G8_PUBLISHED);
@@ -107,6 +107,7 @@ static int put(struct g8_workspace*w,const struct g8_io*io,uint64_t at,unsigned 
  uint64_t now=mode?read_value(w,io,observe,width):0;uint32_t reset=(uint32_t)read_value(w,io,SYSRESET,4);if(r->poison)return 0;
  uint32_t pending=0;if(r->phase==G8_CONFIG_RESTORE&&(at==0x03d7e64c||at==0x03d8ec18))pending=(uint32_t)read_value(w,io,at==0x03d7e64c?irq_status[0]:irq_status[1],4);
  if(r->phase==G9_RELEASE_BUS&&at==GD_HALT)pending=(uint32_t)read_value(w,io,GD_ACK,4);
+ if(r->phase==G8_START&&at==SYSRESET){if(read_value(w,io,GD_HALT,4)!=0||r->poison)return fail(r,G8_OWNER,1);pending=(uint32_t)read_value(w,io,GD_ACK,4);}
  r->pending_address=at;r->pending_width=width;r->pending_value=value;
  if(!g8_store_guard(w,at,width,value,now,reset,pending))return fail(r,G8_OWNER,1);
  int ok=0;io->write(io->ctx,at,width,value,&ok);r->writes++;if(tcm_offset(at)>=0)r->tcmmodified=1;if(!ok)return fail(r,G8_IO,1);io->barrier(io->ctx);
@@ -126,7 +127,20 @@ static int bus_wait(struct g8_workspace*w,const struct g8_io*io,uint32_t wanted)
 static int bus_release(struct g8_workspace*w,const struct g8_io*io){
  if(!inherited_bus(w->record.initial_halt,w->record.initial_ack)||w->record.old[23]!=w->record.initial_halt)return fail(&w->record,G8_OWNER,1);
  w->record.phase=G9_RELEASE_BUS;
- if(!put(w,io,GD_HALT,4,0)||!bus_wait(w,io,0))return 0;
+ if(!put(w,io,GD_HALT,4,0))return 0;
+ /* Pinned A662 register_config clears HALT, then device_start releases CM3
+  * and polls FW100 without an ACK0 prerequisite. Only the native-qualified
+  * initial8/3 tuple may use this finite handoff. Never report it as release. */
+ if(w->record.initial_halt==8&&w->record.initial_ack==3){
+  unsigned stable=0;
+  for(unsigned n=0;n<2;n++){
+   if(read_value(w,io,SYSRESET,4)!=1||read_value(w,io,GD_HALT,4)!=0||w->record.poison)return fail(&w->record,G8_OWNER,1);
+   uint32_t ack=(uint32_t)read_value(w,io,GD_ACK,4);w->record.final_ack=ack;
+   if(w->record.poison)return 0;if(ack==0)break;if(ack!=3)return fail(&w->record,G8_OWNER,1);stable++;io->barrier(io->ctx);
+  }
+  if(stable==2){w->record.flags|=G18_VENDOR_HANDOFF|G12_BUS_NORMALIZED;return 1;}
+ }
+ if(!bus_wait(w,io,0))return 0;
  w->record.bus_released=1;if(w->record.initial_halt==8)w->record.flags|=G12_BUS_NORMALIZED;return 1;
 }
 static int quiet(struct g8_workspace*w,const struct g8_io*io){uint64_t cx=read_value(w,io,0x03d9953c,4),gx=read_value(w,io,0x03d9905c,4),reset=read_value(w,io,SYSRESET,4),hfi=read_value(w,io,HFI_CTRL,4);return !w->record.poison&&((cx&0x80000000u)&&!(gx&0x80000000u)&&reset==1&&!hfi)?1:fail(&w->record,G8_PREREQ,1);}
@@ -240,7 +254,7 @@ int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io)
  if(read_value(w,io,FW_RESULT,4)||r->poison){fail(r,G8_FIRMWARE,0);goto restore;}
  if(!bus_release(w,io))goto done;
  r->phase=G8_START;if(!set_reg(w,io,19,0))goto done;r->flags&=~G8_HELD_RESET;r->flags|=G8_RELEASED_RESET;r->phase=G8_WAIT;
- for(unsigned i=0;i<100000;i++){uint32_t value=(uint32_t)read_value(w,io,FW_RESULT,4);if(r->poison)goto done;r->expected[3]=value;if((value&0x1ff)==0x100){r->flags|=G8_FW100;break;}if(i==99999)fail(r,G8_TIMEOUT,0);io->delay(io->ctx,1);}
+ for(unsigned i=0;i<100000;i++){uint32_t value=(uint32_t)read_value(w,io,FW_RESULT,4);if(r->poison)goto done;r->expected[3]=value;if((value&0x1ff)==0x100){r->flags|=G8_FW100;if(r->flags&G18_VENDOR_HANDOFF){uint32_t ack=(uint32_t)read_value(w,io,GD_ACK,4);r->final_ack=ack;if(r->poison||ack&~3u){fail(r,G8_OWNER,1);goto done;}if(!ack)r->bus_released=1;}break;}if(i==99999)fail(r,G8_TIMEOUT,0);io->delay(io->ctx,1);}
 restore:if(!r->poison)cleanup(w,io);
 done:r->end=io->ticks(io->ctx);if(!r->writes||closed(r)){if(io->lease(io->ctx,q->epoch,0)){r->lease_released=1;r->flags|=G8_LEASE_RELEASED;}else fail(r,G8_OWNER,1);}r->retain_allocations=!closed(r)&&r->writes;return g8_transaction_complete(w);
 }

@@ -6,7 +6,7 @@
 #include <string.h>
 static struct g8_workspace w;
 static unsigned checks,test;
-struct model {uint64_t regs[G8_REGS],ticks;uint32_t tcm[8192],initial[8192],ack;unsigned locked,reads,writes,forbidden,fail_read,fail_write,race_write,timeout,missing_ack,fw_reads,bad_proof,bad_owned,cache_fail,physical_fail,pa_calls,cache_calls,corrupt_backup,pending,release_fail,release_ack_race,release_stuck,fsr_runtime,format_flip,tcr_flip,rebase_race,rebase_reads,rebase_route,sctlr_no_private,interframe_no_sptp,lowpower_writes,hyst_config_writes;uint8_t trusted_sha[32];};
+struct model {uint64_t regs[G8_REGS],ticks;uint32_t tcm[8192],initial[8192],ack;unsigned locked,reads,writes,forbidden,fail_read,fail_write,race_write,timeout,missing_ack,fw_reads,bad_proof,bad_owned,cache_fail,physical_fail,pa_calls,cache_calls,corrupt_backup,pending,release_fail,release_ack_race,release_stuck,defer_ack,start_ack_race,start_halt_race,fsr_runtime,format_flip,tcr_flip,rebase_race,rebase_reads,rebase_route,sctlr_no_private,interframe_no_sptp,lowpower_writes,hyst_config_writes;uint8_t trusted_sha[32];};
 static struct model m;
 #define CHECK(x) do{checks++;if(!(x)){fprintf(stderr,"G8 line%u test%u phase%u err%u poison%u reads%u writes%u at%llx\n",__LINE__,test,w.record.phase,w.record.error,w.record.poison,w.record.reads,w.record.writes,(unsigned long long)w.record.last_address);exit(1);}}while(0)
 static int idx(uint64_t at,unsigned width){for(unsigned i=0;i<G8_REGS;i++)if(g8_regs[i].address==at&&g8_regs[i].width==width)return (int)i;return -1;}
@@ -33,6 +33,7 @@ static void wr(void*arg,uint64_t at,unsigned width,uint64_t value,int*ok){(void)
  if(at==GD_HALT&&(value&~3u)){m.forbidden++;return;}
  uint64_t observe=0;int mode=g8_observation_address(at,width,&observe);uint32_t pending=0;if(w.record.phase==G8_CONFIG_RESTORE&&(at==0x3d7e64c||at==0x3d8ec18))pending=raw(at==0x3d7e64c?0x3d7e648:0x3d8ec14,4);
  if(w.record.phase==G9_RELEASE_BUS&&at==GD_HALT){if(m.release_ack_race)m.ack^=1;pending=raw(GD_ACK,4);}
+ if(w.record.phase==G8_START&&at==GD_RESET){if(m.start_ack_race)m.ack^=1;if(m.start_halt_race)m.regs[23]=1;if(raw(GD_HALT,4)){m.forbidden++;return;}pending=(uint32_t)raw(GD_ACK,4);}
  if(mode<0||!g8_store_guard(&w,at,width,value,mode?raw(observe,width):0,(uint32_t)raw(GD_RESET,4),pending)){m.forbidden++;return;}if(m.fail_write==m.writes)return;
  if(at>=0x3d6d000&&at<0x3d75000)m.tcm[(at-0x3d6d000)/4]=(uint32_t)value;
  else if(at==0x3d7e644)m.pending&=~(uint32_t)value;
@@ -45,7 +46,8 @@ static void wr(void*arg,uint64_t at,unsigned width,uint64_t value,int*ok){(void)
  m.regs[i]=value;
  if(i==24&&value==0x1f300&&m.format_flip){for(unsigned j=27;j<=33;j++)m.regs[j]=0;m.format_flip=0;}
  if(i==28&&m.tcr_flip){m.regs[30]=0xfe000000deadb000ULL;m.regs[31]=0xdc00000012345000ULL;m.tcr_flip=0;}
-if(at==GD_HALT&&!(m.release_stuck&&w.record.phase==G9_RELEASE_BUS))m.ack=value?m.ack|(uint32_t)value:0;}
+if(at==GD_HALT&&!((m.release_stuck||m.defer_ack)&&w.record.phase==G9_RELEASE_BUS))m.ack=value?m.ack|(uint32_t)value:0;}
+ if(at==GD_RESET&&value==0&&m.defer_ack)m.ack=0;
  if(m.corrupt_backup&&w.record.phase==G8_START)w.backup[0][31]^=1;
  *ok=1;
 }
@@ -87,7 +89,10 @@ int main(void){struct g8_prereq q;struct g8_io io;setup(&q,&io);CHECK(g8_run(&w,
  {const unsigned points[]={1,100,8000,17000,60000};for(unsigned i=0;i<5;i++){setup(&q,&io);m.regs[23]=8;m.ack=3;m.fail_read=points[i];CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&m.reads==points[i]&&!m.forbidden);}}
  {const unsigned points[]={1,20,8000,16380};for(unsigned i=0;i<4;i++){setup(&q,&io);m.regs[23]=8;m.ack=3;m.fail_write=points[i];CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&w.record.retain_allocations&&m.writes==points[i]&&!m.forbidden);}}
  setup(&q,&io);m.regs[23]=8;m.ack=3;m.release_ack_race=1;CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&w.record.retain_allocations&&!(w.record.flags&G8_RELEASED_RESET)&&m.regs[23]==8);
- setup(&q,&io);m.regs[23]=8;m.ack=3;m.release_stuck=1;CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&w.record.retain_allocations&&!(w.record.flags&G8_RELEASED_RESET)&&!(w.record.flags&G12_NORMALIZED_CLEANUP));
+ setup(&q,&io);m.regs[23]=8;m.ack=3;m.release_stuck=1;CHECK(!g8_run(&w,&q,&io));CHECK((w.record.flags&G18_VENDOR_HANDOFF)&&(w.record.flags&G8_FW100)&&!w.record.bus_released&&!m.forbidden&&!w.record.lease_released&&w.record.poison&&w.record.retain_allocations&&m.locked&&m.regs[19]==1);
+ setup(&q,&io);unused_bank();m.defer_ack=1;CHECK(g8_run(&w,&q,&io));CHECK((w.record.flags&G18_VENDOR_HANDOFF)&&(w.record.flags&G8_FW100)&&w.record.bus_released&&!m.forbidden&&(w.record.flags&G13_CONTEXT_CLEANUP)&&w.record.lease_released);
+ for(unsigned race=0;race<2;race++){setup(&q,&io);unused_bank();m.defer_ack=1;if(race)m.start_halt_race=1;else m.start_ack_race=1;CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&w.record.retain_allocations&&!(w.record.flags&G8_RELEASED_RESET)&&m.regs[19]==1&&m.locked);}
+ setup(&q,&io);unused_bank();m.defer_ack=1;m.timeout=1;CHECK(!g8_run(&w,&q,&io));CHECK(w.record.error==G8_TIMEOUT&&!(w.record.flags&G8_FW100)&&w.record.lease_released&&(w.record.flags&G13_CONTEXT_CLEANUP));
  setup(&q,&io);m.regs[23]=8;m.ack=3;m.timeout=1;CHECK(!g8_run(&w,&q,&io));CHECK(w.record.error==G8_TIMEOUT&&!w.record.restored&&(w.record.flags&G12_NORMALIZED_CLEANUP)&&w.record.lease_released&&!m.locked);
 
  /* Unassigned Stage2/AArch32 bank: unknown/reserved values are retained as
@@ -147,6 +152,6 @@ int main(void){struct g8_prereq q;struct g8_io io;setup(&q,&io);CHECK(g8_run(&w,
  for(test=1;test<=18;test++){setup(&q,&io);if(test==1)m.timeout=1;if(test==2)m.missing_ack=1;if(test==3)m.bad_proof=1;if(test==4)m.bad_owned=1;if(test==5)m.regs[3]=0x100;if(test==6)m.regs[34]=0x80000005;if(test==7)m.regs[26]=1;if(test==8)m.regs[36]=1;if(test==9)w.firmware[300]^=1;if(test==10)m.corrupt_backup=1;if(test==11)m.pending=0x80000000;if(test==12)m.release_fail=1;if(test==13)m.cache_fail=1;if(test==14)m.physical_fail=40;if(test==15)q.hfi_off=0;if(test==16)q.hlos_cb=7;if(test==17)q.sctlr=0;if(test==18)m.regs[27]=0x10;CHECK(!g8_run(&w,&q,&io));if(test==1)CHECK(w.record.restored&&w.record.lease_released&&!(w.record.flags&G8_FW100));if(test==2||test==10||test==11)CHECK(w.record.retain_allocations&&!w.record.lease_released&&m.locked);if(test==3||test==4||test==9||test==15||test==16||test==17)CHECK(!m.reads&&!m.writes);}
  const unsigned positions[]={1,2,50,100,500,8000,16000,16400,16500,17000,20000,30000};for(test=0;test<sizeof(positions)/sizeof(positions[0]);test++){if(positions[test]>totalr)continue;setup(&q,&io);m.fail_read=positions[test];CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&m.reads==positions[test]);}
  const unsigned stores[]={1,2,5,10,20,40,100,4000,8192,10000,16000};for(test=0;test<sizeof(stores)/sizeof(stores[0]);test++){if(stores[test]>totalw)continue;setup(&q,&io);m.fail_write=stores[test];CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&m.writes==stores[test]&&w.record.retain_allocations&&m.locked);setup(&q,&io);m.race_write=stores[test];CHECK(!g8_run(&w,&q,&io));CHECK(w.record.poison&&m.writes==stores[test]&&m.locked);}
- setup(&q,&io);m.pending=2;CHECK(!g8_run(&w,&q,&io));CHECK(w.record.restored&&w.record.lease_released&&!m.pending&&w.record.error==G8_DEVICE_FAULT);printf("G17_SYNTHETIC_ENGINE_PASS checks=%u positiveReads=%u positiveWrites=%u fullTCMRestore=1 inheritedHaltAck=0/3,2/3,3/3 exact8/3NormalizedNoRawRestore=1 contextFormatRebase=stable normalizedContextCleanupNoRawRestore=1 idleAckNormalized=0 FSRformat=qualified releaseRace=reject releaseTimeout=retain\n",checks,totalr,totalw);return 0;}
+ setup(&q,&io);m.pending=2;CHECK(!g8_run(&w,&q,&io));CHECK(w.record.restored&&w.record.lease_released&&!m.pending&&w.record.error==G8_DEVICE_FAULT);printf("G18_SYNTHETIC_ENGINE_PASS checks=%u positiveReads=%u positiveWrites=%u fullTCMRestore=1 inheritedHaltAck=0/3,2/3,3/3 exact8/3NormalizedNoRawRestore=1 contextFormatRebase=stable normalizedContextCleanupNoRawRestore=1 idleAckNormalized=0 FSRformat=qualified releaseRace=reject releaseTimeout=retain\n",checks,totalr,totalw);return 0;}
 
 #endif

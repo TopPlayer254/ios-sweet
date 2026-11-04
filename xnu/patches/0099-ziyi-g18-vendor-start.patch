@@ -1,0 +1,72 @@
+--- a/bsd/dev/ziyi_g8_engine.c
++++ b/bsd/dev/ziyi_g8_engine.c
+@@ -80,7 +80,7 @@
+ int g8_store_guard(const struct g8_workspace*w,uint64_t at,unsigned width,uint64_t value,uint64_t now,uint32_t reset,uint32_t pending){
+  if(!w)return 0;const struct g8_record*r=&w->record;
+  if(r->poison||r->lease_released||!r->epoch||(r->flags&(G8_LEASE|G8_SAVED|G8_SCOPED))!=(G8_LEASE|G8_SAVED|G8_SCOPED)||r->saved_crc!=old_crc(r)||r->pending_address!=at||r->pending_value!=value||r->pending_width!=width)return 0;
+- if(at==SYSRESET){if(width!=4||now!=r->expected[19]||now>1)return 0;return (r->phase==G8_START&&value==0&&reset==1&&(r->flags&(G8_PUBLISHED|G8_MAPPED|G8_LOADED))==(G8_PUBLISHED|G8_MAPPED|G8_LOADED)&&r->bus_released&&r->expected[23]==0&&r->final_ack==0)||(r->phase==G8_STOP&&value==1&&reset==0&&(r->flags&G8_RELEASED_RESET));}
++ if(at==SYSRESET){if(width!=4||now!=r->expected[19]||now>1)return 0;return (r->phase==G8_START&&value==0&&reset==1&&(r->flags&(G8_PUBLISHED|G8_MAPPED|G8_LOADED))==(G8_PUBLISHED|G8_MAPPED|G8_LOADED)&&r->expected[23]==0&&pending==r->final_ack&&((r->bus_released&&pending==0)||((r->flags&G18_VENDOR_HANDOFF)&&r->initial_halt==8&&r->initial_ack==3&&r->bus_observations==2&&pending==3)))||(r->phase==G8_STOP&&value==1&&reset==0&&(r->flags&G8_RELEASED_RESET));}
+  if(reset!=1)return 0;
+  int off=tcm_offset(at);if(width==4&&off>=0){if((unsigned)off!=r->tcm_cursor)return 0;if(r->phase==G8_LOAD){uint32_t want;return (r->flags&G8_MAPPED)&&payload_word(w,(unsigned)off,&want)&&value==want;}return r->phase==G8_TCM_RESTORE&&(r->flags&G8_BUS_DRAINED)&&word(w->backup[0]+off)==word(w->backup[1]+off)&&value==word(w->backup[0]+off);}
+  if(width==4&&(at==TLBI||at==TLBSYNC))return (r->phase==G8_INSTALL||r->phase==G8_CONTEXT_RESTORE)&&value==(at==TLBI?2u:0u)&&(r->flags&G8_PUBLISHED);
+@@ -107,6 +107,7 @@
+  uint64_t now=mode?read_value(w,io,observe,width):0;uint32_t reset=(uint32_t)read_value(w,io,SYSRESET,4);if(r->poison)return 0;
+  uint32_t pending=0;if(r->phase==G8_CONFIG_RESTORE&&(at==0x03d7e64c||at==0x03d8ec18))pending=(uint32_t)read_value(w,io,at==0x03d7e64c?irq_status[0]:irq_status[1],4);
+  if(r->phase==G9_RELEASE_BUS&&at==GD_HALT)pending=(uint32_t)read_value(w,io,GD_ACK,4);
++ if(r->phase==G8_START&&at==SYSRESET){if(read_value(w,io,GD_HALT,4)!=0||r->poison)return fail(r,G8_OWNER,1);pending=(uint32_t)read_value(w,io,GD_ACK,4);}
+  r->pending_address=at;r->pending_width=width;r->pending_value=value;
+  if(!g8_store_guard(w,at,width,value,now,reset,pending))return fail(r,G8_OWNER,1);
+  int ok=0;io->write(io->ctx,at,width,value,&ok);r->writes++;if(tcm_offset(at)>=0)r->tcmmodified=1;if(!ok)return fail(r,G8_IO,1);io->barrier(io->ctx);
+@@ -126,7 +127,20 @@
+ static int bus_release(struct g8_workspace*w,const struct g8_io*io){
+  if(!inherited_bus(w->record.initial_halt,w->record.initial_ack)||w->record.old[23]!=w->record.initial_halt)return fail(&w->record,G8_OWNER,1);
+  w->record.phase=G9_RELEASE_BUS;
+- if(!put(w,io,GD_HALT,4,0)||!bus_wait(w,io,0))return 0;
++ if(!put(w,io,GD_HALT,4,0))return 0;
++ /* Pinned A662 register_config clears HALT, then device_start releases CM3
++  * and polls FW100 without an ACK0 prerequisite. Only the native-qualified
++  * initial8/3 tuple may use this finite handoff. Never report it as release. */
++ if(w->record.initial_halt==8&&w->record.initial_ack==3){
++  unsigned stable=0;
++  for(unsigned n=0;n<2;n++){
++   if(read_value(w,io,SYSRESET,4)!=1||read_value(w,io,GD_HALT,4)!=0||w->record.poison)return fail(&w->record,G8_OWNER,1);
++   uint32_t ack=(uint32_t)read_value(w,io,GD_ACK,4);w->record.final_ack=ack;
++   if(w->record.poison)return 0;if(ack==0)break;if(ack!=3)return fail(&w->record,G8_OWNER,1);stable++;io->barrier(io->ctx);
++  }
++  if(stable==2){w->record.flags|=G18_VENDOR_HANDOFF|G12_BUS_NORMALIZED;return 1;}
++ }
++ if(!bus_wait(w,io,0))return 0;
+  w->record.bus_released=1;if(w->record.initial_halt==8)w->record.flags|=G12_BUS_NORMALIZED;return 1;
+ }
+ static int quiet(struct g8_workspace*w,const struct g8_io*io){uint64_t cx=read_value(w,io,0x03d9953c,4),gx=read_value(w,io,0x03d9905c,4),reset=read_value(w,io,SYSRESET,4),hfi=read_value(w,io,HFI_CTRL,4);return !w->record.poison&&((cx&0x80000000u)&&!(gx&0x80000000u)&&reset==1&&!hfi)?1:fail(&w->record,G8_PREREQ,1);}
+@@ -240,7 +254,7 @@
+  if(read_value(w,io,FW_RESULT,4)||r->poison){fail(r,G8_FIRMWARE,0);goto restore;}
+  if(!bus_release(w,io))goto done;
+  r->phase=G8_START;if(!set_reg(w,io,19,0))goto done;r->flags&=~G8_HELD_RESET;r->flags|=G8_RELEASED_RESET;r->phase=G8_WAIT;
+- for(unsigned i=0;i<100000;i++){uint32_t value=(uint32_t)read_value(w,io,FW_RESULT,4);if(r->poison)goto done;r->expected[3]=value;if((value&0x1ff)==0x100){r->flags|=G8_FW100;break;}if(i==99999)fail(r,G8_TIMEOUT,0);io->delay(io->ctx,1);}
++ for(unsigned i=0;i<100000;i++){uint32_t value=(uint32_t)read_value(w,io,FW_RESULT,4);if(r->poison)goto done;r->expected[3]=value;if((value&0x1ff)==0x100){r->flags|=G8_FW100;if(r->flags&G18_VENDOR_HANDOFF){uint32_t ack=(uint32_t)read_value(w,io,GD_ACK,4);r->final_ack=ack;if(r->poison||ack&~3u){fail(r,G8_OWNER,1);goto done;}if(!ack)r->bus_released=1;}break;}if(i==99999)fail(r,G8_TIMEOUT,0);io->delay(io->ctx,1);}
+ restore:if(!r->poison)cleanup(w,io);
+ done:r->end=io->ticks(io->ctx);if(!r->writes||closed(r)){if(io->lease(io->ctx,q->epoch,0)){r->lease_released=1;r->flags|=G8_LEASE_RELEASED;}else fail(r,G8_OWNER,1);}r->retain_allocations=!closed(r)&&r->writes;return g8_transaction_complete(w);
+ }
+--- a/bsd/dev/ziyi_g8_fwinit.h
++++ b/bsd/dev/ziyi_g8_fwinit.h
+@@ -7,7 +7,7 @@
+ #define G8_REGS 37u
+ #define G8_TCM_BYTES 32768u
+ enum g8_phase {G8_ACQUIRE=1,G8_SAVE,G8_MEMORY,G8_INSTALL,G8_LOAD,G8_CONFIG,G8_START,G8_WAIT,G8_STOP,G8_DRAIN,G8_CLEAR,G8_UNROUTE,G8_CONTEXT_RESTORE,G8_TCM_RESTORE,G8_CONFIG_RESTORE,G8_DONE,G9_RELEASE_BUS};
+-enum g8_flags {G8_LEASE=1,G8_SAVED=2,G8_MEMORY_READY=4,G8_PUBLISHED=8,G8_MAPPED=16,G8_LOADED=32,G8_RELEASED_RESET=64,G8_FW100=128,G8_HELD_RESET=256,G8_BUS_DRAINED=512,G8_RESTORED=1024,G8_LEASE_RELEASED=2048,G8_SCOPED=4096,G12_BUS_NORMALIZED=8192,G12_NORMALIZED_CLEANUP=16384,G13_CONTEXT_REINIT=32768,G13_CONTEXT_CLEANUP=65536,G13_CONTEXT_REBASED=131072,G13_CONTEXT_TCR_READY=262144};
++enum g8_flags {G8_LEASE=1,G8_SAVED=2,G8_MEMORY_READY=4,G8_PUBLISHED=8,G8_MAPPED=16,G8_LOADED=32,G8_RELEASED_RESET=64,G8_FW100=128,G8_HELD_RESET=256,G8_BUS_DRAINED=512,G8_RESTORED=1024,G8_LEASE_RELEASED=2048,G8_SCOPED=4096,G12_BUS_NORMALIZED=8192,G12_NORMALIZED_CLEANUP=16384,G13_CONTEXT_REINIT=32768,G13_CONTEXT_CLEANUP=65536,G13_CONTEXT_REBASED=131072,G13_CONTEXT_TCR_READY=262144,G18_VENDOR_HANDOFF=524288};
+ enum g8_error {G8_OK=0,G8_ARGUMENT,G8_PREREQ,G8_IO,G8_OWNER,G8_BACKUP,G8_MEMORY_ERROR,G8_FIRMWARE,G8_TIMEOUT,G8_DEVICE_FAULT,G8_RESTORE};
+ enum g8_kind {G8_LITERAL=1,G8_MASK,G8_INTERFRAME,G8_RESET,G8_FWSTATUS,G8_ARCH,G8_ROUTE,G8_GBIF,G13_HYST};
+ struct g8_reg {uint64_t address,mask,literal;uint32_t width,kind;};
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -141,6 +141,8 @@
+  uint32_t reset=(uint32_t)zg_g8_load(s,GD_RESET,4,&good);if(!good)return;uint32_t pending=0;
+  if(s->firmware.record.phase==G8_CONFIG_RESTORE&&(at==0x3d7e64c||at==0x3d8ec18)){pending=(uint32_t)zg_g8_load(s,at==0x3d7e64c?0x3d7e648:0x3d8ec14,4,&good);if(!good)return;}
+  if(s->firmware.record.phase==G9_RELEASE_BUS&&at==GD_HALT){pending=(uint32_t)zg_g8_load(s,GD_ACK,4,&good);if(!good)return;}
++ /* Fresh native HALT/ACK observations immediately before CM3 store. */
++ if(s->firmware.record.phase==G8_START&&at==GD_RESET){uint32_t halt=(uint32_t)zg_g8_load(s,GD_HALT,4,&good);if(!good||halt)return;pending=(uint32_t)zg_g8_load(s,GD_ACK,4,&good);if(!good)return;}
+  if(!g8_store_guard(&s->firmware,at,width,value,now,reset,pending))return;void*p=zg_g8_pointer(s,at,width,1);if(!p)return;
+  if(width==8)*(volatile uint64_t*)p=value;else *(volatile uint32_t*)p=(uint32_t)value;zg_barrier(s);*ok=1;
+ }

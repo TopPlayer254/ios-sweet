@@ -1,0 +1,185 @@
+--- a/iokit/Kernel/arm/hid/SweetHID.cpp
++++ b/iokit/Kernel/arm/hid/SweetHID.cpp
+@@ -361,6 +361,7 @@
+ public:
+ 	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
+ 	void touch(int finger, bool down, int x, int y);
++	bool touchFrame(const UInt32 *,const UInt32 *,UInt32);
+ protected:
+ 	virtual UInt32 getPrimaryUsagePage() APPLE_KEXT_OVERRIDE { return kHIDPage_Digitizer; }
+ 	virtual UInt32 getPrimaryUsage() APPLE_KEXT_OVERRIDE { return kHIDUsage_Dig_TouchScreen; }
+@@ -541,6 +542,68 @@
+ 	collection->release();
+ }
+ 
++/* Atomic full TCM snapshot; caller passes ten native-normalized panel points.
++ * A failed event/child-array allocation commits no contact state. */
++bool
++SweetHIDTouch::touchFrame(const UInt32 *xs, const UInt32 *ys, UInt32 downMask)
++{
++ if (!xs || !ys || (downMask & ~0x3ffU)) return false;
++ for (int i=0;i<SWEET_TOUCH_FINGERS;i++)
++  if (xs[i]>1079 || ys[i]>2399) return false;
++ IOLockLock(fLock);
++ bool changed=false, any=false;
++ IOFixed nx[SWEET_TOUCH_FINGERS],ny[SWEET_TOUCH_FINGERS];
++ bool edge[SWEET_TOUCH_FINGERS];
++ UInt32 masks[SWEET_TOUCH_FINGERS];
++ int anchor=-1;
++ for(int i=0;i<SWEET_TOUCH_FINGERS;i++) {
++  bool d=(downMask&(1U<<i))!=0, was=fDown[i];
++  nx[i]=d?(IOFixed)(((int64_t)(fFitCanvas?xs[i]:xs[i]+fOffX)<<16)/(fFitCanvas?1080:fLogicalW)):fX[i];
++  ny[i]=d?(IOFixed)(((int64_t)(fFitCanvas?ys[i]:ys[i]+fOffY)<<16)/(fFitCanvas?2400:fLogicalH)):fY[i];
++  bool moved=d&&(nx[i]!=fX[i]||ny[i]!=fY[i]);
++  edge[i]=!was&&d?(xs[i]<SWEET_TOUCH_EDGE_PX||xs[i]>1079-SWEET_TOUCH_EDGE_PX||ys[i]<SWEET_TOUCH_EDGE_PX||ys[i]>2399-SWEET_TOUCH_EDGE_PX):fEdge[i];
++  masks[i]=edge[i]?kIOHIDDigitizerEventFromEdgeTip:0;
++  if(was!=d)masks[i]|=kIOHIDDigitizerEventTouch|kIOHIDDigitizerEventRange;
++  if(moved)masks[i]|=kIOHIDDigitizerEventPosition;
++  if(!was&&d)masks[i]|=kIOHIDDigitizerEventIdentity;
++  changed|=was!=d||moved;any|=d;
++  if(d&&anchor<0)anchor=i;
++ }
++ if(!changed){IOLockUnlock(fLock);return true;}
++ if(anchor<0)for(int i=0;i<SWEET_TOUCH_FINGERS;i++)if(fDown[i]){anchor=i;break;}
++ if(anchor<0){IOLockUnlock(fLock);return false;}
++ uint64_t now=mach_absolute_time();
++ IOHIDEvent *collection=IOHIDEvent::digitizerEvent(now,0,kIOHIDDigitizerTransducerTypeHand,false,0,0,0);
++ if(!collection){IOLockUnlock(fLock);return false;}
++ collection->setIntegerValue(kIOHIDEventFieldDigitizerCollection,TRUE);
++ UInt32 cmask=0,children=0;
++ for(int i=0;i<SWEET_TOUCH_FINGERS;i++) {
++  bool d=(downMask&(1U<<i))!=0;
++  if(!d&&!fDown[i])continue;
++  IOHIDEvent *child=IOHIDEvent::digitizerEvent(now,(UInt32)i+2,kIOHIDDigitizerTransducerTypeFinger,d,d?1:0,nx[i],ny[i]);
++  if(!child){collection->release();IOLockUnlock(fLock);return false;}
++  child->setIntegerValue(kIOHIDEventFieldDigitizerIndex,i);
++  child->setIntegerValue(kIOHIDEventFieldDigitizerIdentity,i+2);
++  child->setIntegerValue(kIOHIDEventFieldDigitizerTouch,d);
++  child->setIntegerValue(kIOHIDEventFieldDigitizerEventMask,masks[i]);
++  collection->appendChild(child);child->release();
++  OSArray *array=collection->getChildren();
++  if(!array||array->getCount()!=++children){collection->release();IOLockUnlock(fLock);return false;}
++  cmask|=masks[i];
++ }
++ collection->setFixedValue(kIOHIDEventFieldDigitizerX,nx[anchor]);
++ collection->setFixedValue(kIOHIDEventFieldDigitizerY,ny[anchor]);
++ collection->setIntegerValue(kIOHIDEventFieldDigitizerRange,any);
++ collection->setIntegerValue(kIOHIDEventFieldDigitizerTouch,any);
++ collection->setIntegerValue(kIOHIDEventFieldDigitizerEventMask,cmask);
++ collection->setIntegerValue(kIOHIDEventFieldDigitizerButtonMask,any?1:0);
++ for(int i=0;i<SWEET_TOUCH_FINGERS;i++) {
++  fDown[i]=(downMask&(1U<<i))!=0;fEdge[i]=edge[i];
++  if(fDown[i]){fX[i]=nx[i];fY[i]=ny[i];}
++ }
++ IOLockUnlock(fLock);dispatchEvent(collection);collection->release();return true;
++}
++
+ /* key: 0 power (side button), 1 volume up, 2 volume down, 3 home */
+ extern "C" void
+ sweet_hid_key(int key, int down)
+@@ -562,3 +625,5 @@
+ 		gSweetTouch->touch(finger, down != 0, x, y);
+ 	}
+ }
++
++extern "C" int sweet_hid_touch_frame(const UInt32 *x,const UInt32 *y,UInt32 mask) {return gSweetTouch&&gSweetTouch->touchFrame(x,y,mask);}
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -13,7 +13,8 @@
+ #include "ziyi_u21_power.h"
+ #include "ziyi_u14_gpi.h"
+ extern vm_offset_t ml_io_map(vm_offset_t,vm_size_t);
+-extern void sweet_hid_touch(int,int,int,int);
++extern int sweet_hid_touch_frame(const uint32_t*,const uint32_t*,uint32_t);
++_Static_assert(ZI_CONTACTS==10,"HID full-frame ABI");
+ extern kern_return_t thread_terminate(thread_t);
+ void sweet_touch_init(void);
+ static vm_offset_t zt_se,zt_gpio,zt_gpi,zt_db,zt_rsc;
+@@ -97,8 +98,15 @@
+  }
+  return 6;
+ }
++static int zt_send(const struct zi_contact *c) {
++ uint32_t xs[ZI_CONTACTS],ys[ZI_CONTACTS],mask=0;
++ for(unsigned i=0;i<ZI_CONTACTS;i++){xs[i]=c[i].x;ys[i]=c[i].y;if(c[i].down)mask|=1u<<i;}
++ return sweet_hid_touch_frame(xs,ys,mask);
++}
+ static void zt_release(void) {
+- for(unsigned i=0;i<ZI_CONTACTS;i++)if(zt_previous[i].down){sweet_hid_touch((int)i,0,(int)zt_previous[i].x,(int)zt_previous[i].y);zt_previous[i].down=0;}
++ struct zi_contact released[ZI_CONTACTS];
++ for(unsigned i=0;i<ZI_CONTACTS;i++){released[i]=zt_previous[i];released[i].down=0;}
++ if(zt_send(released))for(unsigned i=0;i<ZI_CONTACTS;i++)zt_previous[i].down=0;
+ }
+ static int zt_setup(void) {
+  printf("ZIYI U23 GPIO SPI fifoDisable=%x fw=%x state=%x mode0 MISO0 MOSI1 CLK2 CS3\n",zt_rd(zt_se,0x64),zt_rd(zt_se,0x68),zt_rd(zt_se,0x40));
+@@ -150,11 +158,8 @@
+    int error=zt_read_message(&code,&n);
+    if(!error&&code==0x11) {
+     error=zi_tcm_report_native(zt_config,zt_config_len,zt_message,n,contacts,zt_max_x,zt_max_y);
+-    if(!error)age=0;
+-    if(!error)for(unsigned i=0;i<ZI_CONTACTS;i++) {
+-     if(contacts[i].down||zt_previous[i].down)sweet_hid_touch((int)i,contacts[i].down,(int)contacts[i].x,(int)contacts[i].y);
+-     zt_previous[i]=contacts[i];
+-    }
++    if(!error&&!zt_send(contacts))error=30;
++    if(!error){age=0;for(unsigned i=0;i<ZI_CONTACTS;i++)zt_previous[i]=contacts[i];}
+    }
+    if(error){if(++errors==10)zt_release();if(errors==1||errors%100==0)printf("ZIYI U23 TCM report error=%d count=%u\n",error,errors);}
+    else errors=0;
+--- a/iokit/Kernel/arm/SweetKeyStore.cpp
++++ b/iokit/Kernel/arm/SweetKeyStore.cpp
+@@ -107,9 +107,14 @@
+ 		if (len > args->structureOutputDescriptor->getLength()) {
+ 			return kIOReturnNoSpace;
+ 		}
+-		args->structureOutputDescriptor->writeBytes(0, buf, len);
+-		args->structureOutputDescriptorSize = len;
+-		return kIOReturnSuccess;
++        IOReturn result=args->structureOutputDescriptor->prepare();
++        if(result!=kIOReturnSuccess)return result;
++        uint64_t copied=args->structureOutputDescriptor->writeBytes(0,buf,len);
++        IOReturn complete=args->structureOutputDescriptor->complete();
++        if(copied!=len)return kIOReturnUnderrun;
++        if(complete!=kIOReturnSuccess)return complete;
++        args->structureOutputDescriptorSize=len;
++        return kIOReturnSuccess;
+ 	}
+ 	if (args->structureOutput == NULL || len > args->structureOutputSize) {
+ 		return kIOReturnNoSpace;
+@@ -168,6 +173,18 @@
+ {
+ 	return args->structureOutputDescriptor != NULL ?
+ 	       (uint32_t)args->structureOutputDescriptor->getLength() : args->structureOutputSize;
++}
++
++/* Successful state polls are synchronous framebuffer work if logged on each
++ * call. Retain counters; log only the first success per selector and the first
++ * and power-of-two errors. No DER value or cryptographic behaviour changes. */
++static uint64_t sweet_aks_calls[129],sweet_aks_errors[129];
++static uint64_t sweet_aks_log_count(uint32_t selector,IOReturn result) {
++ unsigned slot=selector<128?selector:128;
++ uint64_t calls=__atomic_add_fetch(&sweet_aks_calls[slot],1,__ATOMIC_RELAXED);
++ if(result==kIOReturnSuccess)return calls==1?calls:0;
++ uint64_t errors=__atomic_add_fetch(&sweet_aks_errors[slot],1,__ATOMIC_RELAXED);
++ return !(errors&(errors-1))?calls:0;
+ }
+ 
+ IOReturn
+@@ -232,10 +249,13 @@
+ 		break;
+ 	}
+ 
+-	char name[32];
+-	proc_selfname(name, sizeof(name));
+-	IOLog("SWEET AKS: %s sel %u arg0 %llu in %u/%u out %u/%u -> 0x%x\n", name, selector,
+-	    arg0, in_scalars, in_struct, out_scalars, out_struct, ret);
++    uint64_t logged=sweet_aks_log_count(selector,ret);
++    if(logged){
++        char name[32];proc_selfname(name,sizeof(name));
++        uint32_t used=args->structureOutputDescriptor!=NULL?args->structureOutputDescriptorSize:args->structureOutputSize;
++        IOLog("SWEET AKS: %s sel %u arg0 %llu in %u/%u capacity %u/%u returned %u/%u calls %llu -> 0x%x\n",name,selector,
++            arg0,in_scalars,in_struct,out_scalars,out_struct,args->scalarOutputCount,ret==kIOReturnSuccess?used:0,logged,ret);
++    }
+ 	return ret;
+ }
+ #endif /* SWEET */

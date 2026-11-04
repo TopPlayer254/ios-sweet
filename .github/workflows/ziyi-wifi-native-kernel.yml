@@ -243,6 +243,9 @@ jobs:
       - name: Stage exact native Wi-Fi source delta
         run: python3 tools/ziyi-wifi/stage_full_kernel.py --driver wifi-driver-input
 
+      - name: Exact UI frame and AKS poll sanitizer tests
+        run: python3 tools/ziyi-ui/run_host_tests.py --out u1-evidence/ui-public-host
+
       - name: Build
         working-directory: dxb
         env:

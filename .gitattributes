@@ -25,3 +25,7 @@
 /xnu/patches/0097-ziyi-g16-gmu-active-mode.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0098-ziyi-g17-finite-ao-mask.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0099-ziyi-g18-vendor-start.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0100-ziyi-ui-full-frame-aks-poll.patch -text whitespace=cr-at-eol

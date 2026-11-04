@@ -69,7 +69,7 @@
   },
   "iokit/Kernel/arm/hid/SweetHID.cpp": {
     "before": "cb8afe01c324d084d95e46bfe42575a2e1200f07155326bdd1448ee4c71ccb8a",
-    "after": "330eacf65469f17d73eac782a2b936c36ba6a4766035a08fb4a292551acefd3e"
+    "after": "aea7839978f70c90c556dd76396ab40cb38df4d60416ea7f5e18c98603f29a5d"
   },
   "bsd/dev/sweet_keys.c": {
     "before": "1487015c4c87fdbf3fb6b1f6abaa17ae1200b8e22eeaea1b63ab705fb1c2352e",
@@ -77,7 +77,7 @@
   },
   "bsd/dev/sweet_touch.c": {
     "before": "b758ef31133629311b8b42eb324d1041e5ccaba7807c0f29ccc62793f83b2234",
-    "after": "4448f79c3d8360cd37201d0a3cba416645b5601d05f60cbfd8da6e9da1d465af"
+    "after": "f54f3630b6788f169e1832105ecc2ecc9ad971412653716510011e55e4e6e8aa"
   },
   "bsd/dev/ziyi_u12_input.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -173,7 +173,7 @@
   },
   "bsd/dev/ziyi_gpu_probe.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "923ee47f11bbfedd6bed10dd03f0551686fa3d3cc70f73e37502aac32f5b6257"
+    "after": "832bb7847bfd05e4602521a038950133f9142d9b721ad7564779a612215c2a52"
   },
   "bsd/dev/ziyi_gpu_probe.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -257,11 +257,11 @@
   },
   "bsd/dev/ziyi_g8_fwinit.h": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "e49d980ea755beb5b3bb2fb9071a1467d7d5ef0ccf5818826077b996bbc2af69"
+    "after": "990df16fb02a3c177a628c79b14117e7cf8b6efcfbc8072705d888e53e4326cf"
   },
   "bsd/dev/ziyi_g8_engine.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "after": "43b2e10b0b104d97842e1811297c1e68c6a571526fea30e19e21670339bc72f9"
+    "after": "83c3f68f3330afc9d8f1a00141e96f82e5c741a4c30a04238fce5df5053b8f1d"
   },
   "bsd/dev/ziyi_g8_registers.c": {
     "before": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
