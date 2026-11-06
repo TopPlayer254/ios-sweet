@@ -28,6 +28,8 @@
 #include "ziyi_g7_clock.h"
 #include "ziyi_g7_engine.h"
 #include "ziyi_g8_fwinit.h"
+#include "ziyi_g19_xnu_owned_pages.h"
+#include "ziyi_hfi_diagnostic.h"
 #include <arm/caches_internal.h>
 #include "ziyi_adt_binding.h"
 extern uint64_t kvtophys(vm_offset_t);
@@ -40,6 +42,8 @@ struct zg_mapping {struct zg_region region;struct zg_geometry geometry;vm_offset
 struct zg_state {
  struct zadt_binding adt;uint32_t checked_clock_phase,checked_probe_phase,checked_g8_phase,gmu_enabled;
  struct g8_workspace firmware;
+ struct hop hfi_memory;struct hop_xnu hfi_owner;
+ struct g19_hfi_runtime hfi_runtime;struct g19_hfi_record hfi_record;
  struct zg_contract contract;struct zg_mapping ro[ZG_REGIONS],rw[ZG_RW_MAPS];unsigned rw_count;
  struct g7c_record clocks;struct g7_record probe;uint64_t lease_epoch;uint32_t lease;
  uint8_t copy0[G7_TCM_BYTES] __attribute__((aligned(64)));
@@ -148,6 +152,12 @@ static void zg_g8_write(void*ctx,uint64_t at,unsigned width,uint64_t value,int*o
 }
 static int zg_g8_owned(void*ctx,const void*memory,size_t n){struct zg_state*s=ctx;return memory==&s->firmware&&n==sizeof(s->firmware);}
 static uint64_t zg_g8_physical(void*ctx,const void*va){struct zg_state*s=ctx;uintptr_t at=(uintptr_t)va,first=(uintptr_t)&s->firmware.memory;
+ if(s->gmu_enabled==2&&s->hfi_memory.va&&at>=s->hfi_memory.va&&
+    at-s->hfi_memory.va<GN_HFI_BYTES&&!(at&4095)&&
+    (s->hfi_memory.state==HOP_READY||s->hfi_memory.state==HOP_LIVE)){
+  uint64_t pa=kvtophys((vm_offset_t)va);
+  return pa==s->hfi_memory.page[0].pa+at-s->hfi_memory.va?pa:0;
+ }
  if(at<first||at-first>=sizeof(s->firmware.memory)||(at&4095))return 0;return kvtophys((vm_offset_t)va);}
 static int zg_g8_cache_span(struct zg_state*s,void*va,size_t n){uintptr_t at=(uintptr_t)va,first=(uintptr_t)&s->firmware.memory;return n&&at>=first&&at-first<sizeof(s->firmware.memory)&&n<=sizeof(s->firmware.memory)-(at-first);}
 static int zg_g8_flush(void*ctx,void*va,size_t n){struct zg_state*s=ctx;if(!zg_g8_cache_span(s,va,n))return 0;FlushPoC_DcacheRegion((vm_offset_t)va,n);return 1;}
@@ -158,6 +168,7 @@ static int zg_g8_proof(void*ctx,const struct g8_prereq*q,const struct g8_blob*b)
  /* Re-decode fixed immutable file-backed section, never a boot pointer/flag. */
  return g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&actual)&&memcmp(&actual,b,sizeof(actual))==0;
 }
+#include "ziyi_g19_native.inc"
 /* G11_RETAINED_CODEC_BEGIN */
 /* SPDX-License-Identifier: MIT */
 #include <stddef.h>
@@ -261,9 +272,12 @@ int gsr_assemble(const struct gsr_page in[GSR_PAGES],uint64_t out[GSR_REGS],uint
 static int zg_g8_run(struct zg_state*s){
  if(!g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&s->firmware.blob)){printf("ZIYI GMU STOP private slot absent/invalid; no firmware stores\n");return 0;}
  struct g8_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr(),.acd_off=1,.qdss_off=1,.lm_bcl_off=1,.hfi_off=1,.inherited_ddr_probe=1};
+ if(s->gmu_enabled==2){s->hfi_record.stage=G19_HFI_OWNER;s->hfi_record.error=G19_HFI_OWNERSHIP;s->hfi_record.flags=G19_HFI_RETAIN;s->hfi_record.epoch=q.epoch;}
  for(unsigned i=0;i<4;i++)q.rates[i]=s->clocks.measure[i][3];
  struct g8_io io={s,zg_g8_read,zg_g8_write,zg_ticks,zg_delay,zg_barrier,zg_lease,zg_g8_proof,zg_g8_owned,{s,zg_g8_physical,zg_g8_flush,zg_g8_clean,zg_barrier}};
- printf("ZIYI GMU FW100 begin: ACD/QDSS/LM/BCL/HFI/GX off; inherited DDR bandwidth probe\n");int success=g8_run(&s->firmware,&q,&io);struct g8_record*r=&s->firmware.record;
+ const struct g19_hooks hooks={s,zg_hfi_prepare,zg_hfi_publish,zg_hfi_ready};
+ printf("ZIYI GMU FW100 begin: ACD/QDSS/LM/BCL/HFI/GX off; inherited DDR bandwidth probe\n");
+ int success=s->gmu_enabled==2?g19_run(&s->firmware,&q,&io,&hooks):g8_run(&s->firmware,&q,&io);struct g8_record*r=&s->firmware.record;
  printf("ZIYI GMU result%u phase%u flags%x err%u poison%u reads%u writes%u FW%x reset%u drain%u/%u restore%u lease%u retained%u accel0\n",success,r->phase,r->flags,r->error,r->poison,r->reads,r->writes,(unsigned)r->expected[3],!!(r->flags&G8_HELD_RESET),r->drain.client_ack,r->drain.arb_ack,r->restored,r->lease_released,r->retain_allocations);
  printf("ZIYI GMU faults HFI%x AO%x fence%x SMMU%x last%llx/%llx\n",r->last_host,r->last_ao,r->last_fence,r->last_fsr,(unsigned long long)r->last_address,(unsigned long long)r->last_value);
  printf("ZIYI GMU G12 bus observations%u initial HALT%x ACK%x finalACK%x released%u\n",r->bus_observations,r->initial_halt,r->initial_ack,r->final_ack,r->bus_released);
@@ -277,6 +291,11 @@ static int zg_g8_run(struct zg_state*s){
   for(unsigned part=0;part<GDR_PARTS;part++)printf("ZGDR%u %s\n",part+1,record[part]);
   zg_sleep(2000);
  }
+ if(s->gmu_enabled==2&&!s->hfi_runtime.attempted){
+  s->hfi_record.last_health.helper_phase=0x10000u|r->phase;
+  s->hfi_record.last_health.helper_error=r->error|(s->hfi_memory.error<<8)|(ziyi_hop_pmap_last_error()<<16);
+ }
+ zg_hfi_print(s);
  /* CPU-only snapshot. No additional MMIO, including on a poisoned lease. */
  if(r->flags&G8_SAVED){
   char pages[GSR_PAGES][GSR_PARTS][GSR_CHARS+1];
@@ -303,7 +322,7 @@ static int zg_qualified(void*ctx,struct g7c_record*clocks){
  if(s->probe.poison)clocks->poison=1;return success;
 }
 static void zg_worker(void*arg,wait_result_t result){
- (void)arg;(void)result;bzero(&zg,sizeof(zg));PE_parse_boot_argn("ziyi_gmu",&zg.gmu_enabled,sizeof(zg.gmu_enabled));if(zg.gmu_enabled!=1)zg.gmu_enabled=0;unsigned delay_seconds=60;int pid=0;
+ (void)arg;(void)result;bzero(&zg,sizeof(zg));PE_parse_boot_argn("ziyi_gmu",&zg.gmu_enabled,sizeof(zg.gmu_enabled));if(zg.gmu_enabled!=1&&zg.gmu_enabled!=2)zg.gmu_enabled=0;unsigned delay_seconds=60;int pid=0;
  PE_parse_boot_argn("ziyi_gpu_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
  printf("ZIYI GPU probe armed opt-in delay%us then await SpringBoard; fw=0 accel=0\n",delay_seconds);zg_sleep(delay_seconds*1000u);
  for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zg_springboard,&pid,NULL,NULL);if(!pid)zg_sleep(5000);}
@@ -327,7 +346,7 @@ static void zg_worker(void*arg,wait_result_t result){
   if(r->flags&G8_SAVED)for(unsigned i=0;i<G8_REGS;i++){const struct g8_reg*d=&g8_regs[i];printf("ZIYI GMU saved%u addr%llx width%u old%llx want%llx\n",i,d->address,d->width,r->old[i],r->expected[i]);zg_sleep(150);}
  }
  printf("ZIYI GPU probe done: opt-in FW100 transaction resets/restores; no persistent GPU or acceleration\n");
-unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);if(zg.firmware.record.retain_allocations||zg.lease){printf("ZIYI GMU retain owned IO maps/private pages and CX; cleanup incomplete\n");}else zg_unmap_all(&zg);
+unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);if(zg.firmware.record.retain_allocations||zg.lease||zg.hfi_memory.va){printf("ZIYI GMU retain owned IO maps/private pages and CX; cleanup incomplete\n");}else zg_unmap_all(&zg);
 done:thread_terminate(current_thread());
 }
 void ziyi_gpu_probe_start(void){
@@ -336,3 +355,14 @@ void ziyi_gpu_probe_start(void){
  thread_t worker=THREAD_NULL;kern_return_t kr=kernel_thread_start(zg_worker,NULL,&worker);
  if(kr!=KERN_SUCCESS){printf("ZIYI GPU probe: cannot create worker %d\n",kr);return;}thread_deallocate(worker);
 }
+
+/* G19 helpers are compiled in this existing opt-in adapter unit. Each file
+ * has private static names; no new startup hook or GPU client is registered. */
+#include "ziyi_g19_owned_pages.c"
+#include "ziyi_g19_xnu_owned_pages.c"
+#include "ziyi_hfi_page_observation.c"
+#include "ziyi_hfi_kernel_page_observer.c"
+#include "ziyi_hfi_live.c"
+#include "ziyi_hfi_version.c"
+#include "ziyi_hfi_diagnostic.c"
+#include "ziyi_hfi_record.c"

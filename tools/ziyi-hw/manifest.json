@@ -89,8 +89,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
       "target": "bsd/dev/ziyi_gpu_probe.c",
-      "sha256": "832bb7847bfd05e4602521a038950133f9142d9b721ad7564779a612215c2a52",
-      "bytes": 27485
+      "sha256": "65302880a0efcdba6693451eaedfe5067f1d85b4b7d9f243d7bd8d40c2c77234",
+      "bytes": 29032
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -185,14 +185,14 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_fwinit.h",
       "target": "bsd/dev/ziyi_g8_fwinit.h",
-      "sha256": "990df16fb02a3c177a628c79b14117e7cf8b6efcfbc8072705d888e53e4326cf",
-      "bytes": 3379
+      "sha256": "25256975d9f2805c4d1662a00cda73e695dd4b6856c0f51d569eac298592a263",
+      "bytes": 3884
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_engine.c",
       "target": "bsd/dev/ziyi_g8_engine.c",
-      "sha256": "83c3f68f3330afc9d8f1a00141e96f82e5c741a4c30a04238fce5df5053b8f1d",
-      "bytes": 27595
+      "sha256": "6c740caa3780fcd45dea28fea38d4a695084065b441195c04e05c39b071ca256",
+      "bytes": 28319
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_registers.c",
@@ -203,14 +203,14 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_memory.h",
       "target": "bsd/dev/ziyi_g8_memory.h",
-      "sha256": "46862f8a6307db3f8bffd5420a29702ceaa7009c54f10abcfcb9999dd88bcc8c",
-      "bytes": 1456
+      "sha256": "8b8c0af36109ef1eac8756c418a71cccf41e1bf4fb4d8432718376741ea3204b",
+      "bytes": 1835
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_memory.c",
       "target": "bsd/dev/ziyi_g8_memory.c",
-      "sha256": "b66296908485596688fed044fc51da91f70add53f086ed75e3b8108fdcdb767d",
-      "bytes": 2507
+      "sha256": "93a92f44184d82629cb32df58e862de2d682a001616587ba4e37d53425edd78b",
+      "bytes": 3437
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_g8_translation.h",
@@ -337,8 +337,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
-      "sha256": "832bb7847bfd05e4602521a038950133f9142d9b721ad7564779a612215c2a52",
-      "bytes": 27485
+      "sha256": "65302880a0efcdba6693451eaedfe5067f1d85b4b7d9f243d7bd8d40c2c77234",
+      "bytes": 29032
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -542,13 +542,13 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_fwinit.h",
-      "sha256": "990df16fb02a3c177a628c79b14117e7cf8b6efcfbc8072705d888e53e4326cf",
-      "bytes": 3379
+      "sha256": "25256975d9f2805c4d1662a00cda73e695dd4b6856c0f51d569eac298592a263",
+      "bytes": 3884
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_engine.c",
-      "sha256": "83c3f68f3330afc9d8f1a00141e96f82e5c741a4c30a04238fce5df5053b8f1d",
-      "bytes": 27595
+      "sha256": "6c740caa3780fcd45dea28fea38d4a695084065b441195c04e05c39b071ca256",
+      "bytes": 28319
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_registers.c",
@@ -557,13 +557,13 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_memory.h",
-      "sha256": "46862f8a6307db3f8bffd5420a29702ceaa7009c54f10abcfcb9999dd88bcc8c",
-      "bytes": 1456
+      "sha256": "8b8c0af36109ef1eac8756c418a71cccf41e1bf4fb4d8432718376741ea3204b",
+      "bytes": 1835
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_memory.c",
-      "sha256": "b66296908485596688fed044fc51da91f70add53f086ed75e3b8108fdcdb767d",
-      "bytes": 2507
+      "sha256": "93a92f44184d82629cb32df58e862de2d682a001616587ba4e37d53425edd78b",
+      "bytes": 3437
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_g8_translation.h",
@@ -776,5 +776,8 @@
   "g18PatchSHA256": "9a71f59646497742c3a991a5b182bc5adcdc2fe1c4f529b2ff57d1a090bb44e0",
   "g18VendorStart": true,
   "uiInputFrame": true,
-  "aksBoundedPoll": true
+  "aksBoundedPoll": true,
+  "g19HfiHandshake": true,
+  "g19Patch": "xnu/patches/0101-ziyi-g19-hfi-handshake.patch",
+  "g19PatchSHA256": "890cdd3be2bd938fddba30d06402f452ac633d975c6b1294e8ee2285fc354712"
 }

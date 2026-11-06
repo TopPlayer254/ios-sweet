@@ -10,11 +10,17 @@ struct gm_xnu_memory {
  struct gn_region regions[GN_MAX_REGIONS];
  uint32_t region_offset[GN_MAX_REGIONS];
  uint64_t table_physical[GT_MAX_TABLES];
+ /* Optional separately owned Normal-NC HFI page. The caller qualifies its
+  * whole CPU-page ownership/aliases before binding; this builder only maps
+  * and initializes it. Static firmware/table storage remains unchanged. */
+ uint8_t *external_hfi;
+ uint32_t external_hfi_address,external_hfi_bytes;
  uint8_t backing[GM_BACKING_CAPACITY] __attribute__((aligned(4096)));
  uint64_t tables[GT_MAX_TABLES][GT_ENTRIES] __attribute__((aligned(4096)));
 };
 struct gm_memory_io {void*ctx;uint64_t(*physical)(void*,const void*);int(*flush)(void*,void*,size_t);int(*clean)(void*,void*,size_t);void(*barrier)(void*);};
 int gm_memory_prepare(struct gm_xnu_memory *,const struct gn_plan *,const struct gm_memory_io *);
+int gm_memory_bind_hfi(struct gm_xnu_memory *,void *,size_t,uint32_t);
 void *gm_memory_owned_va(struct gm_xnu_memory *,uint32_t iova,size_t bytes);
 int gm_memory_publish(struct gm_xnu_memory *,const struct gm_memory_io *);
 /* Caller supplies a freshly zeroed, exclusively owned object. Prepare and

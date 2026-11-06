@@ -1,0 +1,1458 @@
+--- /dev/null
++++ b/bsd/dev/ziyi_g19_native.inc
+@@ -0,0 +1,165 @@
++/* G19 one-command HFI adapter. No CoreAnimation/Metal/client publication. */
++#define G19_INIT 0x03d7e618ULL
++#define G19_BELL 0x03d7e650ULL
++#define G19_STATUS 0x03d7e600ULL
++#define G19_FW 0x03d7e070ULL
++extern unsigned int ziyi_hop_pmap_last_error(void);
++
++static int zg_hfi_lease(struct zg_state*s,uint64_t epoch){
++ return s->gmu_enabled==2 && epoch &&
++  __atomic_load_n(&s->lease,__ATOMIC_ACQUIRE)==1 &&
++  s->lease_epoch==epoch && s->firmware.record.epoch==epoch;
++}
++static int zg_hfi_evidence(void*ctx,uint64_t epoch,uint32_t*facts){
++ struct zg_state*s=ctx;struct g8_record*r=&s->firmware.record;*facts=0;
++ if(!zg_hfi_lease(s,epoch)||r->poison||!zg_adt_check(s,0))return 0;
++ *facts=HOP_LEASE_HELD;
++ int ok;uint32_t reset=(uint32_t)zg_g8_load(s,GD_RESET,4,&ok);if(!ok)return 0;
++ if(reset!=1)return 1;
++ *facts|=HOP_RESET_HELD;
++ /* Preparation is before this GMU's own route/publication, while the
++  * qualified inherited halt/ACK tuple and reset keep its bus quiescent. */
++ if((r->flags&(G8_SAVED|G8_SCOPED))!=(G8_SAVED|G8_SCOPED)||
++    r->flags&(G8_MAPPED|G8_PUBLISHED|G8_RELEASED_RESET))return 1;
++ uint32_t halt=(uint32_t)zg_g8_load(s,GD_HALT,4,&ok);if(!ok)return 0;
++ uint32_t ack=(uint32_t)zg_g8_load(s,GD_ACK,4,&ok);if(!ok)return 0;
++ if(r->bus_observations!=2||halt!=r->initial_halt||ack!=r->initial_ack||
++    !((halt==8&&ack==3)||(!halt&&!ack)))return 1;
++ *facts|=HOP_DRAINED|HOP_GMU_UNMAPPED;return 1;
++}
++static void zg_hfi_memory_failure(struct zg_state*s){
++ struct g19_hfi_record*d=&s->hfi_record;
++ d->stage=G19_HFI_OWNER;d->error=G19_HFI_OWNERSHIP;
++ d->last_health.helper_phase=s->hfi_memory.state;
++ d->last_health.helper_error=(s->hfi_memory.error<<8)|ziyi_hop_pmap_last_error();
++ printf("ZIYI HFI memory STOP state%u err%u pmap%u va%llx pa%llx alias%llx retained1\n",
++  s->hfi_memory.state,s->hfi_memory.error,ziyi_hop_pmap_last_error(),
++  s->hfi_memory.va,s->hfi_memory.page[0].pa,s->hfi_memory.page[0].aperture);
++}
++static int zg_hfi_prepare(void*ctx,struct g8_workspace*w,const struct g8_io*io){
++ (void)io;struct zg_state*s=ctx;struct g19_hfi_record*d=&s->hfi_record;
++ bzero(d,sizeof(*d));d->stage=G19_HFI_OWNER;d->flags=G19_HFI_RETAIN|G19_HFI_PLANNED;
++ d->error=G19_HFI_OWNERSHIP;
++ d->epoch=w->record.epoch;d->gmu_address=w->firmware_plan.hfi_address;
++ d->sequence=1;d->poll_cap=50000;d->delay_us=100;d->timeout_ticks=5*zg_frequency();
++ (void)gh_version_command(1,d->sent);
++ s->hfi_owner.owner_ctx=s;s->hfi_owner.owner_evidence=zg_hfi_evidence;
++ if(w!=&s->firmware||!hop_xnu_prepare(&s->hfi_memory,&s->hfi_owner,w->record.epoch,1)||
++    !gm_memory_bind_hfi(&w->memory,(void*)(uintptr_t)s->hfi_memory.va,
++                        GN_HFI_BYTES,w->firmware_plan.hfi_address)){
++  zg_hfi_memory_failure(s);return 0;
++ }
++ printf("ZIYI HFI page NormalNC16K pa%llx aperture%llx, queueIOVA%x bytes%u\n",
++  s->hfi_memory.page[0].pa,s->hfi_memory.page[0].aperture,
++  w->firmware_plan.hfi_address,GN_HFI_BYTES);
++ return 1;
++}
++static int zg_hfi_publish(void*ctx,struct g8_workspace*w,const struct g8_io*io){
++ (void)io;struct zg_state*s=ctx;
++ if(w!=&s->firmware||w->memory.external_hfi!=(void*)(uintptr_t)s->hfi_memory.va||
++    !hop_xnu_mark_live(&s->hfi_memory,&s->hfi_owner)){
++  zg_hfi_memory_failure(s);return 0;
++ }
++ /* All four GMU pages must map the qualified allocation, never its former
++  * unused static placeholder. Publication follows this exact table check. */
++ for(unsigned off=0;off<GN_HFI_BYTES;off+=GT_PAGE){
++  uint64_t pa=0;
++  if(gt_lookup(&w->memory.table_plan,w->memory.tables,
++     w->firmware_plan.hfi_address+off,&pa)!=1||
++     pa!=s->hfi_memory.page[0].pa+off){zg_hfi_memory_failure(s);return 0;}
++ }
++ return 1;
++}
++static int zg_hfi_qualified(void*ctx,uint64_t epoch){
++ struct zg_state*s=ctx;struct g8_record*r=&s->firmware.record;
++ return zg_hfi_lease(s,epoch)&&!r->poison&&r->phase==G8_WAIT&&
++  (r->flags&(G8_FW100|G8_PUBLISHED|G8_MAPPED|G8_LOADED|G8_RELEASED_RESET))==
++   (G8_FW100|G8_PUBLISHED|G8_MAPPED|G8_LOADED|G8_RELEASED_RESET)&&
++  s->hfi_memory.state==HOP_LIVE&&s->firmware.memory.state==2&&
++  s->firmware.memory.external_hfi==(void*)(uintptr_t)s->hfi_memory.va&&
++  hop_xnu_validate(&s->hfi_memory,&s->hfi_owner);
++}
++static int zg_hfi_read32(void*ctx,uint32_t offset,uint32_t*out){
++ struct zg_state*s=ctx;if(!out||offset>GN_HFI_BYTES-4||(offset&3)||
++  !zg_hfi_qualified(s,s->lease_epoch))return 0;
++ *out=*(volatile uint32_t*)(uintptr_t)(s->hfi_memory.va+offset);return 1;
++}
++static int zg_hfi_write32(void*ctx,uint32_t offset,uint32_t value){
++ struct zg_state*s=ctx;
++ if(offset>GN_HFI_BYTES-4||(offset&3)||
++    (offset!=68&&offset!=112&&!(offset>=GN_HFI_QUEUE0&&offset<GN_HFI_QUEUE0+4096))||
++    !zg_hfi_qualified(s,s->lease_epoch))return 0;
++ *(volatile uint32_t*)(uintptr_t)(s->hfi_memory.va+offset)=value;return 1;
++}
++static int zg_hfi_order(void*ctx,enum gh_live_order order){
++ struct zg_state*s=ctx;if(!zg_hfi_qualified(s,s->lease_epoch))return 0;
++ if(order==GH_LIVE_RELEASE)__asm__ volatile("dmb oshst":::"memory");
++ else if(order==GH_LIVE_ACQUIRE)__asm__ volatile("dmb oshld":::"memory");
++ else return 0;
++ return 1;
++}
++static int zg_hfi_health(void*ctx,struct g19_hfi_health*h){
++ struct zg_state*s=ctx;h->helper_phase=s->hfi_memory.state;
++ h->helper_error=(s->hfi_memory.error<<8)|ziyi_hop_pmap_last_error();
++ if(!zg_hfi_qualified(s,s->lease_epoch))return 0;
++ int good;h->fw_result=(uint32_t)zg_g8_load(s,G19_FW,4,&good);if(!good)return 0;
++ h->hfi_status=(uint32_t)zg_g8_load(s,G19_STATUS,4,&good);if(!good)return 0;
++ h->reset=(uint32_t)zg_g8_load(s,GD_RESET,4,&good);if(!good)return 0;
++ if(h->reset||h->hfi_status&~1u||h->fw_result!=0x100u)return 0;
++ uint32_t fsr=(uint32_t)zg_g8_load(s,0x03db2058,4,&good);if(!good||fsr!=0x400)return 0;
++ uint32_t halt=(uint32_t)zg_g8_load(s,GD_HALT,4,&good);if(!good||halt)return 0;
++ uint32_t ack=(uint32_t)zg_g8_load(s,GD_ACK,4,&good);if(!good||(ack!=0&&ack!=3))return 0;
++ return 1;
++}
++static int zg_hfi_store(void*ctx,uint64_t address){
++ struct zg_state*s=ctx;struct g19_hfi_health health={0};
++ if((address!=G19_INIT&&address!=G19_BELL)||!zg_adt_check(s,0)||
++    !zg_hfi_health(s,&health))return 0;
++ if(address==G19_INIT){
++  if(s->hfi_record.stage!=G19_HFI_INITIALIZE||s->hfi_record.start_calls!=1)return 0;
++  int good;uint32_t before=(uint32_t)zg_g8_load(s,G19_INIT,4,&good);
++  if(!good||before>1)return 0;
++ }else{
++  if(s->hfi_record.stage!=G19_HFI_PUBLISH||s->hfi_record.doorbells!=1||
++     s->hfi_record.q0_write_stores!=1||s->hfi_record.stores!=5)return 0;
++  volatile uint32_t*q=(volatile uint32_t*)(uintptr_t)s->hfi_memory.va;
++  if(q[68/4]!=4||q[GN_HFI_QUEUE0/4]!=0x00100201||
++     q[GN_HFI_QUEUE0/4+1]!=GH_A662_SUPPORTED_VERSION)return 0;
++ }
++ /* Exact finite source-qualified stores. Doorbell is write-only: no
++  * fictitious readback or general bit mask is used as authorization. */
++ void*p=zg_g8_pointer(s,address,4,1);if(!p)return 0;
++ zg_barrier(s);*(volatile uint32_t*)p=1;zg_barrier(s);return 1;
++}
++static int zg_hfi_start(void*ctx){return zg_hfi_store(ctx,G19_INIT);}
++static int zg_hfi_bell(void*ctx){return zg_hfi_store(ctx,G19_BELL);}
++static int zg_hfi_now(void*ctx,uint64_t*out){*out=zg_ticks(ctx);return 1;}
++static int zg_hfi_delay(void*ctx,uint32_t us){if(us>100)return 0;zg_delay(ctx,us);return 1;}
++static void zg_hfi_ready(void*ctx,struct g8_workspace*w,const struct g8_io*io){
++ (void)io;struct zg_state*s=ctx;if(w!=&s->firmware)return;
++ const struct g19_hfi_config config={w->record.epoch,5*zg_frequency(),
++  w->firmware_plan.hfi_address,1,50000,100};
++ const struct g19_hfi_ops ops={s,{s,zg_hfi_qualified,zg_hfi_read32,zg_hfi_write32,
++  zg_hfi_order,zg_hfi_bell},zg_hfi_health,zg_hfi_start,zg_hfi_now,zg_hfi_delay};
++ int error=g19_hfi_run(&s->hfi_runtime,&config,&ops,&s->hfi_record);
++ printf("ZIYI HFI result stage%u err%d sent%08x/%08x raw%u status%x version%x polls%u retained1\n",
++  s->hfi_record.stage,error,s->hfi_record.sent[0],s->hfi_record.sent[1],
++  s->hfi_record.raw_count,s->hfi_record.remote_status,s->hfi_record.version,s->hfi_record.polls);
++}
++static void zg_hfi_print(struct zg_state*s){
++ if(s->gmu_enabled!=2)return;
++ uint8_t bytes[G19_HFI_RECORD_BYTES];
++ if(g19_hfi_record_encode(&s->hfi_record,bytes)){
++  printf("ZIYI HFI record invalid stage%u error%u\n",s->hfi_record.stage,s->hfi_record.error);return;
++ }
++ const char*alphabet="ABCDEFGHJKLMNPQR";char lines[20][33];
++ for(unsigned i=0;i<sizeof(bytes);i++){
++  lines[i/16][2*(i%16)]=alphabet[bytes[i]>>4];
++  lines[i/16][2*(i%16)+1]=alphabet[bytes[i]&15];
++ }
++ for(unsigned i=0;i<20;i++)lines[i][32]=0;
++ for(unsigned repeat=0;repeat<3;repeat++)for(unsigned page=0;page<5;page++){
++  for(unsigned part=0;part<4;part++)printf("ZGHF%u%u %s\n",page+1,part+1,lines[page*4+part]);
++  zg_sleep(1500);
++ }
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g19_owned_pages.c
+@@ -0,0 +1,141 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g19_owned_pages.h"
++
++static int ziyi_g19_owned_pages_fail(struct hop *h,uint32_t error)
++{
++ h->error=error;
++ h->state=h->va||h->state==HOP_OWNED||h->state==HOP_READY||h->state==HOP_LIVE
++          ?HOP_QUARANTINE:HOP_REFUSED;
++ return 0;
++}
++static int ziyi_g19_owned_pages_complete(const struct hop_ops *o)
++{
++ return o&&o->policy&&o->evidence&&o->allocate&&o->backing&&o->managed&&
++  o->aliases_closed&&o->get_wimg&&o->set_wimg&&o->observe&&o->free_allocation;
++}
++static int ziyi_g19_owned_pages_facts(struct hop *h,const struct hop_ops *o,uint32_t required)
++{
++ uint32_t got=0;
++ return o->evidence(o->ctx,h->epoch,&got)&&(got&required)==required;
++}
++static int ziyi_g19_owned_pages_observation(const struct hop_ops *o,uint64_t va,uint64_t pa,
++                       uint8_t *attr)
++{
++ struct gh_cpu_page_observation v={0};
++ if(!o->observe(o->ctx,va,pa,&v)||v.va!=va||v.expected_pa!=pa||v.el!=4||
++    !(v.sctlr&1u)||!gh_par_identity(v.par,va,pa))return 0;
++ *attr=(uint8_t)(v.par>>56);
++ return 1;
++}
++static int ziyi_g19_owned_pages_verify_page(struct hop *h,const struct hop_ops *o,uint32_t i,
++                       uint8_t expected)
++{
++ struct hop_page *p=&h->page[i];
++ uint64_t va=h->va+(uint64_t)i*HOP_PAGE_SIZE,pa=0,aperture=0;
++ if(!ziyi_g19_owned_pages_facts(h,o,HOP_LEASE_HELD)||!o->backing(o->ctx,va,&pa,&aperture)||
++    pa!=p->pa||aperture!=p->aperture||!o->managed(o->ctx,pa)||
++    !o->aliases_closed(o->ctx,h->epoch,va,pa))return 0;
++ /* 4KiB is the minimum qualified CPU translation leaf. Check both ends of
++  * every GMU subpage, including aliases of the unused part of each CPU page. */
++ for(uint32_t off=0;off<HOP_PAGE_SIZE;off+=4096u){
++  for(uint32_t end=0;end<2;end++){
++   uint32_t d=off+(end?4095u:0u);uint8_t a=0,b=0;
++   if(!ziyi_g19_owned_pages_facts(h,o,HOP_LEASE_HELD)||
++      !ziyi_g19_owned_pages_observation(o,va+d,pa+d,&a)||
++      !ziyi_g19_owned_pages_observation(o,aperture+d,pa+d,&b)||a!=expected||b!=expected)return 0;
++  }
++ }
++ return ziyi_g19_owned_pages_facts(h,o,HOP_LEASE_HELD);
++}
++int hop_prepare(struct hop *h,const struct hop_ops *o,uint64_t epoch,uint32_t n)
++{
++ if(!h)return 0;
++ if(h->state!=HOP_FRESH)return 0; /* Never destroy retained ownership. */
++ if(!ziyi_g19_owned_pages_complete(o)||!epoch||!n||n>HOP_MAX_PAGES)return ziyi_g19_owned_pages_fail(h,HOP_ARGUMENT);
++ h->epoch=epoch;h->count=n;h->bytes=n*HOP_PAGE_SIZE;
++ uint32_t granule=0;
++ if(!o->policy(o->ctx,&granule,&h->nc_wimg)||granule!=HOP_PAGE_SIZE)
++  return ziyi_g19_owned_pages_fail(h,HOP_POLICY);
++ if(!ziyi_g19_owned_pages_facts(h,o,HOP_RECLAIM))return ziyi_g19_owned_pages_fail(h,HOP_LIFECYCLE);
++ if(!o->allocate(o->ctx,epoch,h->bytes,&h->va))return ziyi_g19_owned_pages_fail(h,HOP_ALLOCATE);
++ h->state=HOP_OWNED;
++ if(!h->va||(h->va&(HOP_PAGE_SIZE-1u))||h->va>UINT64_MAX-h->bytes)
++  return ziyi_g19_owned_pages_fail(h,HOP_BACKING);
++ /* Snapshot and qualify ALL pages before changing the first one's attrs. */
++ for(uint32_t i=0;i<n;i++){
++  struct hop_page *p=&h->page[i];uint64_t va=h->va+(uint64_t)i*HOP_PAGE_SIZE;
++  if(!ziyi_g19_owned_pages_facts(h,o,HOP_RECLAIM)||!o->backing(o->ctx,va,&p->pa,&p->aperture)||
++     !p->pa||(p->pa&(HOP_PAGE_SIZE-1u))||p->pa>=(1ULL<<36)||
++     !p->aperture||(p->aperture&(HOP_PAGE_SIZE-1u))||
++     p->aperture>UINT64_MAX-HOP_PAGE_SIZE||!o->managed(o->ctx,p->pa))
++   return ziyi_g19_owned_pages_fail(h,HOP_BACKING);
++  for(uint32_t j=0;j<i;j++)if(h->page[j].pa==p->pa)
++   return ziyi_g19_owned_pages_fail(h,HOP_BACKING);
++  if(!o->aliases_closed(o->ctx,epoch,va,p->pa))return ziyi_g19_owned_pages_fail(h,HOP_ALIAS);
++  if(!o->get_wimg(o->ctx,p->pa,&p->old_wimg))return ziyi_g19_owned_pages_fail(h,HOP_ATTRIBUTES);
++  uint8_t initial=0;
++  if(!ziyi_g19_owned_pages_observation(o,va,p->pa,&initial))return ziyi_g19_owned_pages_fail(h,HOP_TRANSLATION);
++  /* Refuse Device and initially NC allocations: candidate contract owns
++   * ordinary cached allocator pages and restores that exact prior attr. */
++  if(!(initial&0xf0u)||!(initial&0x0fu)||initial==HOP_NORMAL_NC)
++   return ziyi_g19_owned_pages_fail(h,HOP_ATTRIBUTES);
++  p->old_attr=initial;
++  if(!ziyi_g19_owned_pages_verify_page(h,o,i,initial))return ziyi_g19_owned_pages_fail(h,HOP_TRANSLATION);
++ }
++ for(uint32_t i=0;i<n;i++){
++  struct hop_page *p=&h->page[i];uint32_t got=0;
++  if(!ziyi_g19_owned_pages_facts(h,o,HOP_RECLAIM))return ziyi_g19_owned_pages_fail(h,HOP_LIFECYCLE);
++  p->touched=1; /* Conversion may occur even when callback reports failure. */
++  if(!o->set_wimg(o->ctx,p->pa,h->nc_wimg)||
++     !o->get_wimg(o->ctx,p->pa,&got)||got!=h->nc_wimg)
++   return ziyi_g19_owned_pages_fail(h,HOP_ATTRIBUTES);
++  if(!ziyi_g19_owned_pages_verify_page(h,o,i,HOP_NORMAL_NC))return ziyi_g19_owned_pages_fail(h,HOP_TRANSLATION);
++ }
++ h->state=HOP_READY;
++ if(!hop_validate(h,o))return 0;
++ if(!ziyi_g19_owned_pages_facts(h,o,HOP_RECLAIM))return ziyi_g19_owned_pages_fail(h,HOP_LIFECYCLE);
++ return 1;
++}
++int hop_validate(struct hop *h,const struct hop_ops *o)
++{
++ if(!h||(h->state!=HOP_READY&&h->state!=HOP_LIVE))return 0;
++ if(!ziyi_g19_owned_pages_complete(o))return ziyi_g19_owned_pages_fail(h,HOP_ARGUMENT);
++ uint32_t granule=0,nc=0;
++ if(!o->policy(o->ctx,&granule,&nc)||granule!=HOP_PAGE_SIZE||nc!=h->nc_wimg)
++  return ziyi_g19_owned_pages_fail(h,HOP_POLICY);
++ for(uint32_t i=0;i<h->count;i++){
++  uint32_t got=0;
++  if(!o->get_wimg(o->ctx,h->page[i].pa,&got)||got!=nc)
++   return ziyi_g19_owned_pages_fail(h,HOP_ATTRIBUTES);
++  if(!ziyi_g19_owned_pages_verify_page(h,o,i,HOP_NORMAL_NC))return ziyi_g19_owned_pages_fail(h,HOP_TRANSLATION);
++ }
++ return 1;
++}
++int hop_mark_live(struct hop *h,const struct hop_ops *o)
++{
++ if(!h||h->state!=HOP_READY)return 0;
++ if(!hop_validate(h,o))return 0;
++ if(!ziyi_g19_owned_pages_facts(h,o,HOP_RECLAIM))return ziyi_g19_owned_pages_fail(h,HOP_LIFECYCLE);
++ h->state=HOP_LIVE;
++ return 1;
++}
++int hop_release(struct hop *h,const struct hop_ops *o)
++{
++ if(!h||(h->state!=HOP_READY&&h->state!=HOP_LIVE))return 0;
++ if(!ziyi_g19_owned_pages_complete(o))return ziyi_g19_owned_pages_fail(h,HOP_ARGUMENT);
++ if(!ziyi_g19_owned_pages_facts(h,o,HOP_RECLAIM))return ziyi_g19_owned_pages_fail(h,HOP_LIFECYCLE);
++ if(!hop_validate(h,o))return 0;
++ for(uint32_t i=0;i<h->count;i++){
++  struct hop_page *p=&h->page[i];uint32_t got=0;
++  if(!ziyi_g19_owned_pages_facts(h,o,HOP_RECLAIM))return ziyi_g19_owned_pages_fail(h,HOP_LIFECYCLE);
++  if(!o->set_wimg(o->ctx,p->pa,p->old_wimg)||
++     !o->get_wimg(o->ctx,p->pa,&got)||got!=p->old_wimg||
++     !ziyi_g19_owned_pages_verify_page(h,o,i,p->old_attr))return ziyi_g19_owned_pages_fail(h,HOP_ATTRIBUTES);
++  p->touched=0;
++ }
++ if(!ziyi_g19_owned_pages_facts(h,o,HOP_RECLAIM)||
++    !o->free_allocation(o->ctx,h->epoch,h->va,h->bytes))
++  return ziyi_g19_owned_pages_fail(h,HOP_LIFECYCLE);
++ h->state=HOP_RELEASED;h->error=HOP_OK;
++ return 1;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g19_owned_pages.h
+@@ -0,0 +1,55 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stdint.h>
++#include "ziyi_hfi_page_observation.h"
++
++/* Candidate only. Caller serializes every operation and retains ctx/ops for
++ * the allocation lifetime. No GMU mapping, queue publication or MMIO here. */
++#define HOP_PAGE_SIZE 16384u
++#define HOP_MAX_PAGES 8u
++#define HOP_NORMAL_NC 0x44u
++enum hop_state { HOP_FRESH, HOP_OWNED, HOP_READY, HOP_LIVE,
++                 HOP_RELEASED, HOP_REFUSED, HOP_QUARANTINE };
++enum hop_error { HOP_OK, HOP_ARGUMENT, HOP_STATE, HOP_POLICY, HOP_LEASE,
++                 HOP_ALLOCATE, HOP_BACKING, HOP_ALIAS, HOP_ATTRIBUTES,
++                 HOP_TRANSLATION, HOP_IO, HOP_LIFECYCLE };
++enum hop_evidence { HOP_LEASE_HELD=1u, HOP_RESET_HELD=2u,
++                    HOP_DRAINED=4u, HOP_GMU_UNMAPPED=8u };
++#define HOP_RECLAIM (HOP_LEASE_HELD|HOP_RESET_HELD|HOP_DRAINED|HOP_GMU_UNMAPPED)
++struct hop_page {
++ uint64_t pa, aperture;
++ uint32_t old_wimg, touched;
++ uint8_t old_attr;
++};
++struct hop {
++ uint64_t epoch, va;
++ uint32_t count, bytes, state, error, nc_wimg;
++ struct hop_page page[HOP_MAX_PAGES];
++};
++struct hop_ops {
++ void *ctx;
++ /* Policy is a separately audited pmap/allocator alias-closure invariant.
++  * An AT result, valid managed PA, or a successful void pmap call is not it. */
++ int (*policy)(void*,uint32_t *runtime_page_size,uint32_t *normal_nc_wimg);
++ int (*evidence)(void*,uint64_t epoch,uint32_t *facts);
++ /* Allocation success transfers one whole wired allocation; failure must
++  * transfer none. Every uncertain callback after this point quarantines it. */
++ int (*allocate)(void*,uint64_t epoch,uint32_t bytes,uint64_t *va);
++ int (*backing)(void*,uint64_t va,uint64_t *pa,uint64_t *aperture);
++ int (*managed)(void*,uint64_t pa);
++ /* Must establish allocator provenance, no external borrowers, complete
++  * tracked-PV + physmap alias set, and exclusion of future new aliases. */
++ int (*aliases_closed)(void*,uint64_t epoch,uint64_t va,uint64_t pa);
++ int (*get_wimg)(void*,uint64_t pa,uint32_t*);
++ int (*set_wimg)(void*,uint64_t pa,uint32_t);
++ int (*observe)(void*,uint64_t va,uint64_t expected_pa,
++                struct gh_cpu_page_observation*);
++ int (*free_allocation)(void*,uint64_t epoch,uint64_t va,uint32_t bytes);
++};
++int hop_prepare(struct hop*,const struct hop_ops*,uint64_t epoch,uint32_t pages);
++/* Requalifies every 4KiB subpage at both aliases. On uncertainty, retains all. */
++int hop_validate(struct hop*,const struct hop_ops*);
++/* Call BEFORE making the allocation reachable by the GMU. A failed/partial
++ * device publication still requires the full reset/drain/unmap release path. */
++int hop_mark_live(struct hop*,const struct hop_ops*);
++int hop_release(struct hop*,const struct hop_ops*);
+--- /dev/null
++++ b/bsd/dev/ziyi_g19_xnu_owned_pages.c
+@@ -0,0 +1,112 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include <pexpert/arm64/board_config.h>
++#if !SWEET
++#error "Candidate requires qualified SWEET source profile"
++#endif
++#include <sys/systm.h>
++#include <vm/vm_kern.h>
++#include <vm/pmap.h>
++#include <mach/vm_statistics.h>
++#include <arm/machine_routines.h>
++#include "ziyi_g19_xnu_owned_pages.h"
++extern uint64_t kvtophys(vm_offset_t);
++/* These exact private signatures are checked against captured vm/pmap.h and
++ * arm/pmap/pmap.h; BSD_KERNEL_PRIVATE does not expose their declarations. */
++extern boolean_t pmap_valid_page(ppnum_t);
++extern unsigned int pmap_cache_attributes(ppnum_t);
++extern int ziyi_hop_boot_leaf_ready(void);
++extern unsigned int ziyi_hop_pmap_abi(void);
++extern int ziyi_hop_pmap_page(uint64_t,uint64_t,unsigned int,unsigned int,
++                              bool,uint64_t*);
++
++static int ziyi_g19_xnu_owned_pages_policy(void *ctx,uint32_t *granule,uint32_t *nc)
++{
++ (void)ctx;*granule=(uint32_t)PAGE_SIZE;*nc=VM_WIMG_WCOMB;
++ return ziyi_hop_boot_leaf_ready()&&PAGE_SHIFT==14&&PAGE_SIZE==HOP_PAGE_SIZE&&
++        ziyi_hop_pmap_abi()==0x484f5031u;
++}
++static int ziyi_g19_xnu_owned_pages_evidence(void *ctx,uint64_t epoch,uint32_t *facts)
++{
++ struct hop_xnu *x=ctx;
++ return x&&x->owner_evidence&&x->owner_evidence(x->owner_ctx,epoch,facts);
++}
++static int ziyi_g19_xnu_owned_pages_allocate(void *ctx,uint64_t epoch,uint32_t bytes,uint64_t *va)
++{
++ struct hop_xnu *x=ctx;vm_offset_t address=0;
++ if(x->va||!epoch||!bytes||bytes%HOP_PAGE_SIZE)return 0;
++ /* No KOBJECT/PAGEABLE/VAONLY: fresh private VM object and wired page list.
++  * ZERO applies to the entire runtime pages, before NC conversion. */
++ kern_return_t kr=kernel_memory_allocate(kernel_map,&address,bytes,
++                    HOP_PAGE_SIZE-1u,KMA_DATA|KMA_ZERO,VM_KERN_MEMORY_IOKIT);
++ if(kr!=KERN_SUCCESS)return 0;
++ x->va=address;x->epoch=epoch;x->bytes=bytes;*va=address;
++ return 1;
++}
++static int ziyi_g19_xnu_owned_pages_within(const struct hop_xnu *x,uint64_t va)
++{
++ return x->va&&va>=x->va&&va-x->va<x->bytes;
++}
++static int ziyi_g19_xnu_owned_pages_backing(void *ctx,uint64_t va,uint64_t *pa,uint64_t *aperture)
++{
++ struct hop_xnu *x=ctx;
++ if(!ziyi_g19_xnu_owned_pages_within(x,va)||(va&(HOP_PAGE_SIZE-1u)))return 0;
++ *pa=kvtophys((vm_offset_t)va);
++ if(!*pa||*pa>=(1ULL<<36))return 0;
++ *aperture=(uint64_t)ml_static_ptovirt(*pa);
++ return *aperture!=0;
++}
++static int ziyi_g19_xnu_owned_pages_managed(void *ctx,uint64_t pa)
++{
++ (void)ctx;
++ return pa&&pa<(1ULL<<36)&&!(pa&(HOP_PAGE_SIZE-1u))&&
++        pmap_valid_page((ppnum_t)atop(pa));
++}
++static int ziyi_g19_xnu_owned_pages_aliases(void *ctx,uint64_t epoch,uint64_t va,uint64_t pa)
++{
++ struct hop_xnu *x=ctx;uint64_t aperture=0;
++ if(x->epoch!=epoch||!ziyi_g19_xnu_owned_pages_within(x,va)||kvtophys((vm_offset_t)va)!=pa)return 0;
++ unsigned int attr=pmap_cache_attributes((ppnum_t)atop(pa));
++ return ziyi_hop_pmap_page(va,pa,attr,attr,false,&aperture);
++}
++static int ziyi_g19_xnu_owned_pages_get(void *ctx,uint64_t pa,uint32_t *attr)
++{
++ (void)ctx;if(!ziyi_g19_xnu_owned_pages_managed(ctx,pa))return 0;
++ *attr=pmap_cache_attributes((ppnum_t)atop(pa));return 1;
++}
++static int ziyi_g19_xnu_owned_pages_set(void *ctx,uint64_t pa,uint32_t attr)
++{
++ struct hop_xnu *x=ctx;uint64_t aperture=0;
++ if(!ziyi_g19_xnu_owned_pages_managed(ctx,pa))return 0;
++ for(uint32_t off=0;off<x->bytes;off+=HOP_PAGE_SIZE){
++  uint64_t va=x->va+off;
++  if(kvtophys((vm_offset_t)va)==pa)
++   return ziyi_hop_pmap_page(va,pa,pmap_cache_attributes((ppnum_t)atop(pa)),
++                              attr,true,&aperture);
++ }
++ return 0;
++}
++static int ziyi_g19_xnu_owned_pages_observe(void *ctx,uint64_t va,uint64_t pa,
++                    struct gh_cpu_page_observation *v)
++{
++ (void)ctx;return gh_cpu_observe(va,pa,v);
++}
++static int ziyi_g19_xnu_owned_pages_release(void *ctx,uint64_t epoch,uint64_t va,uint32_t bytes)
++{
++ struct hop_xnu *x=ctx;
++ if(x->epoch!=epoch||x->va!=va||x->bytes!=bytes)return 0;
++ kmem_free(kernel_map,(vm_offset_t)va,bytes);
++ x->va=0;x->bytes=0;return 1;
++}
++static struct hop_ops ziyi_g19_xnu_owned_pages_ops(struct hop_xnu *x)
++{
++ return (struct hop_ops){x,ziyi_g19_xnu_owned_pages_policy,ziyi_g19_xnu_owned_pages_evidence,ziyi_g19_xnu_owned_pages_allocate,ziyi_g19_xnu_owned_pages_backing,ziyi_g19_xnu_owned_pages_managed,ziyi_g19_xnu_owned_pages_aliases,
++                         ziyi_g19_xnu_owned_pages_get,ziyi_g19_xnu_owned_pages_set,ziyi_g19_xnu_owned_pages_observe,ziyi_g19_xnu_owned_pages_release};
++}
++int hop_xnu_prepare(struct hop *h,struct hop_xnu *x,uint64_t e,uint32_t n)
++{ if(!x)return 0;struct hop_ops o=ziyi_g19_xnu_owned_pages_ops(x);return hop_prepare(h,&o,e,n); }
++int hop_xnu_validate(struct hop *h,struct hop_xnu *x)
++{ if(!x)return 0;struct hop_ops o=ziyi_g19_xnu_owned_pages_ops(x);return hop_validate(h,&o); }
++int hop_xnu_mark_live(struct hop *h,struct hop_xnu *x)
++{ if(!x)return 0;struct hop_ops o=ziyi_g19_xnu_owned_pages_ops(x);return hop_mark_live(h,&o); }
++int hop_xnu_release(struct hop *h,struct hop_xnu *x)
++{ if(!x)return 0;struct hop_ops o=ziyi_g19_xnu_owned_pages_ops(x);return hop_release(h,&o); }
+--- /dev/null
++++ b/bsd/dev/ziyi_g19_xnu_owned_pages.h
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_g19_owned_pages.h"
++/* Retain this context privately for the entire lifetime. No VA exports,
++ * mach memory entries, vm_map copies, extra pmap_enter, or IOMMU mappings.
++ * The future GMU mapping is released only after reset+drain are proven.
++ * Existing G18 bounded gm_memory API is not modified or accepted here. */
++struct hop_xnu {
++ uint64_t va,epoch;
++ uint32_t bytes;
++ void *owner_ctx;
++ int (*owner_evidence)(void*,uint64_t,uint32_t*);
++};
++int hop_xnu_prepare(struct hop*,struct hop_xnu*,uint64_t,uint32_t);
++int hop_xnu_validate(struct hop*,struct hop_xnu*);
++int hop_xnu_mark_live(struct hop*,struct hop_xnu*);
++int hop_xnu_release(struct hop*,struct hop_xnu*);
+--- a/bsd/dev/ziyi_g8_engine.c
++++ b/bsd/dev/ziyi_g8_engine.c
+@@ -215,7 +215,7 @@
+  if(r->flags&G13_CONTEXT_REINIT)r->flags|=G13_CONTEXT_CLEANUP;
+  if(!(r->flags&(G12_BUS_NORMALIZED|G13_CONTEXT_REINIT))){r->restored=1;r->flags|=G8_RESTORED;}return 1;
+ }
+-int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io){
++int g19_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io,const struct g19_hooks*hooks){
+  if(!w||!q||!io||!io->read||!io->write||!io->ticks||!io->delay||!io->barrier||!io->lease||!io->proof||!io->owned||(w->record.flags&G8_LEASE&&!w->record.lease_released)||w->memory.state)return 0;
+  struct g8_record*r=&w->record;*r=(struct g8_record){.epoch=q->epoch,.phase=G8_ACQUIRE};
+  if(!q->epoch||q->board!=0x06060201||q->hlos_cb!=6||q->hlos_smr!=6||q->current_el!=4||(q->sctlr&0x1005)!=0x1005||(q->sctlr&0x3000000)||q->acd_off!=1||q->qdss_off!=1||q->lm_bcl_off!=1||q->hfi_off!=1||q->inherited_ddr_probe!=1||!io->proof(io->ctx,q,&w->blob)||!io->owned(io->ctx,w,sizeof(*w)))return fail(r,G8_PREREQ,0);
+@@ -234,10 +234,11 @@
+  if(read_value(w,io,TLB_STATUS,4)||r->poison){fail(r,G8_OWNER,1);goto done;}
+  for(unsigned pass=0;pass<2;pass++){for(unsigned off=0;off<G8_TCM_BYTES;off+=4){if(!(off&0xfff)&&!quiet(w,io))goto done;bytes(w->backup[pass]+off,(uint32_t)read_value(w,io,tcm_address(off),4));if(r->poison)goto done;}g7_sha256(w->backup[pass],G8_TCM_BYTES,r->tcm_sha[pass]);}
+  if(!hashes_valid(w)){fail(r,G8_BACKUP,1);goto done;}r->saved_crc=old_crc(r);r->flags|=G8_SAVED;r->phase=G8_MEMORY;
++ if(hooks&&(!hooks->prepare_hfi||!hooks->publish_hfi||!hooks->firmware_ready||!hooks->prepare_hfi(hooks->ctx,w,io))){fail(r,G8_MEMORY_ERROR,0);goto done;}
+  if(!gm_memory_prepare(&w->memory,&w->firmware_plan,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_MEMORY_READY;
+  if(g8_invalid_registers(w)){fail(r,G8_PREREQ,0);goto done;}
+  for(unsigned i=0;i<w->firmware_plan.block_count;i++){const struct gn_block*b=&w->firmware_plan.blocks[i];if(b->size&&b->kind!=GN_ITCM&&b->kind!=GN_DTCM){uint8_t*dst=gm_memory_owned_va(&w->memory,b->address,b->size);if(!dst){fail(r,G8_MEMORY_ERROR,0);goto done;}for(unsigned j=0;j<b->size;j++)dst[j]=w->firmware[b->data_offset+j];if(!same(dst,w->firmware+b->data_offset,b->size)){fail(r,G8_BACKUP,1);goto done;}}}
+- if(gn_hfi_init(gm_memory_owned_va(&w->memory,w->firmware_plan.hfi_address,GN_HFI_BYTES),GN_HFI_BYTES,w->firmware_plan.hfi_address)!=GN_OK||!gm_memory_publish(&w->memory,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_PUBLISHED;r->phase=G8_INSTALL;
++ if(gn_hfi_init(gm_memory_owned_va(&w->memory,w->firmware_plan.hfi_address,GN_HFI_BYTES),GN_HFI_BYTES,w->firmware_plan.hfi_address)!=GN_OK||(hooks&&!hooks->publish_hfi(hooks->ctx,w,io))||!gm_memory_publish(&w->memory,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_PUBLISHED;r->phase=G8_INSTALL;
+  if(g13_unused_context(w))r->flags|=G13_CONTEXT_REINIT;
+  if(!set_reg(w,io,26,0))goto done;
+  if((r->flags&G13_CONTEXT_REINIT)&&(!set_reg(w,io,25,target(w,25))||!set_reg(w,io,24,target(w,24))||!g13_rebase_context(w,io,0)))goto done;
+@@ -255,7 +256,15 @@
+  if(!bus_release(w,io))goto done;
+  r->phase=G8_START;if(!set_reg(w,io,19,0))goto done;r->flags&=~G8_HELD_RESET;r->flags|=G8_RELEASED_RESET;r->phase=G8_WAIT;
+  for(unsigned i=0;i<100000;i++){uint32_t value=(uint32_t)read_value(w,io,FW_RESULT,4);if(r->poison)goto done;r->expected[3]=value;if((value&0x1ff)==0x100){r->flags|=G8_FW100;if(r->flags&G18_VENDOR_HANDOFF){uint32_t ack=(uint32_t)read_value(w,io,GD_ACK,4);r->final_ack=ack;if(r->poison||ack&~3u){fail(r,G8_OWNER,1);goto done;}if(!ack)r->bus_released=1;}break;}if(i==99999)fail(r,G8_TIMEOUT,0);io->delay(io->ctx,1);}
++ if(hooks&&!r->poison&&!r->error&&(r->flags&G8_FW100))hooks->firmware_ready(hooks->ctx,w,io);
+ restore:if(!r->poison)cleanup(w,io);
+ done:r->end=io->ticks(io->ctx);if(!r->writes||closed(r)){if(io->lease(io->ctx,q->epoch,0)){r->lease_released=1;r->flags|=G8_LEASE_RELEASED;}else fail(r,G8_OWNER,1);}r->retain_allocations=!closed(r)&&r->writes;return g8_transaction_complete(w);
+ }
++int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io){
++ /* Preserve the original three-argument entry contract. G19 callbacks are
++  * available only through the separate explicit continuation entry. */
++ if(!w||!q||!io||!io->read||!io->write||!io->ticks||!io->delay||
++    !io->barrier||!io->lease||!io->proof||!io->owned)return 0;
++ return g19_run(w,q,io,NULL);
++}
+ int g8_transaction_complete(const struct g8_workspace*w){return w&&!w->record.error&&!w->record.poison&&closed(&w->record)&&w->record.lease_released&&(w->record.flags&G8_FW100);}
+--- a/bsd/dev/ziyi_g8_fwinit.h
++++ b/bsd/dev/ziyi_g8_fwinit.h
+@@ -22,6 +22,15 @@
+ int g8_read_allowed(const struct g8_workspace*,uint64_t,unsigned);
+ int g8_store_guard(const struct g8_workspace*,uint64_t,unsigned,uint64_t,uint64_t,uint32_t,uint32_t);
+ int g8_run(struct g8_workspace*,const struct g8_prereq*,const struct g8_io*);
++/* G19 opt-in continuation. These callbacks do not grant MMIO authority.
++ * The ordinary G18 entry has no hooks and retains its exact lifecycle. */
++struct g19_hooks {
++ void *ctx;
++ int (*prepare_hfi)(void*,struct g8_workspace*,const struct g8_io*);
++ int (*publish_hfi)(void*,struct g8_workspace*,const struct g8_io*);
++ void (*firmware_ready)(void*,struct g8_workspace*,const struct g8_io*);
++};
++int g19_run(struct g8_workspace*,const struct g8_prereq*,const struct g8_io*,const struct g19_hooks*);
+ int g8_transaction_complete(const struct g8_workspace*);
+ /* Structural selection for the proven EL1/MMU-on contract. No legacy offline
+  * GA_REQUIRED_FACTS assertion and no hardware write authority is returned. */
+--- a/bsd/dev/ziyi_g8_memory.c
++++ b/bsd/dev/ziyi_g8_memory.c
+@@ -2,28 +2,41 @@
+ #include "ziyi_g8_memory.h"
+ static int overlap(const void*a,size_t an,const void*b,size_t bn){uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;if(an>UINTPTR_MAX-x||bn>UINTPTR_MAX-y)return 1;return x<y+bn&&y<x+an;}
+ static int physical_page(const struct gm_memory_io*io,const void*va,uint64_t*out){uint64_t pa=io->physical(io->ctx,va);if(!pa||(pa&4095)||pa>GT_OAS_END-4096)return 0;*out=pa;return 1;}
++int gm_memory_bind_hfi(struct gm_xnu_memory*s,void*va,size_t bytes,uint32_t address){
++ if(!s||s->state||s->external_hfi||!va||((uintptr_t)va&16383u)||bytes!=GN_HFI_BYTES||
++    (address&4095u)||address<0x60000000u||address>0x80000000u-GN_HFI_BYTES||
++    overlap(s,sizeof(*s),va,bytes))return 0;
++ s->external_hfi=va;s->external_hfi_address=address;s->external_hfi_bytes=(uint32_t)bytes;return 1;
++}
+ int gm_memory_prepare(struct gm_xnu_memory*s,const struct gn_plan*fw,const struct gm_memory_io*io){
+  if(!s||!fw||!io||!io->physical||((uintptr_t)s&4095)||s->state||!fw->region_count||fw->region_count>GN_MAX_REGIONS||fw->backing_bytes>GM_BACKING_CAPACITY||overlap(s,sizeof(*s),fw,sizeof(*fw))||overlap(s,sizeof(*s),io,sizeof(*io)))return 0;
+- s->state=4;unsigned used=0,n=0;
++ s->state=4;unsigned used=0,n=0,external_seen=0;
++ if(s->external_hfi&&(s->external_hfi_address!=fw->hfi_address||s->external_hfi_bytes!=GN_HFI_BYTES))return 0;
+  for(unsigned i=0;i<fw->region_count;i++){
+   const struct gn_region*r=&fw->regions[i];
+   if(!r->size||(r->address|r->size)&4095||r->size>GM_BACKING_CAPACITY-used||r->kind<GN_CACHE||r->kind>GN_HFI)return 0;
+   s->regions[i]=*r;s->region_offset[i]=used;
++  uint8_t *region_va=s->backing+used;
++  if(s->external_hfi&&r->kind==GN_HFI){
++   if(external_seen||r->address!=s->external_hfi_address||r->size!=s->external_hfi_bytes)return 0;
++   region_va=s->external_hfi;external_seen=1;
++  }
+   for(unsigned off=0;off<r->size;off+=4096){
+-   if(n==GT_MAX_MAPPINGS||r->address>UINT32_MAX-off||!physical_page(io,s->backing+used+off,&s->mappings[n].physical))return 0;
++   if(n==GT_MAX_MAPPINGS||r->address>UINT32_MAX-off||!physical_page(io,region_va+off,&s->mappings[n].physical))return 0;
+    s->mappings[n].iova=r->address+off;s->mappings[n].reserved=0;n++;
+   }
+   used+=r->size;
+  }
+- if(!used||used!=fw->backing_bytes)return 0;
++ if(!used||used!=fw->backing_bytes||(s->external_hfi&&!external_seen))return 0;
+  for(unsigned i=0;i<GT_MAX_TABLES;i++)if(!physical_page(io,s->tables[i],&s->table_physical[i]))return 0;
+  if(gt_build(&s->table_plan,s->tables,s->table_physical,GT_MAX_TABLES,s->mappings,n)!=GT_OK)return 0;
+  for(unsigned i=0;i<used;i++)s->backing[i]=0;
++ if(s->external_hfi)for(unsigned i=0;i<s->external_hfi_bytes;i++)s->external_hfi[i]=0;
+  s->backing_bytes=used;s->region_count=fw->region_count;s->state=1;return 1;
+ }
+ void*gm_memory_owned_va(struct gm_xnu_memory*s,uint32_t address,size_t bytes){
+  if(!s||s->state!=1||!bytes)return 0;
+- for(unsigned i=0;i<s->region_count;i++){const struct gn_region*r=&s->regions[i];if(address>=r->address&&address-r->address<r->size&&bytes<=r->size-(address-r->address))return s->backing+s->region_offset[i]+address-r->address;}
++ for(unsigned i=0;i<s->region_count;i++){const struct gn_region*r=&s->regions[i];if(address>=r->address&&address-r->address<r->size&&bytes<=r->size-(address-r->address))return (s->external_hfi&&r->kind==GN_HFI?s->external_hfi:s->backing+s->region_offset[i])+address-r->address;}
+  return 0;
+ }
+ int gm_memory_publish(struct gm_xnu_memory*s,const struct gm_memory_io*io){
+--- a/bsd/dev/ziyi_g8_memory.h
++++ b/bsd/dev/ziyi_g8_memory.h
+@@ -10,11 +10,17 @@
+  struct gn_region regions[GN_MAX_REGIONS];
+  uint32_t region_offset[GN_MAX_REGIONS];
+  uint64_t table_physical[GT_MAX_TABLES];
++ /* Optional separately owned Normal-NC HFI page. The caller qualifies its
++  * whole CPU-page ownership/aliases before binding; this builder only maps
++  * and initializes it. Static firmware/table storage remains unchanged. */
++ uint8_t *external_hfi;
++ uint32_t external_hfi_address,external_hfi_bytes;
+  uint8_t backing[GM_BACKING_CAPACITY] __attribute__((aligned(4096)));
+  uint64_t tables[GT_MAX_TABLES][GT_ENTRIES] __attribute__((aligned(4096)));
+ };
+ struct gm_memory_io {void*ctx;uint64_t(*physical)(void*,const void*);int(*flush)(void*,void*,size_t);int(*clean)(void*,void*,size_t);void(*barrier)(void*);};
+ int gm_memory_prepare(struct gm_xnu_memory *,const struct gn_plan *,const struct gm_memory_io *);
++int gm_memory_bind_hfi(struct gm_xnu_memory *,void *,size_t,uint32_t);
+ void *gm_memory_owned_va(struct gm_xnu_memory *,uint32_t iova,size_t bytes);
+ int gm_memory_publish(struct gm_xnu_memory *,const struct gm_memory_io *);
+ /* Caller supplies a freshly zeroed, exclusively owned object. Prepare and
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -28,6 +28,8 @@
+ #include "ziyi_g7_clock.h"
+ #include "ziyi_g7_engine.h"
+ #include "ziyi_g8_fwinit.h"
++#include "ziyi_g19_xnu_owned_pages.h"
++#include "ziyi_hfi_diagnostic.h"
+ #include <arm/caches_internal.h>
+ #include "ziyi_adt_binding.h"
+ extern uint64_t kvtophys(vm_offset_t);
+@@ -40,6 +42,8 @@
+ struct zg_state {
+  struct zadt_binding adt;uint32_t checked_clock_phase,checked_probe_phase,checked_g8_phase,gmu_enabled;
+  struct g8_workspace firmware;
++ struct hop hfi_memory;struct hop_xnu hfi_owner;
++ struct g19_hfi_runtime hfi_runtime;struct g19_hfi_record hfi_record;
+  struct zg_contract contract;struct zg_mapping ro[ZG_REGIONS],rw[ZG_RW_MAPS];unsigned rw_count;
+  struct g7c_record clocks;struct g7_record probe;uint64_t lease_epoch;uint32_t lease;
+  uint8_t copy0[G7_TCM_BYTES] __attribute__((aligned(64)));
+@@ -148,6 +152,12 @@
+ }
+ static int zg_g8_owned(void*ctx,const void*memory,size_t n){struct zg_state*s=ctx;return memory==&s->firmware&&n==sizeof(s->firmware);}
+ static uint64_t zg_g8_physical(void*ctx,const void*va){struct zg_state*s=ctx;uintptr_t at=(uintptr_t)va,first=(uintptr_t)&s->firmware.memory;
++ if(s->gmu_enabled==2&&s->hfi_memory.va&&at>=s->hfi_memory.va&&
++    at-s->hfi_memory.va<GN_HFI_BYTES&&!(at&4095)&&
++    (s->hfi_memory.state==HOP_READY||s->hfi_memory.state==HOP_LIVE)){
++  uint64_t pa=kvtophys((vm_offset_t)va);
++  return pa==s->hfi_memory.page[0].pa+at-s->hfi_memory.va?pa:0;
++ }
+  if(at<first||at-first>=sizeof(s->firmware.memory)||(at&4095))return 0;return kvtophys((vm_offset_t)va);}
+ static int zg_g8_cache_span(struct zg_state*s,void*va,size_t n){uintptr_t at=(uintptr_t)va,first=(uintptr_t)&s->firmware.memory;return n&&at>=first&&at-first<sizeof(s->firmware.memory)&&n<=sizeof(s->firmware.memory)-(at-first);}
+ static int zg_g8_flush(void*ctx,void*va,size_t n){struct zg_state*s=ctx;if(!zg_g8_cache_span(s,va,n))return 0;FlushPoC_DcacheRegion((vm_offset_t)va,n);return 1;}
+@@ -158,6 +168,7 @@
+  /* Re-decode fixed immutable file-backed section, never a boot pointer/flag. */
+  return g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&actual)&&memcmp(&actual,b,sizeof(actual))==0;
+ }
++#include "ziyi_g19_native.inc"
+ /* G11_RETAINED_CODEC_BEGIN */
+ /* SPDX-License-Identifier: MIT */
+ #include <stddef.h>
+@@ -261,9 +272,12 @@
+ static int zg_g8_run(struct zg_state*s){
+  if(!g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&s->firmware.blob)){printf("ZIYI GMU STOP private slot absent/invalid; no firmware stores\n");return 0;}
+  struct g8_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr(),.acd_off=1,.qdss_off=1,.lm_bcl_off=1,.hfi_off=1,.inherited_ddr_probe=1};
++ if(s->gmu_enabled==2){s->hfi_record.stage=G19_HFI_OWNER;s->hfi_record.error=G19_HFI_OWNERSHIP;s->hfi_record.flags=G19_HFI_RETAIN;s->hfi_record.epoch=q.epoch;}
+  for(unsigned i=0;i<4;i++)q.rates[i]=s->clocks.measure[i][3];
+  struct g8_io io={s,zg_g8_read,zg_g8_write,zg_ticks,zg_delay,zg_barrier,zg_lease,zg_g8_proof,zg_g8_owned,{s,zg_g8_physical,zg_g8_flush,zg_g8_clean,zg_barrier}};
+- printf("ZIYI GMU FW100 begin: ACD/QDSS/LM/BCL/HFI/GX off; inherited DDR bandwidth probe\n");int success=g8_run(&s->firmware,&q,&io);struct g8_record*r=&s->firmware.record;
++ const struct g19_hooks hooks={s,zg_hfi_prepare,zg_hfi_publish,zg_hfi_ready};
++ printf("ZIYI GMU FW100 begin: ACD/QDSS/LM/BCL/HFI/GX off; inherited DDR bandwidth probe\n");
++ int success=s->gmu_enabled==2?g19_run(&s->firmware,&q,&io,&hooks):g8_run(&s->firmware,&q,&io);struct g8_record*r=&s->firmware.record;
+  printf("ZIYI GMU result%u phase%u flags%x err%u poison%u reads%u writes%u FW%x reset%u drain%u/%u restore%u lease%u retained%u accel0\n",success,r->phase,r->flags,r->error,r->poison,r->reads,r->writes,(unsigned)r->expected[3],!!(r->flags&G8_HELD_RESET),r->drain.client_ack,r->drain.arb_ack,r->restored,r->lease_released,r->retain_allocations);
+  printf("ZIYI GMU faults HFI%x AO%x fence%x SMMU%x last%llx/%llx\n",r->last_host,r->last_ao,r->last_fence,r->last_fsr,(unsigned long long)r->last_address,(unsigned long long)r->last_value);
+  printf("ZIYI GMU G12 bus observations%u initial HALT%x ACK%x finalACK%x released%u\n",r->bus_observations,r->initial_halt,r->initial_ack,r->final_ack,r->bus_released);
+@@ -277,6 +291,11 @@
+   for(unsigned part=0;part<GDR_PARTS;part++)printf("ZGDR%u %s\n",part+1,record[part]);
+   zg_sleep(2000);
+  }
++ if(s->gmu_enabled==2&&!s->hfi_runtime.attempted){
++  s->hfi_record.last_health.helper_phase=0x10000u|r->phase;
++  s->hfi_record.last_health.helper_error=r->error|(s->hfi_memory.error<<8)|(ziyi_hop_pmap_last_error()<<16);
++ }
++ zg_hfi_print(s);
+  /* CPU-only snapshot. No additional MMIO, including on a poisoned lease. */
+  if(r->flags&G8_SAVED){
+   char pages[GSR_PAGES][GSR_PARTS][GSR_CHARS+1];
+@@ -303,7 +322,7 @@
+  if(s->probe.poison)clocks->poison=1;return success;
+ }
+ static void zg_worker(void*arg,wait_result_t result){
+- (void)arg;(void)result;bzero(&zg,sizeof(zg));PE_parse_boot_argn("ziyi_gmu",&zg.gmu_enabled,sizeof(zg.gmu_enabled));if(zg.gmu_enabled!=1)zg.gmu_enabled=0;unsigned delay_seconds=60;int pid=0;
++ (void)arg;(void)result;bzero(&zg,sizeof(zg));PE_parse_boot_argn("ziyi_gmu",&zg.gmu_enabled,sizeof(zg.gmu_enabled));if(zg.gmu_enabled!=1&&zg.gmu_enabled!=2)zg.gmu_enabled=0;unsigned delay_seconds=60;int pid=0;
+  PE_parse_boot_argn("ziyi_gpu_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
+  printf("ZIYI GPU probe armed opt-in delay%us then await SpringBoard; fw=0 accel=0\n",delay_seconds);zg_sleep(delay_seconds*1000u);
+  for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zg_springboard,&pid,NULL,NULL);if(!pid)zg_sleep(5000);}
+@@ -327,7 +346,7 @@
+   if(r->flags&G8_SAVED)for(unsigned i=0;i<G8_REGS;i++){const struct g8_reg*d=&g8_regs[i];printf("ZIYI GMU saved%u addr%llx width%u old%llx want%llx\n",i,d->address,d->width,r->old[i],r->expected[i]);zg_sleep(150);}
+  }
+  printf("ZIYI GPU probe done: opt-in FW100 transaction resets/restores; no persistent GPU or acceleration\n");
+-unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);if(zg.firmware.record.retain_allocations||zg.lease){printf("ZIYI GMU retain owned IO maps/private pages and CX; cleanup incomplete\n");}else zg_unmap_all(&zg);
++unmap:if(!zg_adt_check(&zg,0))printf("ZIYI GPU ADT changed after probe; status%u property%u\n",zg.adt.status,zg.adt.property);if(zg.firmware.record.retain_allocations||zg.lease||zg.hfi_memory.va){printf("ZIYI GMU retain owned IO maps/private pages and CX; cleanup incomplete\n");}else zg_unmap_all(&zg);
+ done:thread_terminate(current_thread());
+ }
+ void ziyi_gpu_probe_start(void){
+@@ -336,3 +355,14 @@
+  thread_t worker=THREAD_NULL;kern_return_t kr=kernel_thread_start(zg_worker,NULL,&worker);
+  if(kr!=KERN_SUCCESS){printf("ZIYI GPU probe: cannot create worker %d\n",kr);return;}thread_deallocate(worker);
+ }
++
++/* G19 helpers are compiled in this existing opt-in adapter unit. Each file
++ * has private static names; no new startup hook or GPU client is registered. */
++#include "ziyi_g19_owned_pages.c"
++#include "ziyi_g19_xnu_owned_pages.c"
++#include "ziyi_hfi_page_observation.c"
++#include "ziyi_hfi_kernel_page_observer.c"
++#include "ziyi_hfi_live.c"
++#include "ziyi_hfi_version.c"
++#include "ziyi_hfi_diagnostic.c"
++#include "ziyi_hfi_record.c"
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_diagnostic.c
+@@ -0,0 +1,166 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_hfi_diagnostic.h"
++
++static void ziyi_hfi_diagnostic_clear(void *p,size_t n){uint8_t *b=p;for(size_t i=0;i<n;i++)b[i]=0;}
++static int ziyi_hfi_diagnostic_qualified(struct g19_hfi_runtime *s){
++ const struct gh_live_io *io=&s->ops->live;
++ int ok=io->qualified(io->ctx,s->live.epoch);
++ if(!ok)s->record->owner_failed=1;
++ return ok;
++}
++static int ziyi_hfi_diagnostic_qindex(uint32_t offset){
++ if(offset==64)return 0;if(offset==68)return 1;
++ if(offset==112)return 2;if(offset==116)return 3;return -1;
++}
++static void ziyi_hfi_diagnostic_observed(struct g19_hfi_record *r,unsigned i,uint32_t value){
++ if(!(r->first_mask&(1u<<i))){r->queue_first[i]=value;r->first_mask|=1u<<i;}
++ r->queue_last[i]=value;r->last_mask|=1u<<i;
++}
++static int ziyi_hfi_diagnostic_owner(void *ctx,uint64_t epoch){
++ struct g19_hfi_runtime *s=ctx;
++ return epoch==s->live.epoch&&ziyi_hfi_diagnostic_qualified(s);
++}
++static int ziyi_hfi_diagnostic_read_word(void *ctx,uint32_t offset,uint32_t *value){
++ struct g19_hfi_runtime *s=ctx;struct g19_hfi_record *r=s->record;
++ if(!s->ops->live.read32(s->ops->live.ctx,offset,value))return 0;
++ int i=ziyi_hfi_diagnostic_qindex(offset);if(i>=0)ziyi_hfi_diagnostic_observed(r,(unsigned)i,*value);
++ if(s->capture_reply){
++  if(offset==112)s->reply_read=*value;
++  uint32_t base=GN_HFI_QUEUE0+4096u;
++  if(offset>=base&&offset<base+4096u&&s->reply_read<GN_HFI_WORDS){
++   uint32_t at=(offset-base)/4u,delta=(at+GN_HFI_WORDS-s->reply_read)%GN_HFI_WORDS;
++   if(delta<19&&delta==r->raw_count){
++    r->raw[r->raw_count++]=*value;
++    if(!delta)r->raw_declared=(*value>>8)&255u;
++   }
++  }
++ }
++ return 1;
++}
++static int ziyi_hfi_diagnostic_write_word(void *ctx,uint32_t offset,uint32_t value){
++ struct g19_hfi_runtime *s=ctx;struct g19_hfi_record *r=s->record;
++ /* Never write the GMU-owned q0 read or q1 write indexes, nor any q1 data. */
++ if(offset!=68&&offset!=112&&!(offset>=GN_HFI_QUEUE0&&offset<GN_HFI_QUEUE0+4096u))return 0;
++ if(!s->ops->live.write32(s->ops->live.ctx,offset,value))return 0;
++ r->stores++;
++ if(offset==68){r->q0_write_stores++;r->flags|=G19_HFI_PUBLISHED;ziyi_hfi_diagnostic_observed(r,1,value);}
++ if(offset==112){r->q1_read_stores++;r->flags|=G19_HFI_CONSUMED;ziyi_hfi_diagnostic_observed(r,2,value);}
++ return 1;
++}
++static int ziyi_hfi_diagnostic_order(void *ctx,enum gh_live_order o){
++ struct g19_hfi_runtime *s=ctx;return s->ops->live.order(s->ops->live.ctx,o);
++}
++static int ziyi_hfi_diagnostic_bell(void *ctx){
++ struct g19_hfi_runtime *s=ctx;s->record->doorbells++;s->record->flags|=G19_HFI_BELL_CALLED;
++ return s->ops->live.doorbell(s->ops->live.ctx);
++}
++static int ziyi_hfi_diagnostic_clock_check(struct g19_hfi_runtime *s){
++ struct g19_hfi_record *r=s->record;uint64_t now=0;
++ if(!s->ops->ticks(s->ops->ctx,&now))return G19_HFI_CLOCK;
++ if(!(r->flags&G19_HFI_TICKS)){
++  r->start_tick=r->last_tick=now;r->flags|=G19_HFI_TICKS;return 0;
++ }
++ if(now<r->last_tick)return G19_HFI_CLOCK;
++ r->last_tick=now;
++ return now-r->start_tick>=r->timeout_ticks?G19_HFI_TIMEOUT:0;
++}
++static int ziyi_hfi_diagnostic_health(struct g19_hfi_runtime *s,int ready){
++ struct g19_hfi_record *r=s->record;struct g19_hfi_health h={0};
++ if(!ziyi_hfi_diagnostic_qualified(s))return G19_HFI_OWNERSHIP;
++ int ok=s->ops->health(s->ops->ctx,&h);
++ if(!(r->flags&G19_HFI_FIRST_HEALTH))r->first_health=h;
++ r->last_health=h;
++ if(!ok)return G19_HFI_HEALTH;
++ r->flags|=G19_HFI_FIRST_HEALTH|G19_HFI_LAST_HEALTH;
++ if(!ziyi_hfi_diagnostic_qualified(s))return G19_HFI_OWNERSHIP;
++ if(h.reset!=0||(h.fw_result&0x1ffu)!=0x100u||(ready&&!(h.hfi_status&1u)))return G19_HFI_HEALTH;
++ return 0;
++}
++static int ziyi_hfi_diagnostic_snapshot(struct g19_hfi_runtime *s){
++ static const uint32_t offsets[4]={64,68,112,116};
++ if(!ziyi_hfi_diagnostic_qualified(s))return G19_HFI_OWNERSHIP;
++ for(unsigned i=0;i<4;i++){
++  uint32_t value;
++  if(!ziyi_hfi_diagnostic_qualified(s)||!ziyi_hfi_diagnostic_read_word(s,offsets[i],&value))return G19_HFI_SNAPSHOT;
++ }
++ if(!s->ops->live.order(s->ops->live.ctx,GH_LIVE_ACQUIRE)||!ziyi_hfi_diagnostic_qualified(s))return G19_HFI_SNAPSHOT;
++ return 0;
++}
++static int ziyi_hfi_diagnostic_budget(struct g19_hfi_runtime *s,int ack){
++ int e=ziyi_hfi_diagnostic_clock_check(s);if(e)return e;
++ if(s->record->polls>=s->record->poll_cap)return G19_HFI_POLL_CAP;
++ s->record->polls++;
++ if(ack)s->record->ack_polls++;else s->record->ready_polls++;
++ return 0;
++}
++static int ziyi_hfi_diagnostic_pause_poll(struct g19_hfi_runtime *s){
++ int e=ziyi_hfi_diagnostic_clock_check(s);if(e)return e;
++ if(!s->ops->delay(s->ops->ctx,s->record->delay_us))return G19_HFI_DELAY;
++ return ziyi_hfi_diagnostic_clock_check(s);
++}
++static int ziyi_hfi_diagnostic_finish(struct g19_hfi_runtime *s,int error){
++ struct g19_hfi_record *r=s->record;
++ /* Best-effort read-only final observation; it never conceals the first error. */
++ if(ziyi_hfi_diagnostic_qualified(s)){int e=ziyi_hfi_diagnostic_snapshot(s);if(!error&&e)error=e;}
++ else if(!error)error=G19_HFI_OWNERSHIP;
++ if(error&&s->live.state!=GH_LIVE_COMPLETE)s->live.state=GH_LIVE_POISON;
++ r->live_state=s->live.state;r->remote_status=s->live.remote_status;r->version=s->live.version;
++ r->error=(uint32_t)error;
++ if(!error)r->stage=G19_HFI_COMPLETE;
++ return error;
++}
++int g19_hfi_run(struct g19_hfi_runtime *s,const struct g19_hfi_config *c,
++ const struct g19_hfi_ops *ops,struct g19_hfi_record *r){
++ if(!s||!r)return G19_HFI_ARGUMENT;
++ if(s->attempted)return GH_LIVE_STATE;
++ ziyi_hfi_diagnostic_clear(r,sizeof(*r));r->stage=G19_HFI_VALIDATE;r->flags=G19_HFI_RETAIN;
++ if(!c||!ops||!ops->live.qualified||!ops->live.read32||!ops->live.write32||!ops->live.order||
++    !ops->live.doorbell||!ops->health||!ops->start_hfi||!ops->ticks||!ops->delay){r->error=G19_HFI_ARGUMENT;return G19_HFI_ARGUMENT;}
++ r->epoch=c->epoch;r->gmu_address=c->gmu_address;r->sequence=c->sequence;r->poll_cap=c->poll_cap;
++ r->timeout_ticks=c->timeout_ticks;r->delay_us=c->delay_us;
++ if(!c->epoch||!c->timeout_ticks||c->timeout_ticks>UINT64_MAX/2||!c->poll_cap||c->poll_cap>G19_HFI_MAX_POLLS||
++    c->delay_us>1000000u||c->gmu_address<0x60000000u||c->gmu_address>0x80000000u-GN_HFI_BYTES||
++    (c->gmu_address&4095u)||gh_version_command(c->sequence,r->sent)){
++  r->error=G19_HFI_ARGUMENT;return G19_HFI_ARGUMENT;
++ }
++ ziyi_hfi_diagnostic_clear(&s->live,sizeof(s->live));s->live.epoch=c->epoch;s->live.gmu_address=c->gmu_address;
++ s->ops=ops;s->record=r;s->attempted=1;s->capture_reply=0;s->reply_read=0;
++ r->flags|=G19_HFI_PLANNED;
++ struct gh_live_io wrapped={s,ziyi_hfi_diagnostic_owner,ziyi_hfi_diagnostic_read_word,ziyi_hfi_diagnostic_write_word,ziyi_hfi_diagnostic_order,ziyi_hfi_diagnostic_bell};
++ int e=ziyi_hfi_diagnostic_clock_check(s);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++ r->stage=G19_HFI_OWNER;if(!ziyi_hfi_diagnostic_qualified(s))return ziyi_hfi_diagnostic_finish(s,G19_HFI_OWNERSHIP);
++ r->stage=G19_HFI_PREHEALTH;e=ziyi_hfi_diagnostic_health(s,0);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++ /* HFI_STATUS=1 after fresh FW100 is an observation, not stale-start proof.
++  * The pre-CM3 fresh-zero check belongs to the native startup adapter. */
++ e=ziyi_hfi_diagnostic_clock_check(s);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++ r->stage=G19_HFI_INITIALIZE;
++ if(!ziyi_hfi_diagnostic_qualified(s))return ziyi_hfi_diagnostic_finish(s,G19_HFI_OWNERSHIP);
++ r->start_calls=1;r->flags|=G19_HFI_START_CALLED;
++ if(!ops->start_hfi(ops->ctx))return ziyi_hfi_diagnostic_finish(s,G19_HFI_START);
++ r->flags|=G19_HFI_START_RETURNED;
++ r->stage=G19_HFI_READY;
++ for(;;){
++  e=ziyi_hfi_diagnostic_budget(s,0);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++  e=ziyi_hfi_diagnostic_health(s,0);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++  if(r->last_health.hfi_status&1u)break;
++  e=ziyi_hfi_diagnostic_pause_poll(s);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++ }
++ r->stage=G19_HFI_PUBLISH;
++ e=ziyi_hfi_diagnostic_snapshot(s);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++ for(unsigned i=0;i<4;i++)if(r->queue_last[i]>=GN_HFI_WORDS||(r->queue_last[i]&3u))return ziyi_hfi_diagnostic_finish(s,GN_QUEUE);
++ if(r->queue_last[0]!=r->queue_last[1])return ziyi_hfi_diagnostic_finish(s,GH_LIVE_STATE);
++ if(r->queue_last[2]!=r->queue_last[3])return ziyi_hfi_diagnostic_finish(s,GN_STALE);
++ e=ziyi_hfi_diagnostic_clock_check(s);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++ e=gh_live_request(&s->live,&wrapped,c->sequence);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++ r->stage=G19_HFI_ACK;
++ for(;;){
++  e=ziyi_hfi_diagnostic_budget(s,1);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++  e=ziyi_hfi_diagnostic_health(s,1);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++  s->capture_reply=1;e=gh_live_poll(&s->live,&wrapped);s->capture_reply=0;
++  if(e!=GN_EMPTY){
++   if(e==GN_OK||e==GH_REMOTE_ERROR){int time_error=ziyi_hfi_diagnostic_clock_check(s);if(time_error)e=time_error;}
++   return ziyi_hfi_diagnostic_finish(s,e);
++  }
++  e=ziyi_hfi_diagnostic_pause_poll(s);if(e)return ziyi_hfi_diagnostic_finish(s,e);
++ }
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_diagnostic.h
+@@ -0,0 +1,69 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_hfi_live.h"
++
++#define G19_HFI_MAX_POLLS 1000000u
++#define G19_HFI_RECORD_BYTES 320u
++#define G19_HFI_RECORD_MAGIC 0x31464847u /* GHF1, little endian */
++
++enum g19_hfi_stage {
++ G19_HFI_VALIDATE=1,G19_HFI_OWNER,G19_HFI_PREHEALTH,G19_HFI_INITIALIZE,
++ G19_HFI_READY,G19_HFI_PUBLISH,G19_HFI_ACK,G19_HFI_COMPLETE
++};
++enum g19_hfi_error {
++ G19_HFI_ARGUMENT=200,G19_HFI_CLOCK,G19_HFI_TIMEOUT,G19_HFI_POLL_CAP,
++ G19_HFI_HEALTH,G19_HFI_START,G19_HFI_OWNERSHIP,G19_HFI_DELAY,
++ G19_HFI_SNAPSHOT,G19_HFI_RECORD
++};
++enum g19_hfi_flags {
++ G19_HFI_PLANNED=1u,G19_HFI_START_CALLED=2u,G19_HFI_START_RETURNED=4u,
++ G19_HFI_PUBLISHED=8u,G19_HFI_BELL_CALLED=16u,G19_HFI_CONSUMED=32u,
++ G19_HFI_FIRST_HEALTH=64u,G19_HFI_LAST_HEALTH=128u,
++ G19_HFI_RETAIN=256u,G19_HFI_TICKS=512u
++};
++struct g19_hfi_health {
++ uint32_t fw_result,hfi_status,reset,helper_phase,helper_error;
++};
++struct g19_hfi_config {
++ uint64_t epoch,timeout_ticks;
++ uint32_t gmu_address,sequence,poll_cap,delay_us;
++};
++/* Every callback returns 1 on success, 0 on refusal/failure. It must itself
++ * finish in bounded time. ticks are monotonic wall-clock ticks; caller limits
++ * timeout_ticks to at most five seconds in that clock's units. health must
++ * reject unknown hardware bits using the native source contract, while still
++ * filling any observed values/helper error. No post-FW100 status-zero demand.
++ * start_hfi performs exactly the source-qualified HFI_CTRL_INIT=1 operation;
++ * this module never resets, stops, remaps, frees or retries a command. */
++struct g19_hfi_ops {
++ void *ctx;
++ struct gh_live_io live;
++ int (*health)(void *,struct g19_hfi_health *);
++ int (*start_hfi)(void *);
++ int (*ticks)(void *,uint64_t *);
++ int (*delay)(void *,uint32_t us);
++};
++struct g19_hfi_record {
++ uint32_t stage,error,flags,live_state,sequence,sent[2];
++ uint32_t poll_cap,polls,ready_polls,ack_polls,remote_status,version;
++ uint32_t raw_declared,raw_count,owner_failed,first_mask,last_mask;
++ uint32_t queue_first[4],queue_last[4]; /* q0 read/write, q1 read/write */
++ uint32_t raw[19]; /* prefix actually read by gh_live, including malformed */
++ struct g19_hfi_health first_health,last_health;
++ uint32_t gmu_address,stores,q0_write_stores,q1_read_stores;
++ uint64_t epoch,start_tick,last_tick,timeout_ticks;
++ uint32_t delay_us,start_calls,doorbells;
++};
++/* Caller-owned storage: do not put the 4 KiB gh_live scratch on a kernel stack.
++ * One serialized invocation per retained lease. Reentry is refused. */
++struct g19_hfi_runtime {
++ struct gh_live live;
++ const struct g19_hfi_ops *ops;
++ struct g19_hfi_record *record;
++ uint32_t attempted,capture_reply,reply_read;
++};
++int g19_hfi_run(struct g19_hfi_runtime *,const struct g19_hfi_config *,
++ const struct g19_hfi_ops *,struct g19_hfi_record *);
++uint32_t g19_hfi_crc32(const uint8_t *,size_t);
++int g19_hfi_record_encode(const struct g19_hfi_record *,uint8_t out[G19_HFI_RECORD_BYTES]);
++int g19_hfi_record_decode(const uint8_t *,size_t,struct g19_hfi_record *);
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_kernel_page_observer.c
+@@ -0,0 +1,13 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_hfi_page_observation.h"
++int gh_cpu_observe(uint64_t va,uint64_t expected,struct gh_cpu_page_observation*out){
++ if(!out||!va||!expected||expected>=(1ULL<<36)||(va&4095)!=(expected&4095))return 0;
++ uint64_t el,sctlr;__asm__ volatile("mrs %0, CurrentEL":"=r"(el));if(el!=4)return 0;
++ __asm__ volatile("mrs %0, sctlr_el1":"=r"(sctlr));if(!(sctlr&1u))return 0;
++ uint64_t prior_daif,par;
++ /* Match captured XNU machine_routines_asm.s:mmu_kvtop: IRQ+FIQ masked for
++  * AT/ISB/PAR, exact prior DAIF restored. No C call can overwrite PAR here. */
++ __asm__ volatile("mrs %0, daif\n\tmsr daifset, #3\n\tat s1e1r, %2\n\tisb sy\n\tmrs %1, par_el1\n\tmsr daif, %0":"=&r"(prior_daif),"=&r"(par):"r"(va):"memory");
++ *out=(struct gh_cpu_page_observation){va,expected,par,el,sctlr};
++ return gh_par_identity(par,va,expected);
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_live.c
+@@ -0,0 +1,49 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_hfi_live.h"
++#define Q0 ((uint32_t)offsetof(struct gn_hfi_table,queue[0]))
++#define Q1 ((uint32_t)offsetof(struct gn_hfi_table,queue[1]))
++#define QR ((uint32_t)offsetof(struct gn_hfi_queue,read))
++#define QW ((uint32_t)offsetof(struct gn_hfi_queue,write))
++_Static_assert(Q0==24&&Q1==72&&QR==40&&QW==44,"pinned HFIv2 ABI");
++static int ziyi_hfi_live_poison(struct gh_live*s,int error){s->state=GH_LIVE_POISON;return error;}
++static int ziyi_hfi_live_valid(const struct gh_live*s,const struct gh_live_io*io){return s&&io&&s->epoch&&s->gmu_address>=0x60000000&&s->gmu_address<=0x80000000-GN_HFI_BYTES&&!(s->gmu_address&4095)&&io->qualified&&io->read32&&io->write32&&io->order&&io->doorbell&&io->qualified(io->ctx,s->epoch);}
++static int ziyi_hfi_live_load(struct gh_live*s,const struct gh_live_io*io,uint32_t at,uint32_t*out){return ziyi_hfi_live_valid(s,io)&&at<=GN_HFI_BYTES-4&&!(at&3)&&io->read32(io->ctx,at,out);}
++static int ziyi_hfi_live_store(struct gh_live*s,const struct gh_live_io*io,uint32_t at,uint32_t v){return ziyi_hfi_live_valid(s,io)&&at<=GN_HFI_BYTES-4&&!(at&3)&&io->write32(io->ctx,at,v);}
++static int ziyi_hfi_live_queue(struct gh_live*s,const struct gh_live_io*io,unsigned i,struct gn_hfi_queue*out){
++ uint32_t at=i?Q1:Q0;*out=(struct gn_hfi_queue){0};
++ static const uint32_t table[6]={0,GN_HFI_TABLE_BYTES/4,6,12,3,3};
++ for(unsigned k=0;k<6;k++){uint32_t v;if(!ziyi_hfi_live_load(s,io,k*4,&v))return GH_LIVE_IO;if(v!=table[k])return GN_QUEUE;}
++ if(!ziyi_hfi_live_load(s,io,at,&out->status)||!ziyi_hfi_live_load(s,io,at+4,&out->start)||!ziyi_hfi_live_load(s,io,at+8,&out->type)||!ziyi_hfi_live_load(s,io,at+12,&out->words)||!ziyi_hfi_live_load(s,io,at+QR,&out->read)||!ziyi_hfi_live_load(s,io,at+QW,&out->write))return GH_LIVE_IO;
++ if(!io->order(io->ctx,GH_LIVE_ACQUIRE)||!ziyi_hfi_live_valid(s,io))return GH_LIVE_OWNER;
++ if(out->status!=1||out->start!=s->gmu_address+GN_HFI_QUEUE0+4096*i||out->type!=(0xa00u+i)||out->words!=GN_HFI_WORDS||out->read>=GN_HFI_WORDS||out->write>=GN_HFI_WORDS||(out->read|out->write)&3)return GN_QUEUE;
++ return GN_OK;
++}
++int gh_live_request(struct gh_live*s,const struct gh_live_io*io,uint32_t sequence){
++ if(!s)return GN_ARG;if(s->state!=GH_LIVE_FRESH)return GH_LIVE_STATE;
++ if(!ziyi_hfi_live_valid(s,io))return ziyi_hfi_live_poison(s,GH_LIVE_OWNER);
++ uint32_t message[2];int e=gh_version_command(sequence,message);if(e)return e;
++ struct gn_hfi_queue q;e=ziyi_hfi_live_queue(s,io,0,&q);if(e)return ziyi_hfi_live_poison(s,e);
++ uint32_t empty=(q.read+GN_HFI_WORDS-q.write)%GN_HFI_WORDS;if(!empty)empty=GN_HFI_WORDS;
++ if(empty<=4)return GN_FULL;
++ for(unsigned i=0;i<4;i++)if(!ziyi_hfi_live_store(s,io,GN_HFI_QUEUE0+4*((q.write+i)%GN_HFI_WORDS),i<2?message[i]:0xfafafafa))return ziyi_hfi_live_poison(s,GH_LIVE_IO);
++ if(!io->order(io->ctx,GH_LIVE_RELEASE)||!ziyi_hfi_live_store(s,io,Q0+QW,(q.write+4)%GN_HFI_WORDS))return ziyi_hfi_live_poison(s,GH_LIVE_IO);
++ s->sent=message[0];s->state=GH_LIVE_PENDING;
++ if(!ziyi_hfi_live_valid(s,io)||!io->doorbell(io->ctx))return ziyi_hfi_live_poison(s,GH_LIVE_IO);
++ return GN_OK;
++}
++int gh_live_poll(struct gh_live*s,const struct gh_live_io*io){
++ if(!s)return GN_ARG;if(s->state!=GH_LIVE_PENDING)return GH_LIVE_STATE;
++ if(!ziyi_hfi_live_valid(s,io))return ziyi_hfi_live_poison(s,GH_LIVE_OWNER);
++ struct gn_hfi_queue q;int e=ziyi_hfi_live_queue(s,io,1,&q);if(e)return ziyi_hfi_live_poison(s,e);
++ uint32_t used=(q.write+GN_HFI_WORDS-q.read)%GN_HFI_WORDS;if(!used)return GN_EMPTY;
++ uint32_t header;if(!ziyi_hfi_live_load(s,io,GN_HFI_QUEUE0+4096+4*q.read,&header))return ziyi_hfi_live_poison(s,GH_LIVE_IO);
++ uint32_t words=(header>>8)&255,aligned=(words+3)&~3u;
++ if(words<3||words>19||aligned>used)return ziyi_hfi_live_poison(s,GN_PACKET);
++ s->scratch[q.read]=header;
++ for(unsigned i=1;i<words;i++)if(!ziyi_hfi_live_load(s,io,GN_HFI_QUEUE0+4096+4*((q.read+i)%GN_HFI_WORDS),&s->scratch[(q.read+i)%GN_HFI_WORDS]))return ziyi_hfi_live_poison(s,GH_LIVE_IO);
++ struct gh_version_reply reply;e=gh_version_reply(s->scratch,&q,s->sent,&reply);
++ if(e!=GN_OK&&e!=GH_REMOTE_ERROR)return ziyi_hfi_live_poison(s,e);
++ if(!io->order(io->ctx,GH_LIVE_RELEASE)||!ziyi_hfi_live_store(s,io,Q1+QR,reply.next_read))return ziyi_hfi_live_poison(s,GH_LIVE_IO);
++ s->next_read=reply.next_read;s->version=reply.version;s->remote_status=reply.status;s->state=GH_LIVE_COMPLETE;
++ return e;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_live.h
+@@ -0,0 +1,26 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_hfi_version.h"
++/* FUTURE PC-qualified transport, not linked to G17. Callbacks require an
++ * exclusively retained GMU/HFI owner and independently qualified Normal-NC
++ * CPU aliases, with one serialized host caller. No cache-line clean/invalidate
++ * operation is provided. This module cannot qualify a native mapping itself. */
++enum gh_live_order {GH_LIVE_ACQUIRE=1,GH_LIVE_RELEASE};
++struct gh_live_io {
++ void *ctx;
++ int (*qualified)(void*,uint64_t epoch);
++ int (*read32)(void*,uint32_t offset,uint32_t*);
++ int (*write32)(void*,uint32_t offset,uint32_t);
++ int (*order)(void*,enum gh_live_order);
++ int (*doorbell)(void*);
++};
++enum gh_live_state {GH_LIVE_FRESH,GH_LIVE_PENDING,GH_LIVE_COMPLETE,GH_LIVE_POISON};
++enum gh_live_error {GH_LIVE_IO=120,GH_LIVE_OWNER,GH_LIVE_STATE};
++struct gh_live {
++ uint64_t epoch;uint32_t gmu_address,state,sent,next_read,version,remote_status;
++ uint32_t scratch[GN_HFI_WORDS]; /* CPU-private, never a shared alias. */
++};
++int gh_live_request(struct gh_live*,const struct gh_live_io*,uint32_t sequence);
++/* Nonblocking. GN_EMPTY retains the one pending request. Malformed/stale
++ * responses poison and retain ownership; no consumer index is advanced. */
++int gh_live_poll(struct gh_live*,const struct gh_live_io*);
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_page_observation.c
+@@ -0,0 +1,6 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_hfi_page_observation.h"
++int gh_par_identity(uint64_t par,uint64_t va,uint64_t expected){
++ if(!va||!expected||expected>=(1ULL<<36)||(par&1u)||(par&0x00fffff000000000ULL))return 0;
++ return ((par&0x0000fffffffff000ULL)|(va&4095u))==expected;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_page_observation.h
+@@ -0,0 +1,10 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stdint.h>
++/* SM7450 classic PAR format / qualified 36-bit PA window only. Identity is
++ * not allocation ownership or Normal-NC qualification. ATTR stays raw. */
++int gh_par_identity(uint64_t par,uint64_t va,uint64_t expected_pa);
++struct gh_cpu_page_observation {uint64_t va,expected_pa,par,el,sctlr;};
++/* Future native read-only observer. No allocator, pmap mutation, software-walk
++ * fallback or HFI publication. Clobbers PAR as does the XNU mmu_kvtop routine. */
++int gh_cpu_observe(uint64_t va,uint64_t expected_pa,struct gh_cpu_page_observation*);
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_record.c
+@@ -0,0 +1,79 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_hfi_diagnostic.h"
++
++static uint32_t ziyi_hfi_record_update(uint32_t crc,uint8_t b){
++ crc^=b;for(unsigned k=0;k<8;k++)crc=(crc>>1)^(0xedb88320u&(0u-(crc&1u)));return crc;
++}
++uint32_t g19_hfi_crc32(const uint8_t *data,size_t bytes){
++ if(!data&&bytes)return 0;uint32_t crc=~0u;
++ for(size_t i=0;i<bytes;i++)crc=ziyi_hfi_record_update(crc,data[i]);return ~crc;
++}
++static uint32_t ziyi_hfi_record_checksum(const uint8_t *data){
++ uint32_t crc=~0u;for(unsigned i=0;i<G19_HFI_RECORD_BYTES;i++)crc=ziyi_hfi_record_update(crc,i>=12&&i<16?0:data[i]);return ~crc;
++}
++static uint32_t ziyi_hfi_record_get(const uint8_t *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++static void ziyi_hfi_record_put(uint8_t *p,uint32_t v){for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(v>>(8*i));}
++static void ziyi_hfi_record_health_put(uint32_t *w,const struct g19_hfi_health *h){
++ w[0]=h->fw_result;w[1]=h->hfi_status;w[2]=h->reset;w[3]=h->helper_phase;w[4]=h->helper_error;
++}
++static void ziyi_hfi_record_health_get(struct g19_hfi_health *h,const uint32_t *w){
++ *h=(struct g19_hfi_health){w[0],w[1],w[2],w[3],w[4]};
++}
++static void ziyi_hfi_record_wide_put(uint32_t *w,uint64_t v){w[0]=(uint32_t)v;w[1]=(uint32_t)(v>>32);}
++static uint64_t ziyi_hfi_record_wide_get(const uint32_t *w){return w[0]|(uint64_t)w[1]<<32;}
++static int ziyi_hfi_record_valid(const struct g19_hfi_record *r){
++ if(!r||r->stage<G19_HFI_VALIDATE||r->stage>G19_HFI_COMPLETE||r->live_state>GH_LIVE_POISON||
++    (r->flags&~1023u)||!(r->flags&G19_HFI_RETAIN)||r->raw_count>19||r->raw_declared>255||
++    r->owner_failed>1||r->first_mask>15||r->last_mask>15||r->start_calls>1||r->doorbells>1||
++    r->q0_write_stores>1||r->q1_read_stores>1||r->stores>6)return 0;
++ if(r->polls!=(uint64_t)r->ready_polls+r->ack_polls)return 0;
++ if((r->flags&G19_HFI_PLANNED)){
++  uint32_t planned[2];if(gh_version_command(r->sequence,planned)||r->sent[0]!=planned[0]||r->sent[1]!=planned[1])return 0;
++ }
++ if(!!(r->flags&G19_HFI_START_CALLED)!=!!r->start_calls||
++    !!(r->flags&G19_HFI_BELL_CALLED)!=!!r->doorbells||
++    !!(r->flags&G19_HFI_PUBLISHED)!=!!r->q0_write_stores||
++    !!(r->flags&G19_HFI_CONSUMED)!=!!r->q1_read_stores)return 0;
++ if((r->flags&G19_HFI_START_RETURNED)&&!(r->flags&G19_HFI_START_CALLED))return 0;
++ if((r->flags&G19_HFI_PUBLISHED)&&(!(r->flags&G19_HFI_PLANNED)||r->stores<5))return 0;
++ if((r->flags&G19_HFI_BELL_CALLED)&&!(r->flags&G19_HFI_PUBLISHED))return 0;
++ if((r->flags&G19_HFI_CONSUMED)&&(!(r->flags&G19_HFI_PUBLISHED)||r->raw_count<3))return 0;
++ if(r->raw_count&&r->raw_declared!=((r->raw[0]>>8)&255u))return 0;
++ for(unsigned i=r->raw_count;i<19;i++)if(r->raw[i])return 0;
++ if(!r->error&&(r->stage!=G19_HFI_COMPLETE||r->live_state!=GH_LIVE_COMPLETE||
++    !(r->flags&G19_HFI_CONSUMED)||r->remote_status||r->raw_count<4||(r->version>>28)!=2))return 0;
++ if((r->flags&G19_HFI_TICKS)&&r->last_tick<r->start_tick)return 0;
++ return 1;
++}
++int g19_hfi_record_encode(const struct g19_hfi_record *r,uint8_t out[G19_HFI_RECORD_BYTES]){
++ if(!out||!ziyi_hfi_record_valid(r))return G19_HFI_RECORD;
++ uint32_t w[80]={G19_HFI_RECORD_MAGIC,1,G19_HFI_RECORD_BYTES,0};
++ w[4]=r->stage;w[5]=r->error;w[6]=r->flags;w[7]=r->live_state;w[8]=r->sequence;
++ w[9]=r->sent[0];w[10]=r->sent[1];w[11]=r->poll_cap;w[12]=r->polls;w[13]=r->ready_polls;w[14]=r->ack_polls;
++ w[15]=r->remote_status;w[16]=r->version;w[17]=r->raw_declared;w[18]=r->raw_count;w[19]=r->owner_failed;
++ w[20]=r->first_mask;w[21]=r->last_mask;
++ for(unsigned i=0;i<4;i++){w[22+i]=r->queue_first[i];w[26+i]=r->queue_last[i];}
++ for(unsigned i=0;i<19;i++)w[30+i]=r->raw[i];
++ ziyi_hfi_record_health_put(w+49,&r->first_health);ziyi_hfi_record_health_put(w+54,&r->last_health);
++ w[59]=r->gmu_address;w[60]=r->stores;w[61]=r->q0_write_stores;w[62]=r->q1_read_stores;
++ ziyi_hfi_record_wide_put(w+63,r->epoch);ziyi_hfi_record_wide_put(w+65,r->start_tick);ziyi_hfi_record_wide_put(w+67,r->last_tick);ziyi_hfi_record_wide_put(w+69,r->timeout_ticks);
++ w[71]=r->delay_us;w[72]=r->start_calls;w[73]=r->doorbells;
++ for(unsigned i=0;i<80;i++)ziyi_hfi_record_put(out+4*i,w[i]);ziyi_hfi_record_put(out+12,ziyi_hfi_record_checksum(out));return 0;
++}
++int g19_hfi_record_decode(const uint8_t *data,size_t bytes,struct g19_hfi_record *out){
++ if(!data||!out||bytes!=G19_HFI_RECORD_BYTES||ziyi_hfi_record_get(data)!=G19_HFI_RECORD_MAGIC||ziyi_hfi_record_get(data+4)!=1||
++    ziyi_hfi_record_get(data+8)!=G19_HFI_RECORD_BYTES||ziyi_hfi_record_get(data+12)!=ziyi_hfi_record_checksum(data))return G19_HFI_RECORD;
++ uint32_t w[80];for(unsigned i=0;i<80;i++)w[i]=ziyi_hfi_record_get(data+4*i);
++ for(unsigned i=74;i<80;i++)if(w[i])return G19_HFI_RECORD;
++ struct g19_hfi_record r={0};
++ r.stage=w[4];r.error=w[5];r.flags=w[6];r.live_state=w[7];r.sequence=w[8];r.sent[0]=w[9];r.sent[1]=w[10];
++ r.poll_cap=w[11];r.polls=w[12];r.ready_polls=w[13];r.ack_polls=w[14];r.remote_status=w[15];r.version=w[16];
++ r.raw_declared=w[17];r.raw_count=w[18];r.owner_failed=w[19];r.first_mask=w[20];r.last_mask=w[21];
++ for(unsigned i=0;i<4;i++){r.queue_first[i]=w[22+i];r.queue_last[i]=w[26+i];}
++ for(unsigned i=0;i<19;i++)r.raw[i]=w[30+i];
++ ziyi_hfi_record_health_get(&r.first_health,w+49);ziyi_hfi_record_health_get(&r.last_health,w+54);
++ r.gmu_address=w[59];r.stores=w[60];r.q0_write_stores=w[61];r.q1_read_stores=w[62];
++ r.epoch=ziyi_hfi_record_wide_get(w+63);r.start_tick=ziyi_hfi_record_wide_get(w+65);r.last_tick=ziyi_hfi_record_wide_get(w+67);r.timeout_ticks=ziyi_hfi_record_wide_get(w+69);
++ r.delay_us=w[71];r.start_calls=w[72];r.doorbells=w[73];
++ if(!ziyi_hfi_record_valid(&r))return G19_HFI_RECORD;*out=r;return 0;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_version.c
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_hfi_version.h"
++int gh_version_command(uint32_t sequence,uint32_t out[2]){
++ if(!out)return GN_ARG;uint32_t header;int e=gn_hfi_header(GH_VERSION_COMMAND,2,sequence,&header);if(e)return e;out[0]=header;out[1]=GH_A662_SUPPORTED_VERSION;return GN_OK;
++}
++int gh_version_reply(const uint32_t ring[GN_HFI_WORDS],const struct gn_hfi_queue*q,uint32_t sent,struct gh_version_reply*out){
++ if(!out||(sent&255)!=GH_VERSION_COMMAND||((sent>>8)&255)!=2)return GN_ARG;
++ uint32_t status,next;int e=gn_hfi_ack(ring,q,sent,&status,&next);if(e)return e;
++ /* Vendor results[2] is status; results[3] is version only on success.
++  * A three-word error ACK is meaningful, but a successful one is truncated. */
++ if(status){*out=(struct gh_version_reply){status,0,next};return GH_REMOTE_ERROR;}
++ unsigned words=(ring[q->read]>>8)&255;if(words<4)return GN_PACKET;
++ uint32_t version=ring[(q->read+3)%GN_HFI_WORDS];
++ if((version>>28)!=2)return GH_VERSION_MISMATCH;
++ *out=(struct gh_version_reply){0,version,next};return GN_OK;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_hfi_version.h
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_g8_contract.h"
++#define GH_VERSION_COMMAND 1u
++#define GH_A662_SUPPORTED_VERSION 0x20000000u
++enum gh_error {GH_REMOTE_ERROR=100,GH_VERSION_MISMATCH};
++struct gh_version_reply {uint32_t status,version,next_read;};
++/* Pure wire contract only. Requires a separately qualified live NC queue owner;
++ * no MMIO, cache mutation, doorbell, shared-index publication or GMU start. */
++int gh_version_command(uint32_t sequence,uint32_t out[2]);
++int gh_version_reply(const uint32_t ring[GN_HFI_WORDS],const struct gn_hfi_queue*,uint32_t sent,struct gh_version_reply*);
+--- a/osfmk/arm/pmap/pmap.c
++++ b/osfmk/arm/pmap/pmap.c
+@@ -14299,3 +14299,168 @@
+ }
+ 
+ #endif /* DEVELOPMENT || DEBUG */
++
++/* Candidate addition at END of captured osfmk/arm/pmap/pmap.c.
++ * Uses that file's private PVH primitives; never compile as a separate TU.
++ * This is not an ownership oracle: the caller must possess a fresh private
++ * wired kmem allocation and must not export/create aliases of that allocation.
++ * Under that construction, require precisely its one tracked PV PTE plus the
++ * permanent physical aperture, then convert both through the existing updater.
++ * Deliberately rejects PV lists, IOMMU aliases, hints, PPL and other granules.
++ * Non-PPL SWEET lacks __ARM_PTE_PHYSMAP__: its stock updater omits physmap.
++ * This addition explicitly updates the verified physical leaf in that case.
++ */
++#define HOP_PMAP_ABI 0x484f5031u
++unsigned int ziyi_hop_pmap_abi(void);
++unsigned int ziyi_hop_pmap_last_error(void);
++static unsigned int hop_last_error;
++unsigned int ziyi_hop_pmap_last_error(void) { return hop_last_error; }
++int ziyi_hop_pmap_page(uint64_t, uint64_t, unsigned int, unsigned int,
++                      bool, uint64_t *);
++
++#if !XNU_MONITOR
++/* pmap_pte()/pmap_ttne() panics on an inherited block with MACH_ASSERT.
++ * This read-only walk refuses blocks at every ancestor without demotion. */
++static pt_entry_t *
++hop_pmap_leaf_no_demote(vm_map_address_t va)
++{
++ const pt_attr_t *attr = pmap_get_pt_attr(kernel_pmap);
++ if (va < kernel_pmap->min || va >= kernel_pmap->max ||
++     attr->pta_max_level != PMAP_TT_L3_LEVEL) return NULL;
++ tt_entry_t *table = kernel_pmap->tte;
++ for (unsigned int level=attr->pta_root_level; level<PMAP_TT_L3_LEVEL; level++) {
++  tt_entry_t entry = table[ttn_index(attr,va,level)];
++  if ((entry & (ARM_TTE_TYPE_MASK|ARM_TTE_VALID)) !=
++      (ARM_TTE_TYPE_TABLE|ARM_TTE_VALID)) return NULL;
++  table = (tt_entry_t*)phystokv(entry & ARM_TTE_TABLE_MASK);
++ }
++ return (pt_entry_t*)&table[ttn_index(attr,va,PMAP_TT_L3_LEVEL)];
++}
++/* Reclaimed BOOT/static pages can retain their original linear image alias.
++ * Inspect it without a pmap_pte block panic. Refuse an extra alias instead
++ * of silently converting only the allocator VA and physical aperture. A
++ * mapped original VA targeting a DIFFERENT PA is not an alias of this page.
++ * This is source-scoped to non-PPL SWEET's linear kernel-image mapping. */
++static int
++hop_original_alias(vm_map_address_t va, uint64_t pa)
++{
++ const pt_attr_t *attr = pmap_get_pt_attr(kernel_pmap);
++ if (va < kernel_pmap->min || va >= kernel_pmap->max) return 0;
++ tt_entry_t *table = kernel_pmap->tte;
++ for (unsigned int level=attr->pta_root_level; level<=PMAP_TT_L3_LEVEL; level++) {
++  tt_entry_t entry = table[ttn_index(attr,va,level)];
++  if (!(entry & ARM_TTE_VALID)) return 0;
++  if (level==PMAP_TT_L3_LEVEL)
++   return (entry & ARM_PTE_TYPE_MASK)==ARM_PTE_TYPE_VALID ? pte_to_pa(entry)==pa : -1;
++  if ((entry & ARM_TTE_TYPE_MASK)==ARM_TTE_TYPE_TABLE) {
++   table=(tt_entry_t*)phystokv(entry & ARM_TTE_TABLE_MASK);
++  } else {
++   const uint64_t off=attr->pta_level_info[level].offmask;
++   return ((pte_to_pa(entry)&~off)|(va&off))==pa;
++  }
++ }
++ return -1;
++}
++#endif
++
++unsigned int
++ziyi_hop_pmap_abi(void)
++{
++#if XNU_MONITOR
++ return 0;
++#else
++ return PAGE_SIZE == 16384 && PAGE_RATIO == 1 ? HOP_PMAP_ABI : 0;
++#endif
++}
++
++int
++ziyi_hop_pmap_page(uint64_t allocation_va, uint64_t pa, unsigned int old_wimg,
++                   unsigned int new_wimg, bool convert, uint64_t *aperture)
++{
++ hop_last_error=1;
++#if XNU_MONITOR
++ (void)allocation_va;(void)pa;(void)old_wimg;(void)new_wimg;
++ (void)convert;(void)aperture;
++ return 0;
++#else
++ if (ziyi_hop_pmap_abi() != HOP_PMAP_ABI || aperture == NULL || pa == 0 ||
++     pa >= (1ULL << 36) || (pa & PAGE_MASK) ||
++     allocation_va == 0 || (allocation_va & PAGE_MASK) || !pa_valid(pa) ||
++     (old_wimg != VM_WIMG_DEFAULT && old_wimg != VM_WIMG_WCOMB) ||
++     (new_wimg != VM_WIMG_DEFAULT && new_wimg != VM_WIMG_WCOMB)) {
++  return 0;
++ }
++ unsigned int pai = pa_index(pa);
++ unsigned int observed;
++ bool ok = false;
++ vm_offset_t physical_va = phystokv(pa);
++ if (physical_va == allocation_va) return 0;
++ pvh_lock(pai);
++ pv_entry_t **head = pai_to_pvh(pai);
++ pt_entry_t *owned = hop_pmap_leaf_no_demote(allocation_va);
++ pt_entry_t *physical = hop_pmap_leaf_no_demote(physical_va);
++ hop_last_error=2;
++ /* PVH_TYPE_PTEP is the singleton representation; refusing PVEP is safe
++  * even if its list happens to contain one PTE. No new alias is tolerated. */
++ if (owned == NULL || physical == NULL ||
++     !pvh_test_type(head, PVH_TYPE_PTEP) || pvh_ptep(head) != owned) goto out;
++ hop_last_error=3;
++#ifdef PVH_FLAG_IOMMU
++ if (pvh_ptep_is_iommu(owned)) goto out;
++#endif
++ if (ptep_get_pmap(owned) != kernel_pmap ||
++     ptep_get_va(owned) != allocation_va ||
++     (*owned & ARM_PTE_TYPE_MASK) != ARM_PTE_TYPE_VALID ||
++     (*physical & ARM_PTE_TYPE_MASK) != ARM_PTE_TYPE_VALID ||
++     pte_to_pa(*owned) != pa || pte_to_pa(*physical) != pa ||
++     ((*owned | *physical) & ARM_PTE_HINT_MASK)) goto out;
++ /* The original BOOT/PRELINK alias is untracked by the PV list. Never
++  * normalize or ignore it. An allocator-selected such page is a precise
++  * diagnostic refusal; no random-PA retry or ownership fabrication. */
++ hop_last_error=4;
++ if (pa < gPhysBase || gVirtBase > UINT64_MAX-(pa-gPhysBase)) goto out;
++ const uint64_t original_va=gVirtBase+(pa-gPhysBase);
++ if (original_va!=physical_va && original_va!=allocation_va &&
++     hop_original_alias(original_va,pa)!=0) goto out;
++ hop_last_error=5;
++ observed = pp_attr_table[pai] & PP_ATTR_WIMG_MASK;
++ if (observed == 0) observed = VM_WIMG_DEFAULT;
++ if (observed != old_wimg ||
++     (*owned & (ARM_PTE_ATTRINDXMASK | ARM_PTE_SHMASK)) !=
++     (wimg_to_pte(old_wimg, pa) & (ARM_PTE_ATTRINDXMASK | ARM_PTE_SHMASK)) ||
++     (*physical & (ARM_PTE_ATTRINDXMASK | ARM_PTE_SHMASK)) !=
++     (wimg_to_pte(old_wimg, pa) & (ARM_PTE_ATTRINDXMASK | ARM_PTE_SHMASK)))
++  goto out;
++ if (convert && new_wimg != old_wimg) {
++  pp_attr_t before, after;
++  do {
++   before = pp_attr_table[pai];
++   after = (before & ~PP_ATTR_WIMG_MASK) | PP_ATTR_WIMG(new_wimg);
++  } while (!OSCompareAndSwap16(before, after, &pp_attr_table[pai]));
++  /* Non-PPL SWEET's stock updater has no physical-aperture branch. Mirror
++   * its existing PTE+TLBI sequence explicitly, after refusing block/hint
++   * mappings above. No demotion, raw-reserved PTE replay or Device attrs. */
++#if !__ARM_PTE_PHYSMAP__
++  pt_entry_t physical_new = *physical;
++  physical_new &= ~(ARM_PTE_ATTRINDXMASK|ARM_PTE_SHMASK);
++  physical_new |= wimg_to_pte(new_wimg,pa);
++  write_pte_strong(physical,physical_new);
++  flush_mmu_tlb_region_asid_async(physical_va,PAGE_SIZE,kernel_pmap,true);
++#endif
++  /* Existing managed-PV update and TLB synchronization. These pages cannot
++   * be published or accessed until the caller's actual AT pass. */
++  (void)pmap_update_cache_attributes_locked((ppnum_t)atop(pa), new_wimg, true);
++#if !__ARM_PTE_PHYSMAP__
++  arm64_sync_tlb(false);
++#endif
++ }
++ *aperture = physical_va;
++ hop_last_error=0;
++ ok = true;
++out:
++ pvh_unlock(pai);
++ if (ok && convert && old_wimg != new_wimg)
++  pmap_sync_wimg((ppnum_t)atop(pa), old_wimg, new_wimg);
++ return ok ? 1 : 0;
++#endif
++}
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -365,6 +365,34 @@
+ #define PTOV_TABLE_SIZE 8
+ SECURITY_READ_ONLY_LATE(static ptov_table_entry)        ptov_table[PTOV_TABLE_SIZE];
+ SECURITY_READ_ONLY_LATE(static boolean_t)               kva_active = FALSE;
++
++/* Included after kva_active in arm_vm_init.c. Boot construction only.
++ * No live block demotion. PTOV placement continues to use original granule. */
++#if SWEET && !XNU_MONITOR
++SECURITY_READ_ONLY_LATE(static boolean_t) ziyi_hop_leaf_mode = FALSE;
++
++static unsigned int
++ziyi_hop_construction_granule(unsigned int original)
++{
++ if (ziyi_hop_leaf_mode) {
++  assert(!kva_active);
++  return 0;
++ }
++ return original;
++}
++
++int ziyi_hop_boot_leaf_ready(void);
++int
++ziyi_hop_boot_leaf_ready(void)
++{
++ return ziyi_hop_leaf_mode && kva_active && PAGE_SHIFT == 14 &&
++        PAGE_SIZE == 16384 && gPhysBase == 0x900000000ULL &&
++        mem_size == 0x80000000ULL && real_phys_size == 0x80000000ULL;
++}
++#else
++#define ziyi_hop_construction_granule(original) (original)
++#endif
++
+ 
+ 
+ vm_map_address_t
+@@ -1382,7 +1410,7 @@
+ 	if (!segSizePLKDATACONST && !segSizePLKTEXTEXEC) {
+ 		if (segSizePRELINKTEXT) {
+ 			arm_vm_page_granular_RWNX(segPRELINKTEXTB + segSizePRELINKTEXT, segTEXTB - (segPRELINKTEXTB + segSizePRELINKTEXT),
+-			    ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT);
++			    ziyi_hop_construction_granule(ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT));
+ 		}
+ 	} else {
+ 		/*
+@@ -1510,7 +1538,7 @@
+ 	assert((temp_ptov_table[ptov_index].va & ARM_PGMASK) == 0);
+ 	temp_ptov_table[ptov_index].len = round_page(len);
+ 	pa_offset = temp_ptov_table[ptov_index].va - orig_va;
+-	arm_vm_page_granular_prot(temp_ptov_table[ptov_index].va, temp_ptov_table[ptov_index].len, pa_offset, 1, pte_prot_APX, 1, granule);
++	arm_vm_page_granular_prot(temp_ptov_table[ptov_index].va, temp_ptov_table[ptov_index].len, pa_offset, 1, pte_prot_APX, 1, ziyi_hop_construction_granule(granule));
+ 	++ptov_index;
+ }
+ 
+@@ -1598,7 +1626,7 @@
+ 	    ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT);
+ 
+ 	arm_vm_page_granular_RWNX(end_kern, phystokv(args->topOfKernelData) - end_kern,
+-	    ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT); /* Device Tree (if not locked down), RAM Disk (if present), bootArgs */
++	    ziyi_hop_construction_granule(ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT)); /* Device Tree (if not locked down), RAM Disk (if present), bootArgs */
+ 
+ 	arm_vm_physmap_slide(temp_ptov_table, (args->topOfKernelData - gPhysBase + gVirtBase),
+ 	    real_avail_end - args->topOfKernelData, AP_RWNA, ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT); // rest of physmem
+@@ -2100,6 +2128,16 @@
+ 	}
+ 
+ 	(void) PE_parse_boot_argn("use_contiguous_hint", &use_contiguous_hint, sizeof(use_contiguous_hint));
++#if SWEET && !XNU_MONITOR
++	/* G19 uses the existing opt-in argument. No allocator pool, PA retry,
++	 * bootstrap mapper rewrite, or post-switch granularity mutation. */
++	unsigned int ziyi_hop_mode = 0;
++	(void)PE_parse_boot_argn("ziyi_gmu", &ziyi_hop_mode, sizeof(ziyi_hop_mode));
++	ziyi_hop_leaf_mode = ziyi_hop_mode == 2 && !kva_active &&
++	    PAGE_SHIFT == 14 && PAGE_SIZE == 16384 &&
++	    gPhysBase == 0x900000000ULL && args->memSize == 0x80000000ULL &&
++	    mem_size == 0x80000000ULL && real_phys_size == 0x80000000ULL;
++#endif
+ 	assert(segSizePRELINKTEXT < 0x03000000); /* 23355738 */
+ 
+ 	/* if one of the new segments is present, the other one better be as well */

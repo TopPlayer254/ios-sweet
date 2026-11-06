@@ -1,0 +1,296 @@
+{
+  "version": 1,
+  "baseCommit": "5508a418f0899ba8bc34bbdee52d609ecd6f6e8b",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g8_fwinit.h",
+      "before": "990df16fb02a3c177a628c79b14117e7cf8b6efcfbc8072705d888e53e4326cf",
+      "after": "25256975d9f2805c4d1662a00cda73e695dd4b6856c0f51d569eac298592a263",
+      "new": false
+    },
+    {
+      "path": "bsd/dev/ziyi_g8_engine.c",
+      "before": "83c3f68f3330afc9d8f1a00141e96f82e5c741a4c30a04238fce5df5053b8f1d",
+      "after": "6c740caa3780fcd45dea28fea38d4a695084065b441195c04e05c39b071ca256",
+      "new": false
+    },
+    {
+      "path": "bsd/dev/ziyi_g8_memory.c",
+      "before": "b66296908485596688fed044fc51da91f70add53f086ed75e3b8108fdcdb767d",
+      "after": "93a92f44184d82629cb32df58e862de2d682a001616587ba4e37d53425edd78b",
+      "new": false
+    },
+    {
+      "path": "bsd/dev/ziyi_g8_memory.h",
+      "before": "46862f8a6307db3f8bffd5420a29702ceaa7009c54f10abcfcb9999dd88bcc8c",
+      "after": "8b8c0af36109ef1eac8756c418a71cccf41e1bf4fb4d8432718376741ea3204b",
+      "new": false
+    },
+    {
+      "path": "bsd/dev/ziyi_gpu_probe.c",
+      "before": "832bb7847bfd05e4602521a038950133f9142d9b721ad7564779a612215c2a52",
+      "after": "65302880a0efcdba6693451eaedfe5067f1d85b4b7d9f243d7bd8d40c2c77234",
+      "new": false
+    },
+    {
+      "path": "bsd/dev/ziyi_g19_native.inc",
+      "before": null,
+      "after": "3e4114d57786f91313fcc74019bab6018a26309d4420aecadcb4665bf13a2842",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_g19_owned_pages.c",
+      "before": null,
+      "after": "0243c7118fd4c3323b3d7f423acf2676e67a8659257be3fd526e2227fd185bba",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_g19_owned_pages.h",
+      "before": null,
+      "after": "06b51b169a3e81ce500ceb5acd0b9957ef124696d78a684c2083ccd5219987bb",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_g19_xnu_owned_pages.c",
+      "before": null,
+      "after": "81e7e1510b50b4466eec64e618546d2f750af95295b13dfc1e137efb3e063d21",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_g19_xnu_owned_pages.h",
+      "before": null,
+      "after": "e1caf836a979c394fe02749dde01890417b14f653bb611e1698c139d4adcfb65",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_page_observation.c",
+      "before": null,
+      "after": "0d87c26327e3ad989a1764a872aa3d6dcbd381a6a2ccf8edbb4ab141362d97fa",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_page_observation.h",
+      "before": null,
+      "after": "a2a6d6316dbaf481d1288da0b4cefdbfdf5e97ea7a7a91677c3764e8d8ef95fc",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_kernel_page_observer.c",
+      "before": null,
+      "after": "a91a2f60623249329715f376f28c93ec0581d7dbbae35f81343ce151dd6d93bf",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_diagnostic.c",
+      "before": null,
+      "after": "81539b76d4abb3980bca852c57e0df6f5bbf7158e3eee06fabe83d25874ee869",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_diagnostic.h",
+      "before": null,
+      "after": "ac1f3e721b4f3f631446c396d404c91cc94425c5a6887e746e59e3adefd3d07c",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_record.c",
+      "before": null,
+      "after": "eb8828fbb912a8f73fc883e662c2a769a3281039e96802b70e9337584f129c9e",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_live.c",
+      "before": null,
+      "after": "68949914235aca15a960d8ac13d3563d50acf675d54cf89aeb1542f4359e8ca1",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_live.h",
+      "before": null,
+      "after": "307c256652414cf8072ad87b67ea8ce46b29c95246857e2129b3ed749935c0cd",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_version.c",
+      "before": null,
+      "after": "bea375e52010809ed46ccbb8902f8455fd891c7663b54be0e50947bf4f72de5f",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_version.h",
+      "before": null,
+      "after": "8558ec4c1eb29f056b95c9f4db690df378c67e4b6af3300a44052d3fcb794e04",
+      "new": true
+    },
+    {
+      "path": "osfmk/arm64/arm_vm_init.c",
+      "before": "5feb4071321166827d59abf57ef6f71b9e78ae620e378766c25869c1559f8512",
+      "after": "d41a92d097caeef0a8e7d7dc5ee57c47de171e0f4ed34f6b31c28f7e204015d2",
+      "new": false
+    },
+    {
+      "path": "osfmk/arm/pmap/pmap.c",
+      "before": "05b40516a70505d26c575d3dfb6aa16001b68cc4c938abb7860c5cd88c114bf1",
+      "after": "9178481a375060014c368906bb10e7cf77fb1d37070f581fe09df68fce86e320",
+      "new": false
+    }
+  ],
+  "patch": "xnu/patches/0101-ziyi-g19-hfi-handshake.patch",
+  "patchSHA256": "890cdd3be2bd938fddba30d06402f452ac633d975c6b1294e8ee2285fc354712",
+  "historicalScopes": 75,
+  "hardwareManifestEntries": 41,
+  "noCAOrMetal": true,
+  "nativeHandshake": false,
+  "linkedFunctions": [
+    "_g19_run",
+    "_g19_hfi_run",
+    "_g19_hfi_record_encode",
+    "_hop_prepare",
+    "_hop_validate",
+    "_gh_cpu_observe",
+    "_ziyi_hop_pmap_page",
+    "_ziyi_hop_boot_leaf_ready"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g19/audit_ci.py",
+      "sha256": "dd7e0cd1dcaeb18951fa8ae0d184f3a93686dec0e92b985affbf49b95660e395",
+      "bytes": 1743
+    },
+    {
+      "path": "tools/ziyi-g19/files/g18-construction.inc",
+      "sha256": "96970a972402f265dd48904f254298ced5dbd7d52d2b6d847760e08768387ee5",
+      "bytes": 10811
+    },
+    {
+      "path": "tools/ziyi-g19/files/g19-construction.inc",
+      "sha256": "0516889c4d1b5b35289c8f94cce0c05f2eeeec4dee75b908f357b9f406ae768f",
+      "bytes": 10842
+    },
+    {
+      "path": "tools/ziyi-g19/files/g19_boot_leaf.inc",
+      "sha256": "772addcd8f8f6d019f35a1c22dd199b0baeddc09090c3033a56211c8c959db78",
+      "bytes": 777
+    },
+    {
+      "path": "tools/ziyi-g19/files/native_store_source.inc",
+      "sha256": "8217f8a93af72f3e4488232913060e696f5a6ee701dd440efb8fe58be6616bfe",
+      "bytes": 1044
+    },
+    {
+      "path": "tools/ziyi-g19/files/pmap_owned_page.inc",
+      "sha256": "0aa48e03eb883b917125a1971d7e9d9f5dbebfc1a80c4791ab2ad62572ec7181",
+      "bytes": 7195
+    },
+    {
+      "path": "tools/ziyi-g19/files/test_construction.c",
+      "sha256": "03591e918c5fc616af42460707ae4c0e48dff71b9099f4ea9892b9acef2cbdff",
+      "bytes": 6115
+    },
+    {
+      "path": "tools/ziyi-g19/files/test_diagnostic.c",
+      "sha256": "7ebbe77251eee66a2e9aec74d8e4d1729f7a9149f03ff2dc94e8e9ecfacb4428",
+      "bytes": 8687
+    },
+    {
+      "path": "tools/ziyi-g19/files/test_external_hfi.c",
+      "sha256": "bfc103b1d6d994cdf03efc90eaa0ad974d6a963c2c514dff09e7b4e43de55a0a",
+      "bytes": 2720
+    },
+    {
+      "path": "tools/ziyi-g19/files/test_owned_pages.c",
+      "sha256": "04af7bc152ff8b6f02ce2ffa5ea109b71160872373476f9a9f24681c2bd50b67",
+      "bytes": 7086
+    },
+    {
+      "path": "tools/ziyi-g19/files/test_pmap_helper.c",
+      "sha256": "713d86db90e6ae8be77e2372e79e2301a41b1731d7ef67c3fad4e9780eabcf94",
+      "bytes": 7163
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_g19_native.inc",
+      "sha256": "3e4114d57786f91313fcc74019bab6018a26309d4420aecadcb4665bf13a2842",
+      "bytes": 8809
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_g19_owned_pages.c",
+      "sha256": "0243c7118fd4c3323b3d7f423acf2676e67a8659257be3fd526e2227fd185bba",
+      "bytes": 6946
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_g19_owned_pages.h",
+      "sha256": "06b51b169a3e81ce500ceb5acd0b9957ef124696d78a684c2083ccd5219987bb",
+      "bytes": 2767
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_g19_xnu_owned_pages.c",
+      "sha256": "81e7e1510b50b4466eec64e618546d2f750af95295b13dfc1e137efb3e063d21",
+      "bytes": 5176
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_g19_xnu_owned_pages.h",
+      "sha256": "e1caf836a979c394fe02749dde01890417b14f653bb611e1698c139d4adcfb65",
+      "bytes": 751
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_diagnostic.c",
+      "sha256": "81539b76d4abb3980bca852c57e0df6f5bbf7158e3eee06fabe83d25874ee869",
+      "bytes": 9079
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_diagnostic.h",
+      "sha256": "ac1f3e721b4f3f631446c396d404c91cc94425c5a6887e746e59e3adefd3d07c",
+      "bytes": 3071
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_kernel_page_observer.c",
+      "sha256": "a91a2f60623249329715f376f28c93ec0581d7dbbae35f81343ce151dd6d93bf",
+      "bytes": 881
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_live.c",
+      "sha256": "68949914235aca15a960d8ac13d3563d50acf675d54cf89aeb1542f4359e8ca1",
+      "bytes": 4434
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_live.h",
+      "sha256": "307c256652414cf8072ad87b67ea8ce46b29c95246857e2129b3ed749935c0cd",
+      "bytes": 1335
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_page_observation.c",
+      "sha256": "0d87c26327e3ad989a1764a872aa3d6dcbd381a6a2ccf8edbb4ab141362d97fa",
+      "bytes": 306
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_page_observation.h",
+      "sha256": "a2a6d6316dbaf481d1288da0b4cefdbfdf5e97ea7a7a91677c3764e8d8ef95fc",
+      "bytes": 627
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_record.c",
+      "sha256": "eb8828fbb912a8f73fc883e662c2a769a3281039e96802b70e9337584f129c9e",
+      "bytes": 5709
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_version.c",
+      "sha256": "bea375e52010809ed46ccbb8902f8455fd891c7663b54be0e50947bf4f72de5f",
+      "bytes": 1074
+    },
+    {
+      "path": "tools/ziyi-g19/files/ziyi_hfi_version.h",
+      "sha256": "8558ec4c1eb29f056b95c9f4db690df378c67e4b6af3300a44052d3fcb794e04",
+      "bytes": 636
+    },
+    {
+      "path": "tools/ziyi-g19/run_host_tests.py",
+      "sha256": "8cfb87223cdf51b245aeee5f971f9f9556ef9c712b5dbc4cd09c49c011dc5bc1",
+      "bytes": 2512
+    },
+    {
+      "path": "tools/ziyi-g19/test_native_store.c",
+      "sha256": "a59a6910085c0c7fdbf5795b02581cb2c0841de9bfa2253349521bd06fe767c6",
+      "bytes": 2442
+    }
+  ]
+}

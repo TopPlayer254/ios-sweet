@@ -29,3 +29,5 @@
 /xnu/patches/0099-ziyi-g18-vendor-start.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0100-ziyi-ui-full-frame-aks-poll.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0101-ziyi-g19-hfi-handshake.patch -text whitespace=cr-at-eol

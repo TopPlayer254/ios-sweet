@@ -215,7 +215,7 @@ static int cleanup(struct g8_workspace*w,const struct g8_io*io){
  if(r->flags&G13_CONTEXT_REINIT)r->flags|=G13_CONTEXT_CLEANUP;
  if(!(r->flags&(G12_BUS_NORMALIZED|G13_CONTEXT_REINIT))){r->restored=1;r->flags|=G8_RESTORED;}return 1;
 }
-int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io){
+int g19_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io,const struct g19_hooks*hooks){
  if(!w||!q||!io||!io->read||!io->write||!io->ticks||!io->delay||!io->barrier||!io->lease||!io->proof||!io->owned||(w->record.flags&G8_LEASE&&!w->record.lease_released)||w->memory.state)return 0;
  struct g8_record*r=&w->record;*r=(struct g8_record){.epoch=q->epoch,.phase=G8_ACQUIRE};
  if(!q->epoch||q->board!=0x06060201||q->hlos_cb!=6||q->hlos_smr!=6||q->current_el!=4||(q->sctlr&0x1005)!=0x1005||(q->sctlr&0x3000000)||q->acd_off!=1||q->qdss_off!=1||q->lm_bcl_off!=1||q->hfi_off!=1||q->inherited_ddr_probe!=1||!io->proof(io->ctx,q,&w->blob)||!io->owned(io->ctx,w,sizeof(*w)))return fail(r,G8_PREREQ,0);
@@ -234,10 +234,11 @@ int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io)
  if(read_value(w,io,TLB_STATUS,4)||r->poison){fail(r,G8_OWNER,1);goto done;}
  for(unsigned pass=0;pass<2;pass++){for(unsigned off=0;off<G8_TCM_BYTES;off+=4){if(!(off&0xfff)&&!quiet(w,io))goto done;bytes(w->backup[pass]+off,(uint32_t)read_value(w,io,tcm_address(off),4));if(r->poison)goto done;}g7_sha256(w->backup[pass],G8_TCM_BYTES,r->tcm_sha[pass]);}
  if(!hashes_valid(w)){fail(r,G8_BACKUP,1);goto done;}r->saved_crc=old_crc(r);r->flags|=G8_SAVED;r->phase=G8_MEMORY;
+ if(hooks&&(!hooks->prepare_hfi||!hooks->publish_hfi||!hooks->firmware_ready||!hooks->prepare_hfi(hooks->ctx,w,io))){fail(r,G8_MEMORY_ERROR,0);goto done;}
  if(!gm_memory_prepare(&w->memory,&w->firmware_plan,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_MEMORY_READY;
  if(g8_invalid_registers(w)){fail(r,G8_PREREQ,0);goto done;}
  for(unsigned i=0;i<w->firmware_plan.block_count;i++){const struct gn_block*b=&w->firmware_plan.blocks[i];if(b->size&&b->kind!=GN_ITCM&&b->kind!=GN_DTCM){uint8_t*dst=gm_memory_owned_va(&w->memory,b->address,b->size);if(!dst){fail(r,G8_MEMORY_ERROR,0);goto done;}for(unsigned j=0;j<b->size;j++)dst[j]=w->firmware[b->data_offset+j];if(!same(dst,w->firmware+b->data_offset,b->size)){fail(r,G8_BACKUP,1);goto done;}}}
- if(gn_hfi_init(gm_memory_owned_va(&w->memory,w->firmware_plan.hfi_address,GN_HFI_BYTES),GN_HFI_BYTES,w->firmware_plan.hfi_address)!=GN_OK||!gm_memory_publish(&w->memory,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_PUBLISHED;r->phase=G8_INSTALL;
+ if(gn_hfi_init(gm_memory_owned_va(&w->memory,w->firmware_plan.hfi_address,GN_HFI_BYTES),GN_HFI_BYTES,w->firmware_plan.hfi_address)!=GN_OK||(hooks&&!hooks->publish_hfi(hooks->ctx,w,io))||!gm_memory_publish(&w->memory,&io->memory_io)){fail(r,G8_MEMORY_ERROR,0);goto done;}r->flags|=G8_PUBLISHED;r->phase=G8_INSTALL;
  if(g13_unused_context(w))r->flags|=G13_CONTEXT_REINIT;
  if(!set_reg(w,io,26,0))goto done;
  if((r->flags&G13_CONTEXT_REINIT)&&(!set_reg(w,io,25,target(w,25))||!set_reg(w,io,24,target(w,24))||!g13_rebase_context(w,io,0)))goto done;
@@ -255,7 +256,15 @@ int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io)
  if(!bus_release(w,io))goto done;
  r->phase=G8_START;if(!set_reg(w,io,19,0))goto done;r->flags&=~G8_HELD_RESET;r->flags|=G8_RELEASED_RESET;r->phase=G8_WAIT;
  for(unsigned i=0;i<100000;i++){uint32_t value=(uint32_t)read_value(w,io,FW_RESULT,4);if(r->poison)goto done;r->expected[3]=value;if((value&0x1ff)==0x100){r->flags|=G8_FW100;if(r->flags&G18_VENDOR_HANDOFF){uint32_t ack=(uint32_t)read_value(w,io,GD_ACK,4);r->final_ack=ack;if(r->poison||ack&~3u){fail(r,G8_OWNER,1);goto done;}if(!ack)r->bus_released=1;}break;}if(i==99999)fail(r,G8_TIMEOUT,0);io->delay(io->ctx,1);}
+ if(hooks&&!r->poison&&!r->error&&(r->flags&G8_FW100))hooks->firmware_ready(hooks->ctx,w,io);
 restore:if(!r->poison)cleanup(w,io);
 done:r->end=io->ticks(io->ctx);if(!r->writes||closed(r)){if(io->lease(io->ctx,q->epoch,0)){r->lease_released=1;r->flags|=G8_LEASE_RELEASED;}else fail(r,G8_OWNER,1);}r->retain_allocations=!closed(r)&&r->writes;return g8_transaction_complete(w);
+}
+int g8_run(struct g8_workspace*w,const struct g8_prereq*q,const struct g8_io*io){
+ /* Preserve the original three-argument entry contract. G19 callbacks are
+  * available only through the separate explicit continuation entry. */
+ if(!w||!q||!io||!io->read||!io->write||!io->ticks||!io->delay||
+    !io->barrier||!io->lease||!io->proof||!io->owned)return 0;
+ return g19_run(w,q,io,NULL);
 }
 int g8_transaction_complete(const struct g8_workspace*w){return w&&!w->record.error&&!w->record.poison&&closed(&w->record)&&w->record.lease_released&&(w->record.flags&G8_FW100);}

@@ -22,6 +22,15 @@ int g8_observation_address(uint64_t,unsigned,uint64_t*);
 int g8_read_allowed(const struct g8_workspace*,uint64_t,unsigned);
 int g8_store_guard(const struct g8_workspace*,uint64_t,unsigned,uint64_t,uint64_t,uint32_t,uint32_t);
 int g8_run(struct g8_workspace*,const struct g8_prereq*,const struct g8_io*);
+/* G19 opt-in continuation. These callbacks do not grant MMIO authority.
+ * The ordinary G18 entry has no hooks and retains its exact lifecycle. */
+struct g19_hooks {
+ void *ctx;
+ int (*prepare_hfi)(void*,struct g8_workspace*,const struct g8_io*);
+ int (*publish_hfi)(void*,struct g8_workspace*,const struct g8_io*);
+ void (*firmware_ready)(void*,struct g8_workspace*,const struct g8_io*);
+};
+int g19_run(struct g8_workspace*,const struct g8_prereq*,const struct g8_io*,const struct g19_hooks*);
 int g8_transaction_complete(const struct g8_workspace*);
 /* Structural selection for the proven EL1/MMU-on contract. No legacy offline
  * GA_REQUIRED_FACTS assertion and no hardware write authority is returned. */

@@ -20,7 +20,7 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [codex/ziyi-hw-in-system]
+    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19]
     paths:
       - "tools/ziyi-wifi/full-kernel/**"
       - "tools/ziyi-wifi/stage_full_kernel.py"
@@ -246,6 +246,9 @@ jobs:
       - name: Exact UI frame and AKS poll sanitizer tests
         run: python3 tools/ziyi-ui/run_host_tests.py --out u1-evidence/ui-public-host
 
+      - name: Bounded HFI exact source host tests
+        run: python3 tools/ziyi-g19/run_host_tests.py --out u1-evidence/g19-host
+
       - name: Build
         working-directory: dxb
         env:
@@ -274,6 +277,9 @@ jobs:
 
       - name: Audit exact combined sources and nonempty linked adapters
         run: python3 tools/ziyi-wifi/audit_full_kernel.py
+
+      - name: Exact G19 source and active linked HFI audit
+        run: python3 tools/ziyi-g19/audit_ci.py
 
       - uses: actions/upload-artifact@v4
         if: always()
