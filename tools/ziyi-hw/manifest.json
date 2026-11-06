@@ -89,8 +89,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
       "target": "bsd/dev/ziyi_gpu_probe.c",
-      "sha256": "65302880a0efcdba6693451eaedfe5067f1d85b4b7d9f243d7bd8d40c2c77234",
-      "bytes": 29032
+      "sha256": "1112a26a476d3ee7d83250121bee1c83c7caedbda85e98a686c5a15da9bcd596",
+      "bytes": 29590
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -337,8 +337,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
-      "sha256": "65302880a0efcdba6693451eaedfe5067f1d85b4b7d9f243d7bd8d40c2c77234",
-      "bytes": 29032
+      "sha256": "1112a26a476d3ee7d83250121bee1c83c7caedbda85e98a686c5a15da9bcd596",
+      "bytes": 29590
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.h",

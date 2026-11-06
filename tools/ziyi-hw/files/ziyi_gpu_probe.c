@@ -1,3 +1,4 @@
+#include "ziyi_g20_trace.h"
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Experimental XNU integration of the guarded G6/G7 acquisition engines.
  * Opt-in G8 FW_INIT100 transaction; no HFI start, CP or acceleration API.
@@ -269,6 +270,20 @@ int gsr_assemble(const struct gsr_page in[GSR_PAGES],uint64_t out[GSR_REGS],uint
 
 /* G13_SNAPSHOT_CODEC_END */
 
+
+static void zg_g20_trace_print(struct zg_state*s){
+ if(s->gmu_enabled!=2)return;struct g20_pmap_trace t;uint8_t raw[G20_TRACE_BYTES];
+ if(!ziyi_hop_pmap_trace(&t)){printf("ZIYI G20 pmap trace absent/unstable; no values inferred\n");return;}
+ if(!g20_trace_encode(&t,raw)){printf("ZIYI G20 pmap trace invalid\n");return;}
+ printf("ZIYI G20 pmap call%u guard%u reason%x valid%x CPU-only\n",t.call,t.guard,t.reason,t.valid);
+ const char*alphabet="ABCDEFGHJKLMNPQR";char lines[12][33];
+ for(unsigned i=0;i<G20_TRACE_BYTES;i++){lines[i/16][2*(i%16)]=alphabet[raw[i]>>4];lines[i/16][2*(i%16)+1]=alphabet[raw[i]&15];}
+ for(unsigned i=0;i<12;i++)lines[i][32]=0;
+ for(unsigned repeat=0;repeat<3;repeat++)for(unsigned page=0;page<3;page++){
+  for(unsigned part=0;part<4;part++)printf("ZGPF%u%u %s\n",page+1,part+1,lines[page*4+part]);zg_sleep(1500);
+ }
+}
+
 static int zg_g8_run(struct zg_state*s){
  if(!g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&s->firmware.blob)){printf("ZIYI GMU STOP private slot absent/invalid; no firmware stores\n");return 0;}
  struct g8_prereq q={.epoch=zg_ticks(s),.board=s->contract.board,.hlos_cb=s->contract.cb,.hlos_smr=s->contract.smr,.current_el=(uint32_t)zg_el(),.sctlr=zg_sctlr(),.acd_off=1,.qdss_off=1,.lm_bcl_off=1,.hfi_off=1,.inherited_ddr_probe=1};
@@ -295,7 +310,7 @@ static int zg_g8_run(struct zg_state*s){
   s->hfi_record.last_health.helper_phase=0x10000u|r->phase;
   s->hfi_record.last_health.helper_error=r->error|(s->hfi_memory.error<<8)|(ziyi_hop_pmap_last_error()<<16);
  }
- zg_hfi_print(s);
+ zg_hfi_print(s);zg_g20_trace_print(s);
  /* CPU-only snapshot. No additional MMIO, including on a poisoned lease. */
  if(r->flags&G8_SAVED){
   char pages[GSR_PAGES][GSR_PARTS][GSR_CHARS+1];
@@ -366,3 +381,5 @@ void ziyi_gpu_probe_start(void){
 #include "ziyi_hfi_version.c"
 #include "ziyi_hfi_diagnostic.c"
 #include "ziyi_hfi_record.c"
+
+#include "ziyi_g20_trace.c"

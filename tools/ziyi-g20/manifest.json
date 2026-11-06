@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "parentCommit": "82ddc3793cdeb2a1e1f9e064c29f171e3d87bbc9",
+  "files": [
+    {
+      "path": "osfmk/arm/pmap/pmap.c",
+      "before": "9178481a375060014c368906bb10e7cf77fb1d37070f581fe09df68fce86e320",
+      "after": "b1cbeee744b7285d474921d8d539cc438dd8c872de7e641f10553a60a47c9596",
+      "new": false
+    },
+    {
+      "path": "bsd/dev/ziyi_gpu_probe.c",
+      "before": "65302880a0efcdba6693451eaedfe5067f1d85b4b7d9f243d7bd8d40c2c77234",
+      "after": "1112a26a476d3ee7d83250121bee1c83c7caedbda85e98a686c5a15da9bcd596",
+      "new": false
+    },
+    {
+      "path": "bsd/dev/ziyi_g20_trace.h",
+      "before": null,
+      "after": "a3624c3639296d41e76668bd40ce613415b4491e353bf6c16473f7265e64f728",
+      "new": true
+    },
+    {
+      "path": "bsd/dev/ziyi_g20_trace.c",
+      "before": null,
+      "after": "2cc1510ff85a60beb19cf9300c3942421a644ae58f6913585cdff47e8fea0a2e",
+      "new": true
+    }
+  ],
+  "patch": "xnu/patches/0102-ziyi-g20-pmap-reason-trace.patch",
+  "patchSHA256": "c667d885dfc2f740c887c916e54773f24ba0582002f43dc9ca8957d089062696",
+  "linkedFunctions": [
+    "_ziyi_hop_pmap_trace",
+    "_g20_trace_encode"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g20/audit_ci.py",
+      "sha256": "b4a3ade9ea04eb865b218b5adb774e9ba32de0dd6fe017a1579fed1c9f8be285",
+      "bytes": 1446
+    },
+    {
+      "path": "tools/ziyi-g20/files/pmap_owned_page.inc",
+      "sha256": "6b2df38387915ed34f62efb9af10a413d179e6f138a1d3ef79ba5d6607281bac",
+      "bytes": 11749
+    },
+    {
+      "path": "tools/ziyi-g20/files/test_g20_pmap.c",
+      "sha256": "bbba24b2f66f17b316f67ecc59c25251c04a7ef3199599ecadafe4f336fa3fd1",
+      "bytes": 1915
+    },
+    {
+      "path": "tools/ziyi-g20/files/test_pmap_helper.c",
+      "sha256": "a62f6a4b9d097b3320ed3d48a38bf9e1fb3ad919a55f1cdbbfb0b088994868dc",
+      "bytes": 7123
+    },
+    {
+      "path": "tools/ziyi-g20/files/ziyi_g20_trace.c",
+      "sha256": "2cc1510ff85a60beb19cf9300c3942421a644ae58f6913585cdff47e8fea0a2e",
+      "bytes": 2461
+    },
+    {
+      "path": "tools/ziyi-g20/files/ziyi_g20_trace.h",
+      "sha256": "a3624c3639296d41e76668bd40ce613415b4491e353bf6c16473f7265e64f728",
+      "bytes": 1287
+    },
+    {
+      "path": "tools/ziyi-g20/run_host_tests.py",
+      "sha256": "7b86a357f2f555ce9550a12b2a9586ce735789dd9e666961b47322e7c4e1304e",
+      "bytes": 1258
+    }
+  ],
+  "permissionsChanged": false,
+  "native": false
+}
