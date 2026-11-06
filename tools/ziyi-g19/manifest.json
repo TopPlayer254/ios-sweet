@@ -184,8 +184,8 @@
     },
     {
       "path": "tools/ziyi-g19/files/test_construction.c",
-      "sha256": "03591e918c5fc616af42460707ae4c0e48dff71b9099f4ea9892b9acef2cbdff",
-      "bytes": 6115
+      "sha256": "838a42f856ab383bb301ab0e382e053a7a21e7de5c435749cd47357d6fc04694",
+      "bytes": 6141
     },
     {
       "path": "tools/ziyi-g19/files/test_diagnostic.c",

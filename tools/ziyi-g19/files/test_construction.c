@@ -10,7 +10,9 @@
 #define XNU_MONITOR 0
 #define __ARM_KERNEL_PROTECT__ 0
 #define DEVELOPMENT 1
+#ifndef __unused
 #define __unused __attribute__((unused))
+#endif
 #define __improbable(x) (x)
 #define SECURITY_READ_ONLY_LATE(x) x
 #define FALSE 0
