@@ -41,7 +41,7 @@ static int ziyi_hfi_record_valid(const struct g19_hfi_record *r){
  if(r->raw_count&&r->raw_declared!=((r->raw[0]>>8)&255u))return 0;
  for(unsigned i=r->raw_count;i<19;i++)if(r->raw[i])return 0;
  if(!r->error&&(r->stage!=G19_HFI_COMPLETE||r->live_state!=GH_LIVE_COMPLETE||
-    !(r->flags&G19_HFI_CONSUMED)||r->remote_status||r->raw_count<4||(r->version>>28)!=2))return 0;
+    !(r->flags&G19_HFI_CONSUMED)||r->remote_status||r->raw_count<4||!gh_version_response_supported(r->version)))return 0;
  if((r->flags&G19_HFI_TICKS)&&r->last_tick<r->start_tick)return 0;
  return 1;
 }

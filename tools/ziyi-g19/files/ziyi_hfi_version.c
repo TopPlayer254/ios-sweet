@@ -11,6 +11,6 @@ int gh_version_reply(const uint32_t ring[GN_HFI_WORDS],const struct gn_hfi_queue
  if(status){*out=(struct gh_version_reply){status,0,next};return GH_REMOTE_ERROR;}
  unsigned words=(ring[q->read]>>8)&255;if(words<4)return GN_PACKET;
  uint32_t version=ring[(q->read+3)%GN_HFI_WORDS];
- if((version>>28)!=2)return GH_VERSION_MISMATCH;
+ if(!gh_version_response_supported(version))return GH_VERSION_MISMATCH;
  *out=(struct gh_version_reply){0,version,next};return GN_OK;
 }

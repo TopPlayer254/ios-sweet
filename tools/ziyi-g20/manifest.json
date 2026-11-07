@@ -11,7 +11,7 @@
     {
       "path": "bsd/dev/ziyi_gpu_probe.c",
       "before": "65302880a0efcdba6693451eaedfe5067f1d85b4b7d9f243d7bd8d40c2c77234",
-      "after": "1112a26a476d3ee7d83250121bee1c83c7caedbda85e98a686c5a15da9bcd596",
+      "after": "006b5692b720d7f2aa148947d9175d7cb2ca0123890c59127eda76c1ed178d9d",
       "new": false
     },
     {
@@ -78,5 +78,11 @@
     "typeMask": 2,
     "validValue": 3,
     "effectiveMask": 3
+  },
+  "g22PreuserContinuation": {
+    "patch": "xnu/patches/0104-ziyi-g22-preuser-hfi-version.patch",
+    "sha256": "d751f749231009ebd025410982819952a476d701ddcf79d13bfac1bbda6a1bbc",
+    "gate": "tools/ziyi-g22/preuser_gate.inc",
+    "nativeCoreVersion": "0x30020004"
   }
 }

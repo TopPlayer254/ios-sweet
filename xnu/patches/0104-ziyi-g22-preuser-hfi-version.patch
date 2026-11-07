@@ -1,0 +1,90 @@
+--- a/bsd/dev/ziyi_hfi_version.h
++++ b/bsd/dev/ziyi_hfi_version.h
+@@ -3,6 +3,14 @@
+ #include "ziyi_g8_contract.h"
+ #define GH_VERSION_COMMAND 1u
+ #define GH_A662_SUPPORTED_VERSION 0x20000000u
++/* Native G21 CRC deaba7a0 proved own A662 core firmware 3.2.4.
++ * Core firmware version is separate from the HFI queue ABI. Preserve the
++ * existing family-2 policy and accept this exact measured own-firmware value;
++ * unqualified major-3 values remain refused. Request and queue ABI unchanged. */
++#define GH_A662_NATIVE_CORE_VERSION 0x30020004u
++static inline int gh_version_response_supported(uint32_t version){
++ return (version>>28)==2u || version==GH_A662_NATIVE_CORE_VERSION;
++}
+ enum gh_error {GH_REMOTE_ERROR=100,GH_VERSION_MISMATCH};
+ struct gh_version_reply {uint32_t status,version,next_read;};
+ /* Pure wire contract only. Requires a separately qualified live NC queue owner;
+--- a/bsd/dev/ziyi_hfi_version.c
++++ b/bsd/dev/ziyi_hfi_version.c
+@@ -11,6 +11,6 @@
+  if(status){*out=(struct gh_version_reply){status,0,next};return GH_REMOTE_ERROR;}
+  unsigned words=(ring[q->read]>>8)&255;if(words<4)return GN_PACKET;
+  uint32_t version=ring[(q->read+3)%GN_HFI_WORDS];
+- if((version>>28)!=2)return GH_VERSION_MISMATCH;
++ if(!gh_version_response_supported(version))return GH_VERSION_MISMATCH;
+  *out=(struct gh_version_reply){0,version,next};return GN_OK;
+ }
+--- a/bsd/dev/ziyi_hfi_record.c
++++ b/bsd/dev/ziyi_hfi_record.c
+@@ -41,7 +41,7 @@
+  if(r->raw_count&&r->raw_declared!=((r->raw[0]>>8)&255u))return 0;
+  for(unsigned i=r->raw_count;i<19;i++)if(r->raw[i])return 0;
+  if(!r->error&&(r->stage!=G19_HFI_COMPLETE||r->live_state!=GH_LIVE_COMPLETE||
+-    !(r->flags&G19_HFI_CONSUMED)||r->remote_status||r->raw_count<4||(r->version>>28)!=2))return 0;
++    !(r->flags&G19_HFI_CONSUMED)||r->remote_status||r->raw_count<4||!gh_version_response_supported(r->version)))return 0;
+  if((r->flags&G19_HFI_TICKS)&&r->last_tick<r->start_tick)return 0;
+  return 1;
+ }
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -797,6 +797,11 @@
+ 	bsd_init_kprintf("calling sysctl_mib_init\n");
+ 	sysctl_mib_init();
+ 
++	/* Explicit RAM-only diagnostic gate: before autoconfiguration/root mount.
++	 * The helper returns immediately in every ordinary iOS boot. */
++	extern int ziyi_gpu_preuser_start(void);
++	(void) ziyi_gpu_preuser_start();
++
+ 	bsd_init_kprintf("calling bsd_autoconf\n");
+ 	bsd_autoconf();
+ 
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -337,12 +337,16 @@
+  if(s->probe.poison)clocks->poison=1;return success;
+ }
+ static void zg_worker(void*arg,wait_result_t result){
+- (void)arg;(void)result;bzero(&zg,sizeof(zg));PE_parse_boot_argn("ziyi_gmu",&zg.gmu_enabled,sizeof(zg.gmu_enabled));if(zg.gmu_enabled!=1&&zg.gmu_enabled!=2)zg.gmu_enabled=0;unsigned delay_seconds=60;int pid=0;
++ (void)arg;(void)result;bzero(&zg,sizeof(zg));PE_parse_boot_argn("ziyi_gmu",&zg.gmu_enabled,sizeof(zg.gmu_enabled));if(zg.gmu_enabled!=1&&zg.gmu_enabled!=2)zg.gmu_enabled=0;unsigned preuser=0;PE_parse_boot_argn("ziyi_gpu_preuser",&preuser,sizeof(preuser));
++ if(preuser==1){printf("ZIYI G22 kernel-only GPU qualification; no SpringBoard wait\n");}
++ else {
++unsigned delay_seconds=60;int pid=0;
+  PE_parse_boot_argn("ziyi_gpu_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
+  printf("ZIYI GPU probe armed opt-in delay%us then await SpringBoard; fw=0 accel=0\n",delay_seconds);zg_sleep(delay_seconds*1000u);
+  for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zg_springboard,&pid,NULL,NULL);if(!pid)zg_sleep(5000);}
+  if(!pid){printf("ZIYI GPU probe STOP SpringBoard absent after bounded wait; no device maps\n");goto done;}
+  zg_sleep(5000);printf("ZIYI GPU probe SpringBoard pid%d alive; starting in-system qualification\n",pid);
++ }
+  if(!zg_kernel_context(zg_el(),zg_sctlr(),zg_frequency())||!zg_adt_check(&zg,1)){
+   printf("ZIYI GPU probe ADT STOP status%u property%u mode%u available%u observed%u; no MMIO\n",zg.adt.status,zg.adt.property,zg.adt.mode,zg.adt.available,zg.adt.observed);goto done;
+  }
+@@ -371,6 +375,17 @@
+  if(kr!=KERN_SUCCESS){printf("ZIYI GPU probe: cannot create worker %d\n",kr);return;}thread_deallocate(worker);
+ }
+ 
++/* Boot-only diagnostic. No root mount, launchd, network or Apple userspace.
++ * Parking the BSD bootstrap thread does not block the GPU worker. */
++int ziyi_gpu_preuser_start(void){
++ unsigned mode=0;
++ if(!PE_parse_boot_argn("ziyi_gpu_preuser",&mode,sizeof(mode))||mode!=1)return 0;
++ printf("ZIYI G22 pre-user diagnostic: Apple userspace disabled; no root mount\n");
++ ziyi_gpu_probe_start();
++ static int parked;
++ for(;;){(void)assert_wait(&parked,THREAD_UNINT);thread_block(THREAD_CONTINUE_NULL);}
++}
++
+ /* G19 helpers are compiled in this existing opt-in adapter unit. Each file
+  * has private static names; no new startup hook or GPU client is registered. */
+ #include "ziyi_g19_owned_pages.c"

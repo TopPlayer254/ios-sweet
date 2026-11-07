@@ -20,7 +20,7 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21]
+    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22]
     paths:
       - "tools/ziyi-wifi/full-kernel/**"
       - "tools/ziyi-wifi/stage_full_kernel.py"
@@ -255,6 +255,9 @@ jobs:
       - name: G21 actual PTE masks and predecessor refusal
         run: python3 tools/ziyi-g21/run_host_tests.py --out u1-evidence/g21-host
 
+      - name: G22 pre-user native ACK replay
+        run: python3 tools/ziyi-g22/run_host_tests.py --out u1-evidence/g22-host
+
       - name: Build
         working-directory: dxb
         env:
@@ -292,6 +295,9 @@ jobs:
 
       - name: Exact G21 valid-bit source and link audit
         run: python3 tools/ziyi-g21/audit_ci.py
+
+      - name: Exact G22 pre-user source and linked gate audit
+        run: python3 tools/ziyi-g22/audit_ci.py
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -29,7 +29,7 @@
     {
       "path": "bsd/dev/ziyi_gpu_probe.c",
       "before": "832bb7847bfd05e4602521a038950133f9142d9b721ad7564779a612215c2a52",
-      "after": "1112a26a476d3ee7d83250121bee1c83c7caedbda85e98a686c5a15da9bcd596",
+      "after": "006b5692b720d7f2aa148947d9175d7cb2ca0123890c59127eda76c1ed178d9d",
       "new": false
     },
     {
@@ -95,7 +95,7 @@
     {
       "path": "bsd/dev/ziyi_hfi_record.c",
       "before": null,
-      "after": "eb8828fbb912a8f73fc883e662c2a769a3281039e96802b70e9337584f129c9e",
+      "after": "13d71fc0751035fe9c2968a2cf508054ec2447c96148aa43d2a61202d8b227ce",
       "new": true
     },
     {
@@ -113,13 +113,13 @@
     {
       "path": "bsd/dev/ziyi_hfi_version.c",
       "before": null,
-      "after": "bea375e52010809ed46ccbb8902f8455fd891c7663b54be0e50947bf4f72de5f",
+      "after": "76f80fdcc128c1e0c1cb04338c3e6062d5b30d8605d2da476fa6cd6f674d27fb",
       "new": true
     },
     {
       "path": "bsd/dev/ziyi_hfi_version.h",
       "before": null,
-      "after": "8558ec4c1eb29f056b95c9f4db690df378c67e4b6af3300a44052d3fcb794e04",
+      "after": "1b2d439ef0b236982c983fa7656f9e7339d4f363abaec833e2758abeb5bc998c",
       "new": true
     },
     {
@@ -269,18 +269,18 @@
     },
     {
       "path": "tools/ziyi-g19/files/ziyi_hfi_record.c",
-      "sha256": "eb8828fbb912a8f73fc883e662c2a769a3281039e96802b70e9337584f129c9e",
-      "bytes": 5709
+      "sha256": "13d71fc0751035fe9c2968a2cf508054ec2447c96148aa43d2a61202d8b227ce",
+      "bytes": 5732
     },
     {
       "path": "tools/ziyi-g19/files/ziyi_hfi_version.c",
-      "sha256": "bea375e52010809ed46ccbb8902f8455fd891c7663b54be0e50947bf4f72de5f",
-      "bytes": 1074
+      "sha256": "76f80fdcc128c1e0c1cb04338c3e6062d5b30d8605d2da476fa6cd6f674d27fb",
+      "bytes": 1097
     },
     {
       "path": "tools/ziyi-g19/files/ziyi_hfi_version.h",
-      "sha256": "8558ec4c1eb29f056b95c9f4db690df378c67e4b6af3300a44052d3fcb794e04",
-      "bytes": 636
+      "sha256": "1b2d439ef0b236982c983fa7656f9e7339d4f363abaec833e2758abeb5bc998c",
+      "bytes": 1127
     },
     {
       "path": "tools/ziyi-g19/run_host_tests.py",
@@ -304,5 +304,11 @@
     "typeMask": 2,
     "validValue": 3,
     "effectiveMask": 3
+  },
+  "g22PreuserContinuation": {
+    "patch": "xnu/patches/0104-ziyi-g22-preuser-hfi-version.patch",
+    "sha256": "d751f749231009ebd025410982819952a476d701ddcf79d13bfac1bbda6a1bbc",
+    "gate": "tools/ziyi-g22/preuser_gate.inc",
+    "nativeCoreVersion": "0x30020004"
   }
 }

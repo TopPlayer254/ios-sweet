@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "parentCommit": "85aba49b7af8429a7a9de1eefa1e36731914b3cf",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_hfi_version.h",
+      "before": "8558ec4c1eb29f056b95c9f4db690df378c67e4b6af3300a44052d3fcb794e04",
+      "after": "1b2d439ef0b236982c983fa7656f9e7339d4f363abaec833e2758abeb5bc998c"
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_version.c",
+      "before": "bea375e52010809ed46ccbb8902f8455fd891c7663b54be0e50947bf4f72de5f",
+      "after": "76f80fdcc128c1e0c1cb04338c3e6062d5b30d8605d2da476fa6cd6f674d27fb"
+    },
+    {
+      "path": "bsd/dev/ziyi_hfi_record.c",
+      "before": "eb8828fbb912a8f73fc883e662c2a769a3281039e96802b70e9337584f129c9e",
+      "after": "13d71fc0751035fe9c2968a2cf508054ec2447c96148aa43d2a61202d8b227ce"
+    },
+    {
+      "path": "bsd/kern/bsd_init.c",
+      "before": "13fac8996084b6085718a10cb8901f301fb892f316c79beeaa4d9e9995380977",
+      "after": "b59e08c09bed6030f8d9468ae777c09a7532162a3b5c0fb9ac77848833c83bd3"
+    },
+    {
+      "path": "bsd/dev/ziyi_gpu_probe.c",
+      "before": "1112a26a476d3ee7d83250121bee1c83c7caedbda85e98a686c5a15da9bcd596",
+      "after": "006b5692b720d7f2aa148947d9175d7cb2ca0123890c59127eda76c1ed178d9d"
+    }
+  ],
+  "patch": "xnu/patches/0104-ziyi-g22-preuser-hfi-version.patch",
+  "patchSHA256": "d751f749231009ebd025410982819952a476d701ddcf79d13bfac1bbda6a1bbc",
+  "linkedFunctions": [
+    "_gh_version_reply",
+    "_g19_hfi_record_encode",
+    "_g19_hfi_record_decode",
+    "_ziyi_gpu_preuser_start",
+    "_bsd_init",
+    "_ziyi_gpu_probe_start"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g22/audit_ci.py",
+      "sha256": "7cd9ef0acd63f5ee9b6000cfa659a2254b973ef5fa695c4d0e4269a854a54893",
+      "bytes": 2420
+    },
+    {
+      "path": "tools/ziyi-g22/inputs/bsd_init.c",
+      "sha256": "b59e08c09bed6030f8d9468ae777c09a7532162a3b5c0fb9ac77848833c83bd3",
+      "bytes": 44246
+    },
+    {
+      "path": "tools/ziyi-g22/inputs/ziyi_gpu_probe.c",
+      "sha256": "006b5692b720d7f2aa148947d9175d7cb2ca0123890c59127eda76c1ed178d9d",
+      "bytes": 30274
+    },
+    {
+      "path": "tools/ziyi-g22/predecessor_version.c",
+      "sha256": "bea375e52010809ed46ccbb8902f8455fd891c7663b54be0e50947bf4f72de5f",
+      "bytes": 1074
+    },
+    {
+      "path": "tools/ziyi-g22/preuser_gate.inc",
+      "sha256": "e303207548488a118f125011b1e72145f6dd09483dc09db61bfd09f0aef8e218",
+      "bytes": 219
+    },
+    {
+      "path": "tools/ziyi-g22/record.py",
+      "sha256": "a527d2b5ae54ad92f1c1f13137f013758ce5a99a06df3172c242e5c1f0ea1613",
+      "bytes": 3147
+    },
+    {
+      "path": "tools/ziyi-g22/run_host_tests.py",
+      "sha256": "2c7f871a7d51ac03fb254cf10fde24335f78e2c99f4c430c998aae7fae295aca",
+      "bytes": 4086
+    },
+    {
+      "path": "tools/ziyi-g22/test_native_diagnostic.c",
+      "sha256": "a8cdf8636042a40560383e2fc949382e326b4599db0e33f4dcaa1bd852bf2181",
+      "bytes": 8552
+    },
+    {
+      "path": "tools/ziyi-g22/test_native_replay.c",
+      "sha256": "1aa57d9a65a09adc9c82fdde7d210797386af19b712309ed23781e2111dd29e0",
+      "bytes": 5016
+    }
+  ],
+  "native": false
+}

@@ -47,7 +47,9 @@ def main():
  for name in ['iokit/conf/files.arm64','makedefs/MakeInc.def']:
   assert sha((kit/'before'/name).read_bytes())==changes[name]['before']
  text=(xnu/'bsd/kern/bsd_init.c').read_text();hook=manifest['startupHook'];assert text.count(hook)==1
- assert sha(text.replace(hook+'\n','',1).encode())==baseline['bsd/kern/bsd_init.c']['after']
+ gate=(ROOT/'tools/ziyi-g22/preuser_gate.inc').read_text()
+ assert text.count(gate)==1 and text.index(gate)<text.index('\tbsd_autoconf();')<text.index('vfs_mountroot()')
+ assert sha(text.replace(hook+'\n','',1).replace(gate,'',1).encode())==baseline['bsd/kern/bsd_init.c']['after']
  # The original G8 adapter sources and the real API implementation remain
  # byte-identical; new Wi-Fi sources do not replace the working UI/input/SMP.
  hw=json.loads((ROOT/'tools/ziyi-hw/manifest.json').read_text())
@@ -160,7 +162,7 @@ def main():
  assert driver_audit['openJoinAdaptation']['result']=='ZIYI_OPEN_JOIN_SOURCE_ADAPTED'
  assert b'OPEN association accepted; no RSN, handshake or keys required' in data
  assert 'ZIYI_OPEN_JOIN_POLICY_PASS 458558 checks' in (ROOT/'u1-evidence/test-open-join.log').read_text()
- report=dict(result='WIFI_NATIVE_FULL_XNU_SOURCE_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),baselineScopes=scopes,
+ report=dict(g22PreuserGateCompiled=True,result='WIFI_NATIVE_FULL_XNU_SOURCE_LINK_PASS',commit=os.environ['GITHUB_SHA'],kernelSHA256=sha(data),baselineScopes=scopes,
   addedFiles=list(new),linkedFunctions=bodies,privateFirmwareSlots=slots,cachePA64Compiled=True,ufsExactWifiLeaseCompiled=True,storageEpochCompiled=True,wifiMapPoisonCompiled=True,allContextControlsQualified=True,retainedWifiStatusCompiled=True,explicitNativeContextCompiled=True,fsrFormatQualifiedCompiled=True,mapReceiptsCompiled=True,atomicConventionProbeCompiled=True,bootLifetimeLeaseCompiled=True,pasApiDiscoveryCompiled=True,vendorHostCapGPIOCompiled=True,openJoinCompiled=True,driverSHA256=driver_audit['sha256'],openJoinAdaptation=driver_audit['openJoinAdaptation'],g9BusReleaseCompiled=True,g10NativeStickyAckReleaseCompiled=True,g11RetainedCrcRecordCompiled=True,g12ExactTupleVendorZeroCompiled=True,g13ContextFormatReinitCompiled=True,g13FullSnapshotCrcCompiled=True,g18VendorStartCompiled=True,g17FiniteAoMaskCompiled=True,g16ActiveGmuModeCompiled=True,g15SctlrCoordinatedAsidCompiled=True,g14TcrNamedTbiCompiled=True,g13LinkedFunctions=g13_bodies,wifiNetworkPersistenceCompiled=True,uiInputFrameCompiled=True,aksBoundedPollCompiled=True,uiReviewed=ui_review,nativeRadio=False,association=False,phoneOperated=False)
  (out/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(dict(result=report['result'],baseline72Unchanged=True,addedFiles=len(new),linkedFunctions=len(bodies))))
 if __name__=='__main__':main()

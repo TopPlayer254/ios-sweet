@@ -4,7 +4,7 @@
     {
       "path": "bsd/kern/bsd_init.c",
       "before": "784e25e8a2e9bf7701117c13121284c078c6a3ff144e69b28d9e432c8db0975a",
-      "after": "13fac8996084b6085718a10cb8901f301fb892f316c79beeaa4d9e9995380977",
+      "after": "b59e08c09bed6030f8d9468ae777c09a7532162a3b5c0fb9ac77848833c83bd3",
       "new": false
     },
     {
@@ -209,5 +209,11 @@
   "vendorHostCapGPIO": true,
   "openStationJoin": true,
   "createOnlyPrivateNetworkStore": true,
-  "privateScanLogsRedacted": true
+  "privateScanLogsRedacted": true,
+  "g22PreuserContinuation": {
+    "patch": "xnu/patches/0104-ziyi-g22-preuser-hfi-version.patch",
+    "sha256": "d751f749231009ebd025410982819952a476d701ddcf79d13bfac1bbda6a1bbc",
+    "gate": "tools/ziyi-g22/preuser_gate.inc",
+    "nativeCoreVersion": "0x30020004"
+  }
 }

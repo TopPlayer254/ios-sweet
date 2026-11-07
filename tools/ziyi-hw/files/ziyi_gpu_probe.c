@@ -337,12 +337,16 @@ static int zg_qualified(void*ctx,struct g7c_record*clocks){
  if(s->probe.poison)clocks->poison=1;return success;
 }
 static void zg_worker(void*arg,wait_result_t result){
- (void)arg;(void)result;bzero(&zg,sizeof(zg));PE_parse_boot_argn("ziyi_gmu",&zg.gmu_enabled,sizeof(zg.gmu_enabled));if(zg.gmu_enabled!=1&&zg.gmu_enabled!=2)zg.gmu_enabled=0;unsigned delay_seconds=60;int pid=0;
+ (void)arg;(void)result;bzero(&zg,sizeof(zg));PE_parse_boot_argn("ziyi_gmu",&zg.gmu_enabled,sizeof(zg.gmu_enabled));if(zg.gmu_enabled!=1&&zg.gmu_enabled!=2)zg.gmu_enabled=0;unsigned preuser=0;PE_parse_boot_argn("ziyi_gpu_preuser",&preuser,sizeof(preuser));
+ if(preuser==1){printf("ZIYI G22 kernel-only GPU qualification; no SpringBoard wait\n");}
+ else {
+unsigned delay_seconds=60;int pid=0;
  PE_parse_boot_argn("ziyi_gpu_probe_delay",&delay_seconds,sizeof(delay_seconds));if(delay_seconds>300)delay_seconds=300;
  printf("ZIYI GPU probe armed opt-in delay%us then await SpringBoard; fw=0 accel=0\n",delay_seconds);zg_sleep(delay_seconds*1000u);
  for(unsigned n=0;n<60&&!pid;n++){proc_iterate(PROC_ALLPROCLIST|PROC_NOWAITTRANS,zg_springboard,&pid,NULL,NULL);if(!pid)zg_sleep(5000);}
  if(!pid){printf("ZIYI GPU probe STOP SpringBoard absent after bounded wait; no device maps\n");goto done;}
  zg_sleep(5000);printf("ZIYI GPU probe SpringBoard pid%d alive; starting in-system qualification\n",pid);
+ }
  if(!zg_kernel_context(zg_el(),zg_sctlr(),zg_frequency())||!zg_adt_check(&zg,1)){
   printf("ZIYI GPU probe ADT STOP status%u property%u mode%u available%u observed%u; no MMIO\n",zg.adt.status,zg.adt.property,zg.adt.mode,zg.adt.available,zg.adt.observed);goto done;
  }
@@ -369,6 +373,17 @@ void ziyi_gpu_probe_start(void){
  uint32_t expected=0;if(!__atomic_compare_exchange_n(&zg_started,&expected,1,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE))return;
  thread_t worker=THREAD_NULL;kern_return_t kr=kernel_thread_start(zg_worker,NULL,&worker);
  if(kr!=KERN_SUCCESS){printf("ZIYI GPU probe: cannot create worker %d\n",kr);return;}thread_deallocate(worker);
+}
+
+/* Boot-only diagnostic. No root mount, launchd, network or Apple userspace.
+ * Parking the BSD bootstrap thread does not block the GPU worker. */
+int ziyi_gpu_preuser_start(void){
+ unsigned mode=0;
+ if(!PE_parse_boot_argn("ziyi_gpu_preuser",&mode,sizeof(mode))||mode!=1)return 0;
+ printf("ZIYI G22 pre-user diagnostic: Apple userspace disabled; no root mount\n");
+ ziyi_gpu_probe_start();
+ static int parked;
+ for(;;){(void)assert_wait(&parked,THREAD_UNINT);thread_block(THREAD_CONTINUE_NULL);}
 }
 
 /* G19 helpers are compiled in this existing opt-in adapter unit. Each file
