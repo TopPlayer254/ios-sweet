@@ -106,8 +106,8 @@
     },
     {
       "path": "tools/ziyi-g23/test_native.c",
-      "sha256": "47394b5dbdd56ef58a1bc8ca099921f47dda777193671e03b738fa6543b45f5d",
-      "bytes": 6661
+      "sha256": "fb7d3fe122d2db5257060f7e14052ccd20d88d0d3ee5cea9d1dc4ed32c1ab0a0",
+      "bytes": 6691
     },
     {
       "path": "tools/ziyi-g23/test_startup.c",

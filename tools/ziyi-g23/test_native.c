@@ -29,7 +29,7 @@ static struct {
  uint64_t tick;
 } fake;
 static void firmware(void);
-static void bzero(void*p,size_t n){memset(p,0,n);}
+static void host_bzero(void*p,size_t n){memset(p,0,n);}
 static int PE_parse_boot_argn(const char*n,void*out,size_t bytes){CHECK(bytes==4);if(!strcmp(n,"ziyi_gpu_startup")){*(unsigned*)out=fake.mode;return 1;}if(!strcmp(n,"ziyi_gpu_preuser")){*(unsigned*)out=fake.preuser;return 1;}abort();}
 static int zg_adt_check(struct zg_state*s,int first){(void)first;return s==&zg&&fake.adt;}
 static vm_offset_t io_map(uint64_t pa,size_t bytes,unsigned kind,unsigned prot,bool unmap){CHECK(pa==0x80860000&&bytes==0x20000&&kind==VM_WIMG_IO&&prot==VM_PROT_READ&&unmap);fake.maps++;return (vm_offset_t)fake.db;}
@@ -45,6 +45,7 @@ static uint64_t zg_frequency(void){return 19200000;}
 static int zg_hfi_now(void*ctx,uint64_t*out){CHECK(ctx==&zg);*out=fake.tick++;return 1;}
 static int zg_hfi_delay(void*ctx,uint32_t us){CHECK(ctx==&zg&&us==100);fake.tick+=1920;return 1;}
 static void zg_sleep(unsigned ms){CHECK(ms==1000);}
+#define bzero host_bzero
 #include "ziyi_g23_native.inc"
 static void firmware(void){
  unsigned i=g23.record.current;CHECK(i<5);const struct gs_packet*p=&g23.program.packet[i];unsigned aligned=(p->count+3)&~3u,wr=fake.mem[68/4],start=(wr+1024-aligned)%1024;
