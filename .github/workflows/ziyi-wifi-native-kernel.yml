@@ -22,6 +22,7 @@ on:
   push:
     branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22]
     paths:
+      - "tools/ziyi-g22/**"
       - "tools/ziyi-wifi/full-kernel/**"
       - "tools/ziyi-wifi/stage_full_kernel.py"
       - "tools/ziyi-wifi/audit_full_kernel.py"

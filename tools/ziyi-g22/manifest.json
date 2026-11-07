@@ -41,8 +41,8 @@
   "publicFiles": [
     {
       "path": "tools/ziyi-g22/audit_ci.py",
-      "sha256": "7cd9ef0acd63f5ee9b6000cfa659a2254b973ef5fa695c4d0e4269a854a54893",
-      "bytes": 2420
+      "sha256": "116c84c181c035ab7fb049775439d07513770568cfe0f3079c8800e3a8bd05bc",
+      "bytes": 3661
     },
     {
       "path": "tools/ziyi-g22/inputs/bsd_init.c",
