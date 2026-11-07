@@ -1,4 +1,4 @@
-# ios-sweet
+# ios-ziyi
 
 **Apple's iOS 16 running on a Xiaomi 13 Lite.**
 
