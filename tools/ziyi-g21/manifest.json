@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "parentCommit": "50a8c4d560da9a80f407b1535a03fdc9d1582624",
+  "files": [
+    {
+      "path": "osfmk/arm/pmap/pmap.c",
+      "before": "b1cbeee744b7285d474921d8d539cc438dd8c872de7e641f10553a60a47c9596",
+      "after": "68dcea220099b9bbd576f8756912a1247401fd844dd3f735a5275690410138dc"
+    }
+  ],
+  "patch": "xnu/patches/0103-ziyi-g21-pte-valid-bit.patch",
+  "patchSHA256": "3dba9a6aaec29b21f02a2523b7905daf32e6fb2df524cbf9d725349f4e21299c",
+  "linkedFunctions": [
+    "_ziyi_hop_pmap_page"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g21/audit_ci.py",
+      "sha256": "a7e54cc441a85b7bed59c87a9f7fe3e2313afdc82b469abb1d43efa4e7bff53b",
+      "bytes": 1803
+    },
+    {
+      "path": "tools/ziyi-g21/predecessor.inc",
+      "sha256": "6b2df38387915ed34f62efb9af10a413d179e6f138a1d3ef79ba5d6607281bac",
+      "bytes": 11749
+    },
+    {
+      "path": "tools/ziyi-g21/run_host_tests.py",
+      "sha256": "5beb0ff45404e812179e3fdabc1b3a0802119ee07f5250e4b52138a487842aeb",
+      "bytes": 1627
+    },
+    {
+      "path": "tools/ziyi-g21/test_native_types.c",
+      "sha256": "9fa53ab80ec1e01c3a992b200b95734cdecd83012d9aef56645c24a4410d2c63",
+      "bytes": 1677
+    }
+  ],
+  "native": false
+}

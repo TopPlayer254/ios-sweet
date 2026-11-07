@@ -33,3 +33,5 @@
 /xnu/patches/0101-ziyi-g19-hfi-handshake.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0102-ziyi-g20-pmap-reason-trace.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0103-ziyi-g21-pte-valid-bit.patch -text whitespace=cr-at-eol

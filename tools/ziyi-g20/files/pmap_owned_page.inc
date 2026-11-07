@@ -103,7 +103,7 @@ hop_original_alias(vm_map_address_t va, uint64_t pa)
   tt_entry_t entry = table[ttn_index(attr,va,level)];
   if (!(entry & ARM_TTE_VALID)) return 0;
   if (level==PMAP_TT_L3_LEVEL)
-   return (entry & ARM_PTE_TYPE_MASK)==ARM_PTE_TYPE_VALID ? pte_to_pa(entry)==pa : -1;
+   return (entry & (ARM_PTE_TYPE_MASK|ARM_TTE_VALID))==ARM_PTE_TYPE_VALID ? pte_to_pa(entry)==pa : -1;
   if ((entry & ARM_TTE_TYPE_MASK)==ARM_TTE_TYPE_TABLE) {
    table=(tt_entry_t*)phystokv(entry & ARM_TTE_TABLE_MASK);
   } else {
@@ -166,7 +166,7 @@ ziyi_hop_pmap_page(uint64_t allocation_va, uint64_t pa, unsigned int old_wimg,
  /* Raw CPU leaf reads only after both non-demoting walks and singleton PV. */
  g20_observe(&trace,G20_OWNED_PTE,*owned);g20_observe(&trace,G20_PHYSICAL_PTE,*physical);
  g20_observe(&trace,G20_OWNED_PA,pte_to_pa(*owned));g20_observe(&trace,G20_PHYSICAL_PA,pte_to_pa(*physical));
- g20_observe(&trace,G20_OWNED_TYPE,*owned&ARM_PTE_TYPE_MASK);g20_observe(&trace,G20_PHYSICAL_TYPE,*physical&ARM_PTE_TYPE_MASK);
+ g20_observe(&trace,G20_OWNED_TYPE,*owned&(ARM_PTE_TYPE_MASK|ARM_TTE_VALID));g20_observe(&trace,G20_PHYSICAL_TYPE,*physical&(ARM_PTE_TYPE_MASK|ARM_TTE_VALID));
  g20_observe(&trace,G20_HINT_MASK,ARM_PTE_HINT_MASK);
 #ifdef PVH_FLAG_IOMMU
  g20_observe(&trace,G20_IOMMU,pvh_ptep_is_iommu(owned));

@@ -131,7 +131,7 @@
     {
       "path": "osfmk/arm/pmap/pmap.c",
       "before": "05b40516a70505d26c575d3dfb6aa16001b68cc4c938abb7860c5cd88c114bf1",
-      "after": "b1cbeee744b7285d474921d8d539cc438dd8c872de7e641f10553a60a47c9596",
+      "after": "68dcea220099b9bbd576f8756912a1247401fd844dd3f735a5275690410138dc",
       "new": false
     }
   ],
@@ -297,5 +297,12 @@
     "patch": "xnu/patches/0102-ziyi-g20-pmap-reason-trace.patch",
     "sha256": "c667d885dfc2f740c887c916e54773f24ba0582002f43dc9ca8957d089062696",
     "scope": "CPU-only diagnostics; all G19 permissions retained"
+  },
+  "g21ValidBitCorrection": {
+    "patch": "xnu/patches/0103-ziyi-g21-pte-valid-bit.patch",
+    "sha256": "3dba9a6aaec29b21f02a2523b7905daf32e6fb2df524cbf9d725349f4e21299c",
+    "typeMask": 2,
+    "validValue": 3,
+    "effectiveMask": 3
   }
 }

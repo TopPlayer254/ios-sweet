@@ -5,7 +5,7 @@
     {
       "path": "osfmk/arm/pmap/pmap.c",
       "before": "9178481a375060014c368906bb10e7cf77fb1d37070f581fe09df68fce86e320",
-      "after": "b1cbeee744b7285d474921d8d539cc438dd8c872de7e641f10553a60a47c9596",
+      "after": "68dcea220099b9bbd576f8756912a1247401fd844dd3f735a5275690410138dc",
       "new": false
     },
     {
@@ -41,8 +41,8 @@
     },
     {
       "path": "tools/ziyi-g20/files/pmap_owned_page.inc",
-      "sha256": "6b2df38387915ed34f62efb9af10a413d179e6f138a1d3ef79ba5d6607281bac",
-      "bytes": 11749
+      "sha256": "f6a91d030d84e6dc81da10f88d9b728cf4320981fd2731e29859ed0534280197",
+      "bytes": 11797
     },
     {
       "path": "tools/ziyi-g20/files/test_g20_pmap.c",
@@ -51,7 +51,7 @@
     },
     {
       "path": "tools/ziyi-g20/files/test_pmap_helper.c",
-      "sha256": "a62f6a4b9d097b3320ed3d48a38bf9e1fb3ad919a55f1cdbbfb0b088994868dc",
+      "sha256": "d51762d0f03a0db0da5c9c0ab0a8469f4776257af85b1a90172aeb989c8b32c8",
       "bytes": 7123
     },
     {
@@ -71,5 +71,12 @@
     }
   ],
   "permissionsChanged": false,
-  "native": false
+  "native": false,
+  "g21ValidBitCorrection": {
+    "patch": "xnu/patches/0103-ziyi-g21-pte-valid-bit.patch",
+    "sha256": "3dba9a6aaec29b21f02a2523b7905daf32e6fb2df524cbf9d725349f4e21299c",
+    "typeMask": 2,
+    "validValue": 3,
+    "effectiveMask": 3
+  }
 }
