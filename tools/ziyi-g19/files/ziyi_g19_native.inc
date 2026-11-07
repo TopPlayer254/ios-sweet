@@ -145,6 +145,7 @@ static void zg_hfi_ready(void*ctx,struct g8_workspace*w,const struct g8_io*io){
  printf("ZIYI HFI result stage%u err%d sent%08x/%08x raw%u status%x version%x polls%u retained1\n",
   s->hfi_record.stage,error,s->hfi_record.sent[0],s->hfi_record.sent[1],
   s->hfi_record.raw_count,s->hfi_record.remote_status,s->hfi_record.version,s->hfi_record.polls);
+ if(!error)(void)ziyi_gpu_startup_continue(s);
 }
 static void zg_hfi_print(struct zg_state*s){
  if(s->gmu_enabled!=2)return;

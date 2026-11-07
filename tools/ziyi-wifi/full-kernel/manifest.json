@@ -215,5 +215,13 @@
     "sha256": "d751f749231009ebd025410982819952a476d701ddcf79d13bfac1bbda6a1bbc",
     "gate": "tools/ziyi-g22/preuser_gate.inc",
     "nativeCoreVersion": "0x30020004"
+  },
+  "g23OwnResourceContinuation": {
+    "patch": "xnu/patches/0105-ziyi-g23-own-resource-hfi-startup.patch",
+    "sha256": "63a4473e3ccc0afacd28afcbab0e8e8d6a2260d9359925310d8fe56e47a07c67",
+    "bootArgument": "ziyi_gpu_startup=1",
+    "commands": 5,
+    "noGxOob": true,
+    "noCp": true
   }
 }

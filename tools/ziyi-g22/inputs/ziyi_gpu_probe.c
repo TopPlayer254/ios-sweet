@@ -31,6 +31,7 @@
 #include "ziyi_g8_fwinit.h"
 #include "ziyi_g19_xnu_owned_pages.h"
 #include "ziyi_hfi_diagnostic.h"
+#include "ziyi_g23_startup.h"
 #include <arm/caches_internal.h>
 #include "ziyi_adt_binding.h"
 extern uint64_t kvtophys(vm_offset_t);
@@ -169,7 +170,11 @@ static int zg_g8_proof(void*ctx,const struct g8_prereq*q,const struct g8_blob*b)
  /* Re-decode fixed immutable file-backed section, never a boot pointer/flag. */
  return g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&actual)&&memcmp(&actual,b,sizeof(actual))==0;
 }
+int ziyi_gpu_startup_prepare(void*);
+int ziyi_gpu_startup_continue(void*);
+void ziyi_gpu_startup_print(void*);
 #include "ziyi_g19_native.inc"
+#include "ziyi_g23_native.inc"
 /* G11_RETAINED_CODEC_BEGIN */
 /* SPDX-License-Identifier: MIT */
 #include <stddef.h>
@@ -310,7 +315,7 @@ static int zg_g8_run(struct zg_state*s){
   s->hfi_record.last_health.helper_phase=0x10000u|r->phase;
   s->hfi_record.last_health.helper_error=r->error|(s->hfi_memory.error<<8)|(ziyi_hop_pmap_last_error()<<16);
  }
- zg_hfi_print(s);zg_g20_trace_print(s);
+ zg_hfi_print(s);ziyi_gpu_startup_print(s);zg_g20_trace_print(s);
  /* CPU-only snapshot. No additional MMIO, including on a poisoned lease. */
  if(r->flags&G8_SAVED){
   char pages[GSR_PAGES][GSR_PARTS][GSR_CHARS+1];
@@ -351,6 +356,7 @@ unsigned delay_seconds=60;int pid=0;
   printf("ZIYI GPU probe ADT STOP status%u property%u mode%u available%u observed%u; no MMIO\n",zg.adt.status,zg.adt.property,zg.adt.mode,zg.adt.available,zg.adt.observed);goto done;
  }
  printf("ZIYI GPU ADT binding mode%u available%u observed%u snapshots%u; board-bound, no fabricated lockdown\n",zg.adt.mode,zg.adt.available,zg.adt.observed,zg.adt.passes);
+ (void)ziyi_gpu_startup_prepare(&zg);
  if(!zg_adt_check(&zg,0)||!zg_map_all(&zg)){printf("ZIYI GPU probe: mapping failed; no transaction\n");goto unmap;}
  printf("ZIYI GPU probe: XNU EL1/MMU/cache ON; mappedDeviceRO + guarded clockRW pages=%u\n",zg.rw_count);
  zg.clocks.opaque|=G7C_PLATFORM_SCOPE; /* validated exact board-bound ADT snapshot; no claim of Apple lockdown */
@@ -398,3 +404,6 @@ int ziyi_gpu_preuser_start(void){
 #include "ziyi_hfi_record.c"
 
 #include "ziyi_g20_trace.c"
+
+#include "ziyi_g23_resources.c"
+#include "ziyi_g23_startup.c"

@@ -1,0 +1,437 @@
+--- /dev/null
++++ b/bsd/dev/ziyi_g23_resources.h
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stddef.h>
++#include <stdint.h>
++#define GR_COUNT 7u
++#define GR_ALL 127u
++enum {GR_OK=0,GR_ARGUMENT,GR_HEADER,GR_BOUNDS,GR_DUPLICATE,GR_MISSING,GR_CHANGED,GR_LEVEL,GR_AUX};
++/* Canonical order: gfx.lvl, cx.lvl, mx.lvl, SH0, MC0, ACV, CN0. */
++struct gr_resource {uint32_t address,slave,version,aux_bytes;uint8_t aux[32];};
++struct gr_resources {uint32_t found,entries;struct gr_resource resource[GR_COUNT];};
++/* CPU snapshots only: no MMIO, memory mapping, power votes or HFI submission. */
++int gr_parse(const uint8_t*,size_t,struct gr_resources*);
++int gr_stable(const uint8_t*,size_t,const uint8_t*,size_t,struct gr_resources*);
++int gr_arc_vote(const struct gr_resource*,const struct gr_resource*,uint16_t,uint32_t*);
++int gr_perf_lowest(const struct gr_resources*,uint32_t sequence,uint32_t out[59]);
++int gr_bandwidth(const struct gr_resources*,uint32_t sequence,uint32_t peak_kbps,uint32_t out[160]);
+--- /dev/null
++++ b/bsd/dev/ziyi_g23_resources.c
+@@ -0,0 +1,103 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ * Exact command-DB ABI: Xiaomi 24856283 cmd-db.c; dependency/vote formulas:
++ * Qualcomm KGSL d70a6765 adreno_rpmh.c and adreno_a6xx_rpmh.c.
++ * This CPU-only preparation is NOT linked to a kernel or hardware-qualified.
++ */
++#include "ziyi_g23_resources.h"
++#include <string.h>
++static uint16_t gr_private_u16(const uint8_t*p){return (uint16_t)(p[0]|(uint16_t)p[1]<<8);}
++static uint32_t gr_private_u32(const uint8_t*p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++static int gr_private_span(size_t at,size_t n,size_t cap){return at<=cap&&n<=cap-at;}
++static const uint8_t names[GR_COUNT][8]={"gfx.lvl","cx.lvl","mx.lvl","SH0","MC0","ACV","CN0"};
++__attribute__((noinline)) int gr_parse(const uint8_t*d,size_t bytes,struct gr_resources*out){
++ if(!d||!out||bytes<144||bytes>0x20000)return GR_ARGUMENT;
++ if(gr_private_u32(d)!=1||gr_private_u32(d+4)!=0x0c0330db)return GR_HEADER;
++ struct gr_resources r={0};
++ for(unsigned slot=0;slot<8;slot++){
++  const uint8_t*h=d+8+16*slot;uint32_t slave=gr_private_u16(h),count=gr_private_u16(h+6),entry=144u+gr_private_u16(h+2),aux=144u+gr_private_u16(h+4);
++  if(!slave)break;
++  /* Native G1 has two distinct ARC groups (slave 3). Group IDs may
++    * repeat; matching resource keys must still be unique across groups. */
++   if(slave>7)return GR_HEADER;
++  if(count>512||r.entries>1024-count||!gr_private_span(entry,24u*count,bytes)||!gr_private_span(aux,0,bytes))return GR_BOUNDS;
++  r.entries+=count;
++  for(unsigned i=0;i<count;i++){
++   const uint8_t*e=d+entry+24*i;
++   for(unsigned key=0;key<GR_COUNT;key++)if(!memcmp(e,names[key],8)){
++    if(r.found&(1u<<key))return GR_DUPLICATE;
++    uint32_t address=gr_private_u32(e+16),n=gr_private_u16(e+20),at=aux+gr_private_u16(e+22);
++    if(n>32||!gr_private_span(at,n,bytes))return GR_BOUNDS;
++    if((address>>16&7)!=slave||slave!=(key<3?3u:5u)||!address||(address&3))return GR_HEADER;
++    struct gr_resource*q=&r.resource[key];q->address=address;q->slave=slave;q->version=gr_private_u16(h+8);q->aux_bytes=n;
++    if(n)memcpy(q->aux,d+at,n);r.found|=1u<<key;
++   }
++  }
++ }
++ *out=r;return r.found==GR_ALL?GR_OK:GR_MISSING;
++}
++int gr_stable(const uint8_t*a,size_t an,const uint8_t*b,size_t bn,struct gr_resources*out){
++ if(!out)return GR_ARGUMENT;struct gr_resources x={0},y={0};int e=gr_parse(a,an,&x);if(e)return e;
++ e=gr_parse(b,bn,&y);if(e)return e;
++ if(memcmp(&x,&y,sizeof(x)))return GR_CHANGED;*out=x;return GR_OK;
++}
++static int gr_private_levels(const struct gr_resource*r,uint16_t v[16],unsigned*n){
++ if(!r||r->slave!=3||r->aux_bytes<4||r->aux_bytes>32||(r->aux_bytes&1))return GR_AUX;
++ unsigned count=0;int padding=0;
++ for(unsigned i=0;i<r->aux_bytes/2;i++){
++  uint16_t x=gr_private_u16(r->aux+2*i);
++  if(i&&!x){padding=1;continue;}
++  if(padding||(i==0&&x)||(i&&x<=v[count-1]))return GR_AUX;
++  v[count++]=x;
++ }
++ if(count<2)return GR_AUX;*n=count;return GR_OK;
++}
++int gr_arc_vote(const struct gr_resource*pri,const struct gr_resource*sec,uint16_t requested,uint32_t*out){
++ if(!out)return GR_ARGUMENT;uint16_t p[16],s[16];unsigned pn=0,sn=0;
++ int e=gr_private_levels(pri,p,&pn);if(e)return e;e=gr_private_levels(sec,s,&sn);if(e)return e;
++ for(unsigned i=0;i<pn;i++)if(p[i]>=requested)for(unsigned j=0;j<sn;j++)if(s[j]>=p[i]){
++  *out=((uint32_t)p[i]<<16)|(j<<8)|i;return GR_OK;
++ }
++ /* Refuse unsupported dependencies, rather than voting a donor fallback. */
++ return GR_LEVEL;
++}
++static int gr_private_header(uint32_t id,uint32_t words,uint32_t sequence,uint32_t*out){
++ if(!sequence||sequence>4095||!words||words>255)return GR_ARGUMENT;
++ *out=(sequence<<20)|(words<<8)|id;return GR_OK;
++}
++int gr_perf_lowest(const struct gr_resources*r,uint32_t sequence,uint32_t out[59]){
++ if(!r||!out||r->found!=GR_ALL)return GR_ARGUMENT;
++ uint32_t table[59]={0};int e=gr_private_header(4,59,sequence,table);if(e)return e;
++ /* Own DT: lowest OPP common to all four bins, NOT an A650 table. */
++ table[1]=2;table[2]=2;
++ e=gr_arc_vote(&r->resource[0],&r->resource[2],56,&table[6]);if(e)return e;
++ uint16_t cx[16];unsigned count=0;e=gr_private_levels(&r->resource[1],cx,&count);if(e)return e;
++ unsigned dep=0;while(dep<count&&cx[dep]<64)dep++;if(dep==count)return GR_LEVEL;
++ table[7]=dep;table[8]=230000;
++ e=gr_arc_vote(&r->resource[1],&r->resource[2],64,&table[53]);if(e)return e;table[54]=200000;
++ memcpy(out,table,sizeof(table));return GR_OK;
++}
++static int gr_private_bcm(const struct gr_resource*r,uint32_t*unit,uint32_t*width,uint32_t*vcd,int fixed){
++ if(r->slave!=5||r->aux_bytes!=8)return GR_AUX;
++ *unit=gr_private_u32(r->aux);*width=gr_private_u16(r->aux+4);*vcd=r->aux[6];
++ if(*vcd>31||(!fixed&&(!*unit||!*width)))return GR_AUX;return GR_OK;
++}
++static uint32_t gr_private_vote(uint32_t kbps,uint32_t unit,uint32_t width,uint32_t buswidth,int fixed,int commit){
++ uint64_t peak=fixed?(kbps?8u:0u):((uint64_t)kbps*width/buswidth)*1000/unit;
++ if(kbps&&!peak)peak=1;if(peak>0x3fff)peak=0x3fff;
++ return ((uint32_t)commit<<30)|((uint32_t)(peak!=0)<<29)|(uint32_t)peak;
++}
++int gr_bandwidth(const struct gr_resources*r,uint32_t sequence,uint32_t kbps,uint32_t out[160]){
++ if(!r||!out||r->found!=GR_ALL||!kbps||kbps>0x7f22ff)return GR_ARGUMENT;
++ uint32_t t[160]={0};int e=gr_private_header(3,160,sequence,t);if(e)return e;
++ uint32_t units[4],widths[4],vcds[4];
++ for(unsigned i=0;i<4;i++){e=gr_private_bcm(&r->resource[3+i],&units[i],&widths[i],&vcds[i],i==2);if(e)return e;}
++ /* Off + one source-derived bandwidth. No average bandwidth feature enabled. */
++ t[1]=2;t[2]=1;t[3]=3;t[4]=1;t[6]=r->resource[6].address;
++ t[12]=gr_private_vote(0,units[3],widths[3],4,0,1);t[18]=gr_private_vote(100,units[3],widths[3],4,0,1);
++ for(unsigned i=0;i<3;i++){
++  int commit=i==2||vcds[i]!=vcds[i+1];t[5]|=(uint32_t)commit<<i;t[24+i]=r->resource[3+i].address;
++  t[32+i]=gr_private_vote(0,units[i],widths[i],i==0?16u:4u,i==2,commit);
++  t[40+i]=gr_private_vote(kbps,units[i],widths[i],i==0?16u:4u,i==2,commit);
++ }
++ memcpy(out,t,sizeof(t));return GR_OK;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g23_startup.h
+@@ -0,0 +1,30 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_g23_resources.h"
++#include "ziyi_g8_contract.h"
++#define GS_COMMANDS 5u
++#define GS_PACKET_WORDS 160u
++#define GS_RECORD_BYTES 768u
++enum {GS_NEW=0,GS_PREPARED=1,GS_RUNNING=2,GS_COMPLETE=3,GS_POISON=4};
++enum {GS_OK=0,GS_ARGUMENT=300,GS_OWNER,GS_QUEUE,GS_IO,GS_TIMEOUT,GS_PACKET,GS_REMOTE,GS_CLOCK,GS_STATE};
++enum {GS_ACQUIRE=1,GS_RELEASE=2};
++struct gs_packet {uint32_t count,words[GS_PACKET_WORDS];};
++struct gs_program {uint64_t epoch;uint32_t gmu_address,peak_kbps;struct gr_resources resources;struct gs_packet packet[GS_COMMANDS];};
++struct gs_step {uint32_t header,crc,polls,stores,remote,raw_count,raw_declared,raw[19],q0_write,q1_read,q1_write,complete;};
++struct gs_record {uint32_t state,error,current,calls,acks,bell_returned,resource_crc,header_crc,found,entries,peak_kbps,header_equal,resources_equal,read_words;uint32_t health[5],queue_key,queue_seen,queue_values[6];uint64_t epoch,start,end,frequency;struct gs_step step[GS_COMMANDS];};
++struct gs_io {
++ void*ctx;
++ int(*qualified)(void*,uint64_t);
++ int(*read32)(void*,uint32_t,uint32_t*);
++ int(*write32)(void*,uint32_t,uint32_t);
++ int(*order)(void*,unsigned);
++ int(*doorbell)(void*,unsigned,const struct gs_packet*);
++ int(*healthy)(void*);
++ int(*now)(void*,uint64_t*);
++ int(*delay)(void*,uint32_t);
++};
++uint32_t gs_crc(const uint8_t*,size_t);
++int gs_prepare(struct gs_program*,const struct gr_resources*,uint64_t,uint32_t,uint32_t);
++int gs_run(const struct gs_program*,const struct gs_io*,uint64_t,struct gs_record*);
++int gs_encode(const struct gs_record*,uint8_t[GS_RECORD_BYTES]);
++int gs_decode(const uint8_t*,size_t,struct gs_record*);
+--- /dev/null
++++ b/bsd/dev/ziyi_g23_startup.c
+@@ -0,0 +1,117 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ * One finite legacy-A6xx startup batch after the qualified G22 version ACK.
++ * PERF -> BW -> CORE_FW_START -> START -> lowest GX/BW vote. No GX OOB,
++ * core MMIO, SMMU modification, CP, ZAP, rendering or user client here.
++ */
++#include "ziyi_g23_startup.h"
++#include <string.h>
++uint32_t gs_crc(const uint8_t*d,size_t n){uint32_t c=~0u;for(size_t i=0;i<n;i++){c^=d[i];for(unsigned b=0;b<8;b++)c=(c>>1)^(0xedb88320u&(0u-(c&1u)));}return ~c;}
++static uint32_t gs_private_get(const uint8_t*p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++static void gs_private_put(uint8_t*p,uint32_t v){for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(v>>(8*i));}
++int gs_prepare(struct gs_program*p,const struct gr_resources*r,uint64_t epoch,uint32_t address,uint32_t peak){
++ if(!p||!r||!epoch||address<0x60000000||address>0x80000000-GN_HFI_BYTES||(address&4095))return GS_ARGUMENT;
++ uint32_t perf[59],bandwidth[160];
++ if(gr_perf_lowest(r,2,perf)||gr_bandwidth(r,3,peak,bandwidth))return GS_ARGUMENT;
++ memset(p,0,sizeof(*p));p->epoch=epoch;p->gmu_address=address;p->peak_kbps=peak;p->resources=*r;
++ p->packet[0].count=59;p->packet[1].count=160;p->packet[2].count=2;p->packet[3].count=1;p->packet[4].count=4;
++ memcpy(p->packet[0].words,perf,sizeof(perf));memcpy(p->packet[1].words,bandwidth,sizeof(bandwidth));
++ p->packet[2].words[0]=0x0040020e;p->packet[3].words[0]=0x0050010a;
++ p->packet[4].words[0]=0x0060041e;p->packet[4].words[1]=1;p->packet[4].words[2]=1;p->packet[4].words[3]=1;
++ return GS_OK;
++}
++static int gs_private_program_valid(const struct gs_program*p){
++ static const uint32_t ids[5]={4,3,14,10,30},counts[5]={59,160,2,1,4};
++ if(!p||!p->epoch||p->gmu_address<0x60000000||p->gmu_address>0x80000000-GN_HFI_BYTES||(p->gmu_address&4095)||!p->peak_kbps)return 0;
++ for(unsigned i=0;i<5;i++)if(p->packet[i].count!=counts[i]||p->packet[i].words[0]!=((i+2)<<20|counts[i]<<8|ids[i]))return 0;
++ uint32_t perf[59],bandwidth[160];
++ if(gr_perf_lowest(&p->resources,2,perf)||gr_bandwidth(&p->resources,3,p->peak_kbps,bandwidth)||memcmp(perf,p->packet[0].words,sizeof(perf))||memcmp(bandwidth,p->packet[1].words,sizeof(bandwidth)))return 0;
++ for(unsigned i=0;i<5;i++)for(unsigned n=counts[i];n<GS_PACKET_WORDS;n++)if(p->packet[i].words[n])return 0;
++ return p->packet[2].words[1]==0&&p->packet[4].words[1]==1&&p->packet[4].words[2]==1&&p->packet[4].words[3]==1;
++}
++static int gs_private_poison(struct gs_record*r,uint32_t e){r->state=GS_POISON;r->error=e;return (int)e;}
++static int gs_private_owner(const struct gs_program*p,const struct gs_io*o){return o->qualified(o->ctx,p->epoch)&&o->healthy(o->ctx);}
++static int gs_private_load(const struct gs_program*p,const struct gs_io*o,uint32_t at,uint32_t*v){return !(at&3)&&at<=GN_HFI_BYTES-4&&gs_private_owner(p,o)&&o->read32(o->ctx,at,v);}
++static int gs_private_store(const struct gs_program*p,const struct gs_io*o,uint32_t at,uint32_t v,struct gs_step*s){
++ if(!gs_private_owner(p,o)||!o->write32(o->ctx,at,v))return 0;s->stores++;return 1;
++}
++static int gs_private_queue(const struct gs_program*p,const struct gs_io*o,unsigned i,struct gn_hfi_queue*q,struct gs_record*r){
++ static const uint32_t table[6]={0,210,6,12,3,3};uint32_t v;
++ r->queue_key=2*i;r->queue_seen=0;memset(r->queue_values,0,sizeof(r->queue_values));
++ for(unsigned n=0;n<6;n++){
++  if(!gs_private_load(p,o,4*n,&v))return 0;r->queue_values[n]=v;r->queue_seen|=1u<<n;if(v!=table[n])return 0;
++ }
++ uint32_t at=24+48*i;memset(q,0,sizeof(*q));r->queue_key=2*i+1;r->queue_seen=0;memset(r->queue_values,0,sizeof(r->queue_values));
++ uint32_t*dst[6]={&q->status,&q->start,&q->type,&q->words,&q->read,&q->write};static const uint32_t offsets[6]={0,4,8,12,40,44};
++ for(unsigned n=0;n<6;n++){
++  if(!gs_private_load(p,o,at+offsets[n],dst[n]))return 0;r->queue_values[n]=*dst[n];r->queue_seen|=1u<<n;
++ }
++ return o->order(o->ctx,GS_ACQUIRE)&&gs_private_owner(p,o)&&q->status==1&&q->start==p->gmu_address+GN_HFI_QUEUE0+4096*i&&q->type==0xa00+i&&q->words==1024&&q->read<1024&&q->write<1024&&!((q->read|q->write)&3);
++}
++
++__attribute__((noinline)) int gs_run(const struct gs_program*p,const struct gs_io*o,uint64_t frequency,struct gs_record*r){
++ if(!r)return GS_ARGUMENT;if(r->state!=GS_PREPARED)return GS_STATE;
++ if(!gs_private_program_valid(p)||!o||!o->qualified||!o->read32||!o->write32||!o->order||!o->doorbell||!o->healthy||!o->now||!o->delay||frequency!=19200000||r->epoch!=p->epoch||r->found!=127||r->resource_crc!=gs_crc((const uint8_t*)&p->resources,sizeof(p->resources))||!r->header_equal||!r->resources_equal)return gs_private_poison(r,GS_ARGUMENT);
++ if(!gs_private_owner(p,o))return gs_private_poison(r,GS_OWNER);
++ uint64_t now;if(!o->now(o->ctx,&now))return gs_private_poison(r,GS_CLOCK);r->start=r->end=now;r->frequency=frequency;r->peak_kbps=p->peak_kbps;r->state=GS_RUNNING;
++ for(unsigned index=0;index<5;index++){
++  if(!gs_private_program_valid(p)||r->resource_crc!=gs_crc((const uint8_t*)&p->resources,sizeof(p->resources)))return gs_private_poison(r,GS_PACKET);
++  r->current=index;struct gs_step*s=&r->step[index];const struct gs_packet*m=&p->packet[index];struct gn_hfi_queue q,a;
++  s->header=m->words[0];s->crc=gs_crc((const uint8_t*)m->words,4*m->count);
++  if(!gs_private_queue(p,o,0,&q,r)||!gs_private_queue(p,o,1,&a,r)||q.read!=q.write||a.read!=a.write)return gs_private_poison(r,GS_QUEUE);
++  uint64_t start=now;uint32_t aligned=(m->count+3)&~3u;if(aligned>=1024)return gs_private_poison(r,GS_PACKET);
++  for(unsigned n=0;n<aligned;n++)if(!gs_private_store(p,o,GN_HFI_QUEUE0+4*((q.write+n)%1024),n<m->count?m->words[n]:0xfafafafa,s))return gs_private_poison(r,GS_IO);
++  s->q0_write=(q.write+aligned)%1024;
++  if(!o->order(o->ctx,GS_RELEASE)||!gs_private_store(p,o,68,s->q0_write,s))return gs_private_poison(r,GS_IO);
++  if(!gs_private_owner(p,o))return gs_private_poison(r,GS_OWNER);
++  r->calls++;
++  if(!o->doorbell(o->ctx,index,m))return gs_private_poison(r,GS_IO);
++  r->bell_returned|=1u<<index;
++  for(;;){
++   if(!o->now(o->ctx,&now)||now<r->end)return gs_private_poison(r,GS_CLOCK);r->end=now;
++   if(now-start>=5*frequency||now-r->start>=25*frequency||s->polls>=50000)return gs_private_poison(r,GS_TIMEOUT);
++   s->polls++;
++   if(!gs_private_queue(p,o,1,&a,r))return gs_private_poison(r,GS_QUEUE);
++   uint32_t used=(a.write+1024-a.read)%1024;
++   if(!used){if(!o->delay(o->ctx,100))return gs_private_poison(r,GS_IO);continue;}
++   uint32_t h;if(!gs_private_load(p,o,GN_HFI_QUEUE0+4096+4*a.read,&h))return gs_private_poison(r,GS_IO);
++   uint32_t words=h>>8&255,consume=(words+3)&~3u;s->q1_write=a.write;s->raw_declared=words;s->raw_count=1;s->raw[0]=h;
++   if(words<3||words>19||consume>used)return gs_private_poison(r,GS_PACKET);
++   for(unsigned n=1;n<words;n++){if(!gs_private_load(p,o,GN_HFI_QUEUE0+4096+4*((a.read+n)%1024),&s->raw[n]))return gs_private_poison(r,GS_IO);s->raw_count++;}
++   if(((h>>16)&15)!=1||s->raw[1]!=s->header)return gs_private_poison(r,GS_PACKET);
++   s->remote=s->raw[2];s->q1_read=(a.read+consume)%1024;
++   if(!o->order(o->ctx,GS_RELEASE)||!gs_private_store(p,o,112,s->q1_read,s))return gs_private_poison(r,GS_IO);
++   if(s->remote)return gs_private_poison(r,GS_REMOTE);
++   if(!gs_private_queue(p,o,0,&q,r)||q.read!=s->q0_write||q.write!=s->q0_write)return gs_private_poison(r,GS_QUEUE);
++   s->complete=1;r->acks++;break;
++  }
++ }
++ r->current=5;r->state=GS_COMPLETE;return GS_OK;
++}
++static int gs_private_record_valid(const struct gs_record*r){
++ if(!r||r->state>GS_POISON||r->current>5||r->queue_key>3||(r->queue_seen&~63u)||r->calls>5||r->acks>r->calls||(r->bell_returned&~31u)||r->found&~127u||r->header_equal>1||r->resources_equal>1)return 0;
++ if(r->state==GS_COMPLETE&&(r->error||r->acks!=5||r->calls!=5||r->current!=5||r->bell_returned!=31||r->found!=127||!r->epoch||!r->resources_equal||!r->header_equal))return 0;
++ for(unsigned n=0;n<6;n++)if(!(r->queue_seen&(1u<<n))&&r->queue_values[n])return 0;
++ if(r->frequency&&r->frequency!=19200000)return 0;if(r->end<r->start)return 0;
++ for(unsigned i=0;i<5;i++){const struct gs_step*s=&r->step[i];if(s->raw_count>19||s->raw_declared>255||s->polls>50000||s->stores>162||s->q0_write>=1024||s->q1_read>=1024||s->q1_write>=1024||s->complete>1)return 0;if(s->complete&&(s->raw_count<3||s->raw_count!=s->raw_declared||!(r->bell_returned&(1u<<i))||s->remote||s->raw[1]!=s->header))return 0;if(s->raw_count&&s->raw_declared!=((s->raw[0]>>8)&255))return 0;for(unsigned n=s->raw_count;n<19;n++)if(s->raw[n])return 0;}
++ return 1;
++}
++__attribute__((noinline)) int gs_encode(const struct gs_record*r,uint8_t*out){
++ if(!out||!gs_private_record_valid(r))return GS_ARGUMENT;uint32_t w[192]={0x31545347,1,768,0,r->state,r->error,r->current,r->calls,r->acks,r->resource_crc,r->header_crc,r->found,r->entries,r->peak_kbps,r->header_equal,r->resources_equal,r->read_words,(uint32_t)r->epoch,(uint32_t)(r->epoch>>32)};
++ for(unsigned i=0;i<5;i++){const struct gs_step*s=&r->step[i];w[24+i]=s->header;w[29+i]=s->crc;w[34+i]=s->remote;w[39+i]=s->raw_count;for(unsigned n=0;n<19;n++)w[44+19*i+n]=s->raw[n];w[139+i]=s->q0_write;w[144+i]=s->q1_read;w[149+i]=s->q1_write;w[154+i]=s->polls;w[159+i]=s->stores;w[164+i]=s->complete;}
++ for(unsigned i=0;i<5;i++){w[169+i]=r->health[i];w[174+i]=r->step[i].raw_declared;}w[179]=r->bell_returned;
++ w[19]=r->queue_key;w[20]=r->queue_seen;for(unsigned i=0;i<3;i++){w[21+i]=r->queue_values[i];w[186+i]=r->queue_values[i+3];}
++ w[180]=(uint32_t)r->start;w[181]=(uint32_t)(r->start>>32);w[182]=(uint32_t)r->end;w[183]=(uint32_t)(r->end>>32);w[184]=(uint32_t)r->frequency;w[185]=(uint32_t)(r->frequency>>32);
++ for(unsigned i=0;i<192;i++)gs_private_put(out+4*i,w[i]);gs_private_put(out+12,gs_crc(out,768));return GS_OK;
++}
++int gs_decode(const uint8_t*d,size_t bytes,struct gs_record*out){
++ if(!d||!out||bytes!=768||gs_private_get(d)!=0x31545347||gs_private_get(d+4)!=1||gs_private_get(d+8)!=768)return GS_ARGUMENT;
++ uint8_t temp[768];memcpy(temp,d,768);memset(temp+12,0,4);if(gs_crc(temp,768)!=gs_private_get(d+12))return GS_PACKET;
++ uint32_t w[192];for(unsigned i=0;i<192;i++)w[i]=gs_private_get(d+4*i);
++ for(unsigned i=189;i<192;i++)if(w[i])return GS_PACKET;
++ struct gs_record r={0};r.state=w[4];r.error=w[5];r.current=w[6];r.calls=w[7];r.acks=w[8];r.resource_crc=w[9];r.header_crc=w[10];r.found=w[11];r.entries=w[12];r.peak_kbps=w[13];r.header_equal=w[14];r.resources_equal=w[15];r.read_words=w[16];r.epoch=w[17]|(uint64_t)w[18]<<32;
++ for(unsigned i=0;i<5;i++){struct gs_step*s=&r.step[i];s->header=w[24+i];s->crc=w[29+i];s->remote=w[34+i];s->raw_count=w[39+i];for(unsigned n=0;n<19;n++)s->raw[n]=w[44+19*i+n];s->q0_write=w[139+i];s->q1_read=w[144+i];s->q1_write=w[149+i];s->polls=w[154+i];s->stores=w[159+i];s->complete=w[164+i];}
++ for(unsigned i=0;i<5;i++){r.health[i]=w[169+i];r.step[i].raw_declared=w[174+i];}r.bell_returned=w[179];
++ r.queue_key=w[19];r.queue_seen=w[20];for(unsigned i=0;i<3;i++){r.queue_values[i]=w[21+i];r.queue_values[i+3]=w[186+i];}
++ r.start=w[180]|(uint64_t)w[181]<<32;r.end=w[182]|(uint64_t)w[183]<<32;r.frequency=w[184]|(uint64_t)w[185]<<32;
++ if(!gs_private_record_valid(&r))return GS_PACKET;*out=r;return GS_OK;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g23_expected.h
+@@ -0,0 +1,12 @@
++/* Own saved AOP ELF + both native G1 ARC observations; never synthetic BCM. */
++static const uint8_t g23_expected_header[144]={0x01,0x00,0x00,0x00,0xdb,0x30,0x03,0x0c,0x03,0x00,0x00,0x00,0x40,0x02,0x18,0x00,0x00,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x03,0x00,0xc0,0x03,0xe0,0x04,0x0c,0x00,0x00,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x05,0x00,0xf8,0x04,0x68,0x07,0x1a,0x00,0x00,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x04,0x00,0x38,0x08,0x50,0x0e,0x41,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
++static const struct gr_resources g23_expected_resources={.found=127,.entries=127,.resource={
++ {.address=0x30050,.slave=3,.version=4096,.aux_bytes=32,.aux={0x00,0x00,0x38,0x00,0x40,0x00,0x80,0x00,0xc0,0x00,0xe0,0x00,0x00,0x01,0x40,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}}, /* gfx.lvl */
++ {.address=0x30000,.slave=3,.version=4096,.aux_bytes=32,.aux={0x00,0x00,0x10,0x00,0x40,0x00,0x80,0x00,0xc0,0x00,0x00,0x01,0x80,0x01,0xa0,0x01,0xb0,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}}, /* cx.lvl */
++ {.address=0x30010,.slave=3,.version=4096,.aux_bytes=32,.aux={0x00,0x00,0x10,0x00,0x38,0x00,0x40,0x00,0x80,0x00,0xc0,0x00,0xe0,0x00,0x00,0x01,0x40,0x01,0x80,0x01,0xa0,0x01,0xb0,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}}, /* mx.lvl */
++ {.address=0x50004,.slave=5,.version=4096,.aux_bytes=8,.aux={0x40,0x16,0x40,0x00,0x40,0x00,0x01,0x00}}, /* SH0 */
++ {.address=0x50000,.slave=5,.version=4096,.aux_bytes=8,.aux={0x00,0x6a,0x18,0x00,0x08,0x00,0x00,0x00}}, /* MC0 */
++ {.address=0x50058,.slave=5,.version=4096,.aux_bytes=8,.aux={0x01,0x00,0x00,0x00,0x00,0x00,0x0b,0x00}}, /* ACV */
++ {.address=0x50038,.slave=5,.version=4096,.aux_bytes=8,.aux={0xe0,0x22,0x02,0x00,0x04,0x00,0x05,0x00}}, /* CN0 */
++}};
++#define G23_PEAK_KBPS 2136718u /* Own DDR7/DDR8 index3, common to all four lowest GPU OPPs. */
+--- /dev/null
++++ b/bsd/dev/ziyi_g23_native.inc
+@@ -0,0 +1,83 @@
++/* G23 legacy-HFI startup; only after successful native G22 version ACK.
++ * Additional hardware stores are the SAME exact HFI doorbell address/value.
++ * No GX OOB, core registers, CP, ZAP, rendering or user client in this stage. */
++#include "ziyi_g23_expected.h"
++static struct {
++ uint32_t mode,prepared;
++ struct gr_resources resources;struct gs_program program;struct gs_record record;
++ uint8_t snapshot[2][0x20000] __attribute__((aligned(16)));
++} g23;
++__attribute__((noinline)) int ziyi_gpu_startup_prepare(void*context){
++ struct zg_state*s=context;unsigned enabled=0,preuser=0;
++ PE_parse_boot_argn("ziyi_gpu_startup",&enabled,sizeof(enabled));if(enabled!=1)return 0;
++ bzero(&g23,sizeof(g23));g23.mode=1;struct gs_record*r=&g23.record;
++ PE_parse_boot_argn("ziyi_gpu_preuser",&preuser,sizeof(preuser));
++ if(s!=&zg||preuser!=1||s->gmu_enabled!=2||!zg_adt_check(s,0)){r->state=GS_POISON;r->error=GS_ARGUMENT;return 0;}
++ /* Own DT no-map CMDDB reservation, source-bound at 0x80860000+0x20000.
++  * Outside XNU's managed arena. READ-only Device mapping; no device borrower
++  * receives it. Both complete snapshots are private CPU buffers. */
++ vm_offset_t va=io_map(0x80860000ULL,0x20000,VM_WIMG_IO,VM_PROT_READ,true);
++ if(!va){r->state=GS_POISON;r->error=GS_IO;return 0;}
++ for(unsigned pass=0;pass<2;pass++){
++  if(!zg_adt_check(s,0)){r->state=GS_POISON;r->error=GS_OWNER;break;}
++  zg_barrier(s);for(unsigned off=0;off<0x20000;off+=4){uint32_t v=*(volatile uint32_t*)(uintptr_t)(va+off);memcpy(&g23.snapshot[pass][off],&v,4);r->read_words++;}zg_barrier(s);
++ }
++ ml_io_unmap(va,0x20000);if(r->error)return 0;
++ r->header_crc=gs_crc(g23.snapshot[0],144);
++ r->header_equal=!memcmp(g23.snapshot[0],g23_expected_header,144)&&!memcmp(g23.snapshot[1],g23_expected_header,144);
++ int error=gr_stable(g23.snapshot[0],0x20000,g23.snapshot[1],0x20000,&g23.resources);
++ r->found=g23.resources.found;r->entries=g23.resources.entries;r->resource_crc=gs_crc((const uint8_t*)&g23.resources,sizeof(g23.resources));
++ r->resources_equal=!memcmp(&g23.resources,&g23_expected_resources,sizeof(g23.resources));
++ if(error||!r->header_equal||!r->resources_equal){r->state=GS_POISON;r->error=350+(unsigned)error;printf("ZIYI G23 resource STOP e%u found%x header%u exact%u crc%08x\n",r->error,r->found,r->header_equal,r->resources_equal,r->resource_crc);return 0;}
++ r->state=GS_PREPARED;r->peak_kbps=G23_PEAK_KBPS;g23.prepared=1;
++ printf("ZIYI G23 own CMDDB stable/exact: ARC3 BCM4, SH0/MC0/ACV/CN0; peak%u; startup pending\n",G23_PEAK_KBPS);return 1;
++}
++static int zg_g23_qualified(void*ctx,uint64_t epoch){
++ struct zg_state*s=ctx;
++ return s==&zg&&g23.mode==1&&g23.prepared&&g23.record.header_equal&&g23.record.resources_equal&&
++  g23.record.epoch==epoch&&g23.program.epoch==epoch&&
++  !memcmp(&g23.program.resources,&g23_expected_resources,sizeof(g23.resources))&&
++  s->hfi_record.stage==G19_HFI_COMPLETE&&!s->hfi_record.error&&s->hfi_record.version==GH_A662_NATIVE_CORE_VERSION&&
++  s->hfi_record.q1_read_stores==1&&zg_hfi_qualified(s,epoch);
++}
++static int zg_g23_read(void*ctx,uint32_t at,uint32_t*v){return zg_g23_qualified(ctx,g23.record.epoch)&&zg_hfi_read32(ctx,at,v);}
++static int zg_g23_write(void*ctx,uint32_t at,uint32_t v){return zg_g23_qualified(ctx,g23.record.epoch)&&zg_hfi_write32(ctx,at,v);}
++static int zg_g23_order(void*ctx,unsigned order){
++ return zg_g23_qualified(ctx,g23.record.epoch)&&zg_hfi_order(ctx,order==GS_RELEASE?GH_LIVE_RELEASE:order==GS_ACQUIRE?GH_LIVE_ACQUIRE:0);
++}
++static int zg_g23_healthy(void*ctx){
++ struct g19_hfi_health h={0};int good=zg_hfi_health(ctx,&h);
++ g23.record.health[0]=h.fw_result;g23.record.health[1]=h.hfi_status;g23.record.health[2]=h.reset;g23.record.health[3]=h.helper_phase;g23.record.health[4]=h.helper_error;return good;
++}
++static int zg_g23_bell(void*ctx,unsigned index,const struct gs_packet*packet){
++ struct zg_state*s=ctx;struct gs_record*r=&g23.record;
++ if(index>=5||r->state!=GS_RUNNING||r->current!=index||r->calls!=index+1||r->acks!=index||packet!=&g23.program.packet[index]||!zg_g23_qualified(s,r->epoch)||!zg_g23_healthy(s)||!zg_adt_check(s,0))return 0;
++ const struct gs_step*step=&r->step[index];uint32_t aligned=(packet->count+3)&~3u;
++ if(step->header!=packet->words[0]||step->crc!=gs_crc((const uint8_t*)packet->words,4*packet->count)||step->stores!=aligned+1)return 0;
++ volatile uint32_t*q=(volatile uint32_t*)(uintptr_t)s->hfi_memory.va;
++ uint32_t start=(step->q0_write+1024-aligned)%1024;
++ if(q[68/4]!=step->q0_write||(q[64/4]!=start&&q[64/4]!=step->q0_write))return 0;
++ for(unsigned i=0;i<aligned;i++)if(q[GN_HFI_QUEUE0/4+(start+i)%1024]!=(i<packet->count?packet->words[i]:0xfafafafa))return 0;
++ void*p=zg_g8_pointer(s,G19_BELL,4,1);if(!p)return 0;
++ /* Same finite write-only doorbell, once for this exact typed packet. */
++ zg_barrier(s);*(volatile uint32_t*)p=1;zg_barrier(s);return 1;
++}
++__attribute__((noinline)) int ziyi_gpu_startup_continue(void*context){
++ struct zg_state*s=context;if(g23.mode!=1)return 0;
++ if(s!=&zg||!g23.prepared||g23.record.state!=GS_PREPARED)return 0;
++ struct gs_record*r=&g23.record;r->epoch=s->lease_epoch;
++ if(gs_prepare(&g23.program,&g23.resources,r->epoch,s->firmware.firmware_plan.hfi_address,G23_PEAK_KBPS)){r->state=GS_POISON;r->error=GS_ARGUMENT;return 0;}
++ const struct gs_io io={s,zg_g23_qualified,zg_g23_read,zg_g23_write,zg_g23_order,zg_g23_bell,zg_g23_healthy,zg_hfi_now,zg_hfi_delay};
++ int error=gs_run(&g23.program,&io,zg_frequency(),r);
++ printf("ZIYI G23 startup result state%u err%d command%u calls%u ACKs%u; GX OOB/core/CP off\n",r->state,error,r->current,r->calls,r->acks);return !error;
++}
++__attribute__((noinline)) void ziyi_gpu_startup_print(void*context){
++ if(context!=&zg||g23.mode!=1)return;uint8_t raw[GS_RECORD_BYTES];
++ if(gs_encode(&g23.record,raw)){printf("ZIYI G23 record invalid; no result inferred\n");return;}
++ const char*a="ABCDEFGHJKLMNPQR";char lines[48][33];
++ for(unsigned i=0;i<GS_RECORD_BYTES;i++){lines[i/16][2*(i%16)]=a[raw[i]>>4];lines[i/16][2*(i%16)+1]=a[raw[i]&15];}
++ for(unsigned i=0;i<48;i++)lines[i][32]=0;
++ for(unsigned repeat=0;repeat<2;repeat++)for(unsigned page=0;page<12;page++){
++  for(unsigned part=0;part<4;part++)printf("ZGST%02u%u %s\n",page+1,part+1,lines[page*4+part]);zg_sleep(1000);
++ }
++}
+--- a/bsd/dev/ziyi_g19_native.inc
++++ b/bsd/dev/ziyi_g19_native.inc
+@@ -144,7 +144,8 @@
+  int error=g19_hfi_run(&s->hfi_runtime,&config,&ops,&s->hfi_record);
+  printf("ZIYI HFI result stage%u err%d sent%08x/%08x raw%u status%x version%x polls%u retained1\n",
+   s->hfi_record.stage,error,s->hfi_record.sent[0],s->hfi_record.sent[1],
+-  s->hfi_record.raw_count,s->hfi_record.remote_status,s->hfi_record.version,s->hfi_record.polls);
++  s->hfi_record.raw_count,s->hfi_record.remote_status,s->hfi_record.version,s->hfi_record.polls);
++ if(!error)(void)ziyi_gpu_startup_continue(s);
+ }
+ static void zg_hfi_print(struct zg_state*s){
+  if(s->gmu_enabled!=2)return;
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -31,6 +31,7 @@
+ #include "ziyi_g8_fwinit.h"
+ #include "ziyi_g19_xnu_owned_pages.h"
+ #include "ziyi_hfi_diagnostic.h"
++#include "ziyi_g23_startup.h"
+ #include <arm/caches_internal.h>
+ #include "ziyi_adt_binding.h"
+ extern uint64_t kvtophys(vm_offset_t);
+@@ -169,7 +170,11 @@
+  /* Re-decode fixed immutable file-backed section, never a boot pointer/flag. */
+  return g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&actual)&&memcmp(&actual,b,sizeof(actual))==0;
+ }
++int ziyi_gpu_startup_prepare(void*);
++int ziyi_gpu_startup_continue(void*);
++void ziyi_gpu_startup_print(void*);
+ #include "ziyi_g19_native.inc"
++#include "ziyi_g23_native.inc"
+ /* G11_RETAINED_CODEC_BEGIN */
+ /* SPDX-License-Identifier: MIT */
+ #include <stddef.h>
+@@ -310,7 +315,7 @@
+   s->hfi_record.last_health.helper_phase=0x10000u|r->phase;
+   s->hfi_record.last_health.helper_error=r->error|(s->hfi_memory.error<<8)|(ziyi_hop_pmap_last_error()<<16);
+  }
+- zg_hfi_print(s);zg_g20_trace_print(s);
++ zg_hfi_print(s);ziyi_gpu_startup_print(s);zg_g20_trace_print(s);
+  /* CPU-only snapshot. No additional MMIO, including on a poisoned lease. */
+  if(r->flags&G8_SAVED){
+   char pages[GSR_PAGES][GSR_PARTS][GSR_CHARS+1];
+@@ -351,6 +356,7 @@
+   printf("ZIYI GPU probe ADT STOP status%u property%u mode%u available%u observed%u; no MMIO\n",zg.adt.status,zg.adt.property,zg.adt.mode,zg.adt.available,zg.adt.observed);goto done;
+  }
+  printf("ZIYI GPU ADT binding mode%u available%u observed%u snapshots%u; board-bound, no fabricated lockdown\n",zg.adt.mode,zg.adt.available,zg.adt.observed,zg.adt.passes);
++ (void)ziyi_gpu_startup_prepare(&zg);
+  if(!zg_adt_check(&zg,0)||!zg_map_all(&zg)){printf("ZIYI GPU probe: mapping failed; no transaction\n");goto unmap;}
+  printf("ZIYI GPU probe: XNU EL1/MMU/cache ON; mappedDeviceRO + guarded clockRW pages=%u\n",zg.rw_count);
+  zg.clocks.opaque|=G7C_PLATFORM_SCOPE; /* validated exact board-bound ADT snapshot; no claim of Apple lockdown */
+@@ -398,3 +404,6 @@
+ #include "ziyi_hfi_record.c"
+ 
+ #include "ziyi_g20_trace.c"
++
++#include "ziyi_g23_resources.c"
++#include "ziyi_g23_startup.c"

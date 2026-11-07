@@ -1,0 +1,106 @@
+{
+  "nativeHeaderHex": "01000000db30030c030000004002180000100000000000000300c003e0040c0000100000000000000500f80468071a00001000000000000004003808500e41000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "resources": {
+    "cx.lvl": {
+      "name": "cx.lvl",
+      "slave": 3,
+      "version": 4096,
+      "address": 196608,
+      "auxHex": "0000100040008000c00000018001a001b0010000000000000000000000000000",
+      "entryHex": "63782e6c766c000010040010000000000000030020000000",
+      "entryFileOffset": 116276,
+      "auxFileOffset": 115892,
+      "liveG1EntryAndAuxEqual": true
+    },
+    "mx.lvl": {
+      "name": "mx.lvl",
+      "slave": 3,
+      "version": 4096,
+      "address": 196624,
+      "auxHex": "00001000380040008000c000e000000140018001a001b0010000000000000000",
+      "entryHex": "6d782e6c766c000014040090000000001000030020002000",
+      "entryFileOffset": 116324,
+      "auxFileOffset": 115924,
+      "liveG1EntryAndAuxEqual": true
+    },
+    "gfx.lvl": {
+      "name": "gfx.lvl",
+      "slave": 3,
+      "version": 4096,
+      "address": 196688,
+      "auxHex": "0000380040008000c000e0000001400100000000000000000000000000000000",
+      "entryHex": "6766782e6c766c000000040000000000500003002000a000",
+      "entryFileOffset": 116516,
+      "auxFileOffset": 116052,
+      "liveG1EntryAndAuxEqual": true
+    },
+    "MC0": {
+      "name": "MC0",
+      "slave": 5,
+      "version": 4096,
+      "address": 327680,
+      "auxHex": "006a180008000000",
+      "entryHex": "4d4330000000000010041454000000000000050008000000",
+      "entryFileOffset": 117372,
+      "auxFileOffset": 117164,
+      "bcm": {
+        "unit": 1600000,
+        "width": 8,
+        "vcd": 0,
+        "reserved": 0
+      }
+    },
+    "SH0": {
+      "name": "SH0",
+      "slave": 5,
+      "version": 4096,
+      "address": 327684,
+      "auxHex": "4016400040000100",
+      "entryHex": "534830000000000010041454000000000400050008002000",
+      "entryFileOffset": 117468,
+      "auxFileOffset": 117196,
+      "bcm": {
+        "unit": 4200000,
+        "width": 64,
+        "vcd": 1,
+        "reserved": 0
+      }
+    },
+    "CN0": {
+      "name": "CN0",
+      "slave": 5,
+      "version": 4096,
+      "address": 327736,
+      "auxHex": "e022020004000500",
+      "entryHex": "434e30000000000010040404000000003800050008009000",
+      "entryFileOffset": 117804,
+      "auxFileOffset": 117308,
+      "bcm": {
+        "unit": 140000,
+        "width": 4,
+        "vcd": 5,
+        "reserved": 0
+      }
+    },
+    "ACV": {
+      "name": "ACV",
+      "slave": 5,
+      "version": 4096,
+      "address": 327768,
+      "auxHex": "0100000000000b00",
+      "entryHex": "41435600000000000000000000000000580005000800c800",
+      "entryFileOffset": 117972,
+      "auxFileOffset": 117364,
+      "bcm": {
+        "unit": 1,
+        "width": 0,
+        "vcd": 11,
+        "reserved": 0
+      }
+    }
+  },
+  "sourceAopSHA256": "2ef2254f92178abccc6adf30920ec0054330e236a8a6583ca38f90405db3bb10",
+  "sourceNativeG1CRC": "9133db17",
+  "liveBCMMeasured": false,
+  "peakKbps": 2136718
+}

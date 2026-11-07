@@ -25,7 +25,7 @@
     {
       "path": "bsd/dev/ziyi_gpu_probe.c",
       "before": "1112a26a476d3ee7d83250121bee1c83c7caedbda85e98a686c5a15da9bcd596",
-      "after": "006b5692b720d7f2aa148947d9175d7cb2ca0123890c59127eda76c1ed178d9d"
+      "after": "11635ccafe6cd7c062948d21adcb1801e16e295326e3f5542145e6cf30291bbd"
     }
   ],
   "patch": "xnu/patches/0104-ziyi-g22-preuser-hfi-version.patch",
@@ -51,8 +51,8 @@
     },
     {
       "path": "tools/ziyi-g22/inputs/ziyi_gpu_probe.c",
-      "sha256": "006b5692b720d7f2aa148947d9175d7cb2ca0123890c59127eda76c1ed178d9d",
-      "bytes": 30274
+      "sha256": "11635ccafe6cd7c062948d21adcb1801e16e295326e3f5542145e6cf30291bbd",
+      "bytes": 30573
     },
     {
       "path": "tools/ziyi-g22/predecessor_version.c",
@@ -85,5 +85,13 @@
       "bytes": 5016
     }
   ],
-  "native": false
+  "native": false,
+  "g23OwnResourceContinuation": {
+    "patch": "xnu/patches/0105-ziyi-g23-own-resource-hfi-startup.patch",
+    "sha256": "63a4473e3ccc0afacd28afcbab0e8e8d6a2260d9359925310d8fe56e47a07c67",
+    "bootArgument": "ziyi_gpu_startup=1",
+    "commands": 5,
+    "noGxOob": true,
+    "noCp": true
+  }
 }

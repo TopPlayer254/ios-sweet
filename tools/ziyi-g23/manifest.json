@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "parentCommit": "8188b85aae9a95fbc05abd32d510205ea6eaed88",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g23_resources.h",
+      "before": null,
+      "after": "2b94e06e8f945945b130f5c3b74581e6ce45c8e678762ac8410a6babdc6b66ac"
+    },
+    {
+      "path": "bsd/dev/ziyi_g23_resources.c",
+      "before": null,
+      "after": "a5cb86defdfaffe07e1a145dedc802e973840c490b23ae74d184cebc28eb4429"
+    },
+    {
+      "path": "bsd/dev/ziyi_g23_startup.h",
+      "before": null,
+      "after": "c4989f8e859cbefcb71fd0a7dd944b63170f81c93a404fb992082762f30e1d38"
+    },
+    {
+      "path": "bsd/dev/ziyi_g23_startup.c",
+      "before": null,
+      "after": "8d34306d80cefd529214d18a20675491fa0beceffa7a66e550c799b9d0d9b813"
+    },
+    {
+      "path": "bsd/dev/ziyi_g23_expected.h",
+      "before": null,
+      "after": "8c250592291896412e15d3769315c0cf97cd74070a285c624f6fc11aaa4ce6c0"
+    },
+    {
+      "path": "bsd/dev/ziyi_g23_native.inc",
+      "before": null,
+      "after": "dc01b12e72545fcea573b071023d8ea1fcb1321298dfc293fcb551a1be9681c0"
+    },
+    {
+      "path": "bsd/dev/ziyi_g19_native.inc",
+      "before": "3e4114d57786f91313fcc74019bab6018a26309d4420aecadcb4665bf13a2842",
+      "after": "4ba5087ee3e372a97c3af1babe16430e5558794f7af6dfa0716c05e230a4885b"
+    },
+    {
+      "path": "bsd/dev/ziyi_gpu_probe.c",
+      "before": "006b5692b720d7f2aa148947d9175d7cb2ca0123890c59127eda76c1ed178d9d",
+      "after": "11635ccafe6cd7c062948d21adcb1801e16e295326e3f5542145e6cf30291bbd"
+    }
+  ],
+  "patch": "xnu/patches/0105-ziyi-g23-own-resource-hfi-startup.patch",
+  "patchSHA256": "63a4473e3ccc0afacd28afcbab0e8e8d6a2260d9359925310d8fe56e47a07c67",
+  "linkedFunctions": [
+    "_ziyi_gpu_startup_prepare",
+    "_ziyi_gpu_startup_continue",
+    "_ziyi_gpu_startup_print",
+    "_gs_run",
+    "_gs_encode",
+    "_gr_parse"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g23/audit_ci.py",
+      "sha256": "28d3846acbad167054905d3b62d5e43d4e8326a230fe208513d581afce7cce8b",
+      "bytes": 2651
+    },
+    {
+      "path": "tools/ziyi-g23/expected.json",
+      "sha256": "4b0d27522dff73c0e4be5c4aef83cc6af2be0e58c93d5b0e256e09d74bc14278",
+      "bytes": 3259
+    },
+    {
+      "path": "tools/ziyi-g23/files/ziyi_g23_expected.h",
+      "sha256": "8c250592291896412e15d3769315c0cf97cd74070a285c624f6fc11aaa4ce6c0",
+      "bytes": 2212
+    },
+    {
+      "path": "tools/ziyi-g23/files/ziyi_g23_native.inc",
+      "sha256": "dc01b12e72545fcea573b071023d8ea1fcb1321298dfc293fcb551a1be9681c0",
+      "bytes": 6209
+    },
+    {
+      "path": "tools/ziyi-g23/files/ziyi_g23_resources.c",
+      "sha256": "a5cb86defdfaffe07e1a145dedc802e973840c490b23ae74d184cebc28eb4429",
+      "bytes": 5945
+    },
+    {
+      "path": "tools/ziyi-g23/files/ziyi_g23_resources.h",
+      "sha256": "2b94e06e8f945945b130f5c3b74581e6ce45c8e678762ac8410a6babdc6b66ac",
+      "bytes": 963
+    },
+    {
+      "path": "tools/ziyi-g23/files/ziyi_g23_startup.c",
+      "sha256": "8d34306d80cefd529214d18a20675491fa0beceffa7a66e550c799b9d0d9b813",
+      "bytes": 11063
+    },
+    {
+      "path": "tools/ziyi-g23/files/ziyi_g23_startup.h",
+      "sha256": "c4989f8e859cbefcb71fd0a7dd944b63170f81c93a404fb992082762f30e1d38",
+      "bytes": 1665
+    },
+    {
+      "path": "tools/ziyi-g23/record.py",
+      "sha256": "e79193cf227bce9adb2325c51b6af302da42e015032a22c494afd78e26f93152",
+      "bytes": 2653
+    },
+    {
+      "path": "tools/ziyi-g23/run_host_tests.py",
+      "sha256": "387c7884181d2a562f17557944536bb583ad018009ef9a3d997a96e2cd449a73",
+      "bytes": 3210
+    },
+    {
+      "path": "tools/ziyi-g23/test_native.c",
+      "sha256": "47394b5dbdd56ef58a1bc8ca099921f47dda777193671e03b738fa6543b45f5d",
+      "bytes": 6661
+    },
+    {
+      "path": "tools/ziyi-g23/test_startup.c",
+      "sha256": "eca997fcd474409c3cca9cf4e58ef8fac69ede4e877483446735cc028779248d",
+      "bytes": 5574
+    }
+  ],
+  "native": false,
+  "commands": 5,
+  "noGxOob": true,
+  "noCp": true
+}
