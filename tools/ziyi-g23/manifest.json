@@ -35,12 +35,12 @@
     {
       "path": "bsd/dev/ziyi_g19_native.inc",
       "before": "3e4114d57786f91313fcc74019bab6018a26309d4420aecadcb4665bf13a2842",
-      "after": "4ba5087ee3e372a97c3af1babe16430e5558794f7af6dfa0716c05e230a4885b"
+      "after": "58b2bffdd72ff0225b1586b38218ba450de7b245d173dbf81d91ade0de7fca32"
     },
     {
       "path": "bsd/dev/ziyi_gpu_probe.c",
       "before": "006b5692b720d7f2aa148947d9175d7cb2ca0123890c59127eda76c1ed178d9d",
-      "after": "11635ccafe6cd7c062948d21adcb1801e16e295326e3f5542145e6cf30291bbd"
+      "after": "0cb47a155b5f4c4613719949c9b84c1e54020a169093accbf7dbdcaeace0cab1"
     }
   ],
   "patch": "xnu/patches/0105-ziyi-g23-own-resource-hfi-startup.patch",
@@ -118,5 +118,12 @@
   "native": false,
   "commands": 5,
   "noGxOob": true,
-  "noCp": true
+  "noCp": true,
+  "g24CoreContinuation": {
+    "patch": "xnu/patches/0106-ziyi-g24-bounded-core-first-picture.patch",
+    "sha256": "22023e347144c888e7f32652c16b10a086bea49f3e076e19e36ed4a8660dee0d",
+    "bootArgument": "ziyi_gpu_cp=1",
+    "kernelOnly": true,
+    "threePrivateSlots": true
+  }
 }

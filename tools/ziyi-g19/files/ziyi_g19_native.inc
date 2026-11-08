@@ -49,6 +49,7 @@ static int zg_hfi_prepare(void*ctx,struct g8_workspace*w,const struct g8_io*io){
                         GN_HFI_BYTES,w->firmware_plan.hfi_address)){
   zg_hfi_memory_failure(s);return 0;
  }
+ if(!ziyi_gpu_cp_prepare(s))return 0;
  printf("ZIYI HFI page NormalNC16K pa%llx aperture%llx, queueIOVA%x bytes%u\n",
   s->hfi_memory.page[0].pa,s->hfi_memory.page[0].aperture,
   w->firmware_plan.hfi_address,GN_HFI_BYTES);
@@ -145,7 +146,7 @@ static void zg_hfi_ready(void*ctx,struct g8_workspace*w,const struct g8_io*io){
  printf("ZIYI HFI result stage%u err%d sent%08x/%08x raw%u status%x version%x polls%u retained1\n",
   s->hfi_record.stage,error,s->hfi_record.sent[0],s->hfi_record.sent[1],
   s->hfi_record.raw_count,s->hfi_record.remote_status,s->hfi_record.version,s->hfi_record.polls);
- if(!error)(void)ziyi_gpu_startup_continue(s);
+ if(!error&&ziyi_gpu_startup_continue(s))(void)ziyi_gpu_cp_continue(s);
 }
 static void zg_hfi_print(struct zg_state*s){
  if(s->gmu_enabled!=2)return;

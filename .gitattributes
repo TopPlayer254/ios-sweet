@@ -39,3 +39,7 @@
 /xnu/patches/0104-ziyi-g22-preuser-hfi-version.patch -text whitespace=cr-at-eol
 
 /xnu/patches/0105-ziyi-g23-own-resource-hfi-startup.patch -text whitespace=cr-at-eol
+
+/xnu/patches/0106-ziyi-g24-bounded-core-first-picture.patch -text whitespace=cr-at-eol
+
+/tools/ziyi-g24/** -text

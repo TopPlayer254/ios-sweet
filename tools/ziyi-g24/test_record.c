@@ -1,0 +1,5 @@
+#include "ziyi_g24_record.h"
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+int main(int argc,char**argv){assert(argc==2);struct g24_workspace w={0};struct g24_native_facts f={0x1234,1,1,0};uint8_t b[320],copy[320];w.r.phase=G24_DONE;w.r.proofs=127;w.r.rptr=w.r.wptr=103;w.r.verified_pixels=4096;w.r.presented=w.r.retained=1;w.r.epoch=0x123456789abcdef0ULL;w.r.start=0x9988776600000000ULL;w.r.end=w.r.start+1000;w.pas.state=G24P_AUTH;w.pas.calls=7;assert(g24_record_pack(&w,&f,b,sizeof(b))&&g24_record_valid(b,sizeof(b)));FILE*out=fopen(argv[1],"wb");assert(out&&fwrite(b,sizeof(b),1,out)==1&&!fclose(out));unsigned count=0;for(unsigned bit=0;bit<2560;bit++){memcpy(copy,b,sizeof(b));copy[bit/8]^=1u<<(bit%8);assert(!g24_record_valid(copy,sizeof(copy)));count++;}assert(!g24_record_pack(&w,&f,b,319));w.r.verified_pixels--;assert(!g24_record_pack(&w,&f,b,sizeof(b)));w.r.phase=G24_REFUSED;w.r.failure_phase=G24_ZAP;w.r.error=G24_E_PAS;assert(g24_record_pack(&w,&f,b,sizeof(b)));printf("G24_RECORD_HOST_PASS CbitRefusals%u fixtures2 native0\n",count);return 0;}

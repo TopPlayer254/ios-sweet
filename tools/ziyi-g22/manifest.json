@@ -25,7 +25,7 @@
     {
       "path": "bsd/dev/ziyi_gpu_probe.c",
       "before": "1112a26a476d3ee7d83250121bee1c83c7caedbda85e98a686c5a15da9bcd596",
-      "after": "11635ccafe6cd7c062948d21adcb1801e16e295326e3f5542145e6cf30291bbd"
+      "after": "0cb47a155b5f4c4613719949c9b84c1e54020a169093accbf7dbdcaeace0cab1"
     }
   ],
   "patch": "xnu/patches/0104-ziyi-g22-preuser-hfi-version.patch",
@@ -51,8 +51,8 @@
     },
     {
       "path": "tools/ziyi-g22/inputs/ziyi_gpu_probe.c",
-      "sha256": "11635ccafe6cd7c062948d21adcb1801e16e295326e3f5542145e6cf30291bbd",
-      "bytes": 30573
+      "sha256": "0cb47a155b5f4c4613719949c9b84c1e54020a169093accbf7dbdcaeace0cab1",
+      "bytes": 30899
     },
     {
       "path": "tools/ziyi-g22/predecessor_version.c",
@@ -93,5 +93,12 @@
     "commands": 5,
     "noGxOob": true,
     "noCp": true
+  },
+  "g24CoreContinuation": {
+    "patch": "xnu/patches/0106-ziyi-g24-bounded-core-first-picture.patch",
+    "sha256": "22023e347144c888e7f32652c16b10a086bea49f3e076e19e36ed4a8660dee0d",
+    "bootArgument": "ziyi_gpu_cp=1",
+    "kernelOnly": true,
+    "threePrivateSlots": true
   }
 }

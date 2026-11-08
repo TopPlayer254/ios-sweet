@@ -170,11 +170,15 @@ static int zg_g8_proof(void*ctx,const struct g8_prereq*q,const struct g8_blob*b)
  /* Re-decode fixed immutable file-backed section, never a boot pointer/flag. */
  return g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&actual)&&memcmp(&actual,b,sizeof(actual))==0;
 }
+int ziyi_gpu_cp_prepare(void*);
+int ziyi_gpu_cp_continue(void*);
+void ziyi_gpu_cp_print(void*);
 int ziyi_gpu_startup_prepare(void*);
 int ziyi_gpu_startup_continue(void*);
 void ziyi_gpu_startup_print(void*);
 #include "ziyi_g19_native.inc"
 #include "ziyi_g23_native.inc"
+#include "ziyi_g24_native.inc"
 /* G11_RETAINED_CODEC_BEGIN */
 /* SPDX-License-Identifier: MIT */
 #include <stddef.h>
@@ -315,7 +319,7 @@ static int zg_g8_run(struct zg_state*s){
   s->hfi_record.last_health.helper_phase=0x10000u|r->phase;
   s->hfi_record.last_health.helper_error=r->error|(s->hfi_memory.error<<8)|(ziyi_hop_pmap_last_error()<<16);
  }
- zg_hfi_print(s);ziyi_gpu_startup_print(s);zg_g20_trace_print(s);
+ zg_hfi_print(s);ziyi_gpu_startup_print(s);ziyi_gpu_cp_print(s);zg_g20_trace_print(s);
  /* CPU-only snapshot. No additional MMIO, including on a poisoned lease. */
  if(r->flags&G8_SAVED){
   char pages[GSR_PAGES][GSR_PARTS][GSR_CHARS+1];
@@ -407,3 +411,15 @@ int ziyi_gpu_preuser_start(void){
 
 #include "ziyi_g23_resources.c"
 #include "ziyi_g23_startup.c"
+
+#include "ziyi_g24_firmware.c"
+
+#include "ziyi_g24_pas.c"
+
+#include "ziyi_g24_memory.c"
+
+#include "ziyi_g24_pixel.c"
+
+#include "ziyi_g24_engine.c"
+
+#include "ziyi_g24_record.c"

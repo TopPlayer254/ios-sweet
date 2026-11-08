@@ -89,8 +89,8 @@
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
       "target": "bsd/dev/ziyi_gpu_probe.c",
-      "sha256": "11635ccafe6cd7c062948d21adcb1801e16e295326e3f5542145e6cf30291bbd",
-      "bytes": 30573
+      "sha256": "0cb47a155b5f4c4613719949c9b84c1e54020a169093accbf7dbdcaeace0cab1",
+      "bytes": 30899
     },
     {
       "repository": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -337,8 +337,8 @@
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.c",
-      "sha256": "11635ccafe6cd7c062948d21adcb1801e16e295326e3f5542145e6cf30291bbd",
-      "bytes": 30573
+      "sha256": "0cb47a155b5f4c4613719949c9b84c1e54020a169093accbf7dbdcaeace0cab1",
+      "bytes": 30899
     },
     {
       "path": "tools/ziyi-hw/files/ziyi_gpu_probe.h",
@@ -793,5 +793,12 @@
     "commands": 5,
     "noGxOob": true,
     "noCp": true
+  },
+  "g24CoreContinuation": {
+    "patch": "xnu/patches/0106-ziyi-g24-bounded-core-first-picture.patch",
+    "sha256": "22023e347144c888e7f32652c16b10a086bea49f3e076e19e36ed4a8660dee0d",
+    "bootArgument": "ziyi_gpu_cp=1",
+    "kernelOnly": true,
+    "threePrivateSlots": true
   }
 }

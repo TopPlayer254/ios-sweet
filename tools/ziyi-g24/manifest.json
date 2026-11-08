@@ -1,0 +1,228 @@
+{
+  "version": 1,
+  "parentCommit": "7b4c7b9a758022d3a561011cf379bf601b430be5",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_engine.c",
+      "before": null,
+      "after": "edd9f486e3c89414709d4d162c09d7eb28e43b444c922b1f3aa98699ad1361e0"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_engine.h",
+      "before": null,
+      "after": "57df390dd108decc82d16e1c7f2289a9367876d5843a220d5eb23635ee408e4e"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_firmware.c",
+      "before": null,
+      "after": "1b3af4728fbec5d3ff91f46a70cc4c61a6333ca0e1f8cdb13966e8c93bceb0c3"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_firmware.h",
+      "before": null,
+      "after": "04e5654210d4d227bf98773920ebabd35be220527e48806afbc4201c0c2e2a97"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_memory.c",
+      "before": null,
+      "after": "1416db6518a1ab582471e7c967060b41c12a2249e662348cd7e68df40a4fca03"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_memory.h",
+      "before": null,
+      "after": "e2195df9974975533c7a56e3194bd979ce185b893fe8cb75503c459e62342edb"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": null,
+      "after": "6f8d335360f831896d8b6ee765ead43a43c57884191a882825ccfb22953032c8"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_pas.c",
+      "before": null,
+      "after": "d3f9665d2f7508cb421e9eac8bc8b1333f2acbcf117095714c1eaf4cc7e54638"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_pas.h",
+      "before": null,
+      "after": "5217a60fe43c4038b92883bdffbb9bd4237a22faf214ed6d4dd47c68e7b3d4a5"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_pins.inc",
+      "before": null,
+      "after": "240dfbec22588133fbddd10d2597080fdcd800b4ed7ded2bd04ebb18722e06b5"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_pixel.c",
+      "before": null,
+      "after": "cd23eadab377bbcd55167a163ae34a63aa8cc24d2fd0e82150208e9db339755e"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_pixel.h",
+      "before": null,
+      "after": "554dda254b0a4edf640babea439d77b1f820fe8c95a135c1e1f54b6525ac16e2"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_profile.inc",
+      "before": null,
+      "after": "adbff15421b2c3bee0c558648ce038dccf35455d00a7b2752f51821be3002710"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_record.c",
+      "before": null,
+      "after": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_record.h",
+      "before": null,
+      "after": "7dc022da2aabc8bb763303b3b875dccfa9a07f60a285f50f598973526c06b966"
+    },
+    {
+      "path": "bsd/dev/ziyi_gpu_probe.c",
+      "before": "11635ccafe6cd7c062948d21adcb1801e16e295326e3f5542145e6cf30291bbd",
+      "after": "0cb47a155b5f4c4613719949c9b84c1e54020a169093accbf7dbdcaeace0cab1"
+    },
+    {
+      "path": "bsd/dev/ziyi_g19_native.inc",
+      "before": "4ba5087ee3e372a97c3af1babe16430e5558794f7af6dfa0716c05e230a4885b",
+      "after": "58b2bffdd72ff0225b1586b38218ba450de7b245d173dbf81d91ade0de7fca32"
+    }
+  ],
+  "patch": "xnu/patches/0106-ziyi-g24-bounded-core-first-picture.patch",
+  "patchSHA256": "22023e347144c888e7f32652c16b10a086bea49f3e076e19e36ed4a8660dee0d",
+  "linkedFunctions": [
+    "_ziyi_gpu_cp_prepare",
+    "_ziyi_gpu_cp_continue",
+    "_ziyi_gpu_cp_print",
+    "_g24_run",
+    "_g24_slot_view",
+    "_g24_record_pack",
+    "_g24n_smc",
+    "_g24n_zap_copy",
+    "_g24n_present"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g24/README.md",
+      "sha256": "52e6cc3a8a4b8423b3d94ffb1f2f9dafce039d1cd2461a436cf47633d64e23aa",
+      "bytes": 5936
+    },
+    {
+      "path": "tools/ziyi-g24/audit_ci.py",
+      "sha256": "93609a25e3fe6e0569424a504ab88b9c50722f0793529533d4b1d74fe25f33c1",
+      "bytes": 2966
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_engine.c",
+      "sha256": "edd9f486e3c89414709d4d162c09d7eb28e43b444c922b1f3aa98699ad1361e0",
+      "bytes": 12774
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_engine.h",
+      "sha256": "57df390dd108decc82d16e1c7f2289a9367876d5843a220d5eb23635ee408e4e",
+      "bytes": 2673
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_firmware.c",
+      "sha256": "1b3af4728fbec5d3ff91f46a70cc4c61a6333ca0e1f8cdb13966e8c93bceb0c3",
+      "bytes": 2990
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_firmware.h",
+      "sha256": "04e5654210d4d227bf98773920ebabd35be220527e48806afbc4201c0c2e2a97",
+      "bytes": 709
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_memory.c",
+      "sha256": "1416db6518a1ab582471e7c967060b41c12a2249e662348cd7e68df40a4fca03",
+      "bytes": 1655
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_memory.h",
+      "sha256": "e2195df9974975533c7a56e3194bd979ce185b893fe8cb75503c459e62342edb",
+      "bytes": 1161
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_native.inc",
+      "sha256": "6f8d335360f831896d8b6ee765ead43a43c57884191a882825ccfb22953032c8",
+      "bytes": 17424
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_pas.c",
+      "sha256": "d3f9665d2f7508cb421e9eac8bc8b1333f2acbcf117095714c1eaf4cc7e54638",
+      "bytes": 2109
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_pas.h",
+      "sha256": "5217a60fe43c4038b92883bdffbb9bd4237a22faf214ed6d4dd47c68e7b3d4a5",
+      "bytes": 706
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_pins.inc",
+      "sha256": "240dfbec22588133fbddd10d2597080fdcd800b4ed7ded2bd04ebb18722e06b5",
+      "bytes": 658
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_pixel.c",
+      "sha256": "cd23eadab377bbcd55167a163ae34a63aa8cc24d2fd0e82150208e9db339755e",
+      "bytes": 3950
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_pixel.h",
+      "sha256": "554dda254b0a4edf640babea439d77b1f820fe8c95a135c1e1f54b6525ac16e2",
+      "bytes": 1358
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_profile.inc",
+      "sha256": "adbff15421b2c3bee0c558648ce038dccf35455d00a7b2752f51821be3002710",
+      "bytes": 9549
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_record.c",
+      "sha256": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f",
+      "bytes": 3736
+    },
+    {
+      "path": "tools/ziyi-g24/files/ziyi_g24_record.h",
+      "sha256": "7dc022da2aabc8bb763303b3b875dccfa9a07f60a285f50f598973526c06b966",
+      "bytes": 337
+    },
+    {
+      "path": "tools/ziyi-g24/record-fields.json",
+      "sha256": "c68eaeced94d1994a35fe96516deb73188689a1e71a3a244b44b8a494f16e947",
+      "bytes": 1357
+    },
+    {
+      "path": "tools/ziyi-g24/record.py",
+      "sha256": "80735980fad50082994f64838054ac4e8a1c6dfde2079eeec337e3e865380041",
+      "bytes": 763
+    },
+    {
+      "path": "tools/ziyi-g24/run_host_tests.py",
+      "sha256": "a3d54ec2a1b3f1a7ccb4a4ad8f5cda9f8d4d3d9dd28f748ec5e559c6c5b80ac4",
+      "bytes": 4458
+    },
+    {
+      "path": "tools/ziyi-g24/test_engine.c",
+      "sha256": "4de676f6c463fdfdd4fabd64f57266bdf154524a8df8cffc056ab96b4b65c3dd",
+      "bytes": 6811
+    },
+    {
+      "path": "tools/ziyi-g24/test_firmware_pas.c",
+      "sha256": "c9b0c573318cdcead0af965c8d6f8a5dc92464b7b5d2e85b20c996a891dbc334",
+      "bytes": 3452
+    },
+    {
+      "path": "tools/ziyi-g24/test_native.c",
+      "sha256": "3c6484369d958c64b27697c17b194c82abf51da8ef3374d735866a887d4372cb",
+      "bytes": 12481
+    },
+    {
+      "path": "tools/ziyi-g24/test_record.c",
+      "sha256": "7897fe9f7f2b92b123dd8758d53becdc5505923b639a711e16e8123d5e40e809",
+      "bytes": 1073
+    }
+  ],
+  "native": false,
+  "gpuPixels": false
+}

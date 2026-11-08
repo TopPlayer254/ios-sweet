@@ -20,8 +20,9 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23]
+    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24]
     paths:
+      - "tools/ziyi-g24/**"
       - "tools/ziyi-g23/**"
       - "tools/ziyi-g22/**"
       - "tools/ziyi-wifi/full-kernel/**"
@@ -263,6 +264,9 @@ jobs:
       - name: G23 own-resource HFI batch and native adapter controls
         run: python3 tools/ziyi-g23/run_host_tests.py --out u1-evidence/g23-host
 
+      - name: G24 bounded core and actual adapter CPU controls
+        run: python3 tools/ziyi-g24/run_host_tests.py --out u1-evidence/g24-host
+
       - name: Build
         working-directory: dxb
         env:
@@ -306,6 +310,9 @@ jobs:
 
       - name: Exact G23 own-resource startup source and linked calls
         run: python3 tools/ziyi-g23/audit_ci.py
+
+      - name: Exact G24 sources linked callbacks and real SMC
+        run: python3 tools/ziyi-g24/audit_ci.py
 
       - uses: actions/upload-artifact@v4
         if: always()

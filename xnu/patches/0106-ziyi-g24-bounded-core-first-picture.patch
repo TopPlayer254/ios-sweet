@@ -1,0 +1,1305 @@
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_engine.c
+@@ -0,0 +1,107 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g24_engine.h"
++#include "ziyi_g23_startup.h"
++#include <string.h>
++static const uint64_t g24_ctl[G24_CTL_COUNT]={
++ 0x3d7e648,0x3d7e644,0x3d7e650,0x3d7e340,0x3d9905c,0x3d00840,0x3d00804,0x3d02084,0x3d02090,0x3d02018,0x3d0201c,0x3d02020,0x3d02000,0x3d02004,0x3d020c0,0x3d020c4,0x3d02008,0x3d02010,0x3d02014,
++ 0x3da0804,0x3da0c04,0x3da1000,0x3da1800,0x3db0000,0x3db0004,0x3db0010,0x3db0030,0x3db0020,0x3db0024,0x3db0028,0x3db002c,0x3db0038,0x3db003c,0x3db0058,0x3db0068,0x3db0060,0x3db0064,0x3db0610,0x3db07f0,0x3db07f4,0x3da0048,0x3da0800,0x3da0c00,0x3db2000,0x3d7e070,0x3d7e600,0x3d7e000,0x3d0f114
++};
++#include "ziyi_g24_profile.inc"
++static const unsigned g24_smmu_order[]={G24_SCTLR,G24_CBA2R,G24_CBAR,G24_TCR2,G24_TCR,G24_TTBR1LO,G24_TTBR1HI,G24_TTBRLO,G24_TTBRHI,G24_MAIR0,G24_MAIR1,G24_SCTLR,G24_TLBI,G24_TLBSYNC,G24_S2CR,G24_SMR};
++static const unsigned g24_cp_order[]={G24_RPTRLO,G24_RPTRHI,G24_RBCNTL,G24_RBLO,G24_RBHI,G24_SQELO,G24_SQEHI,G24_SQE_CONTROL};
++_Static_assert(G24_PROFILE_COUNT<=G24_MAX_PROFILE,"profile capacity");
++uint64_t g24_register_address(unsigned space,unsigned id){return space==G24_CTL?(id<G24_CTL_COUNT?g24_ctl[id]:0):space==G24_PROFILE&&id<G24_PROFILE_COUNT?g24_profile[id].address:0;}
++unsigned g24_profile_count(void){return G24_PROFILE_COUNT;}
++static int g24e_fail(struct g24_workspace*w,unsigned e){if(!w->r.error){w->r.error=e;w->r.failure_phase=w->r.phase;}w->r.phase=G24_REFUSED;w->r.retained=1;return 0;}
++static int g24e_owner(struct g24_workspace*w,const struct g24_io*o){return o->qualified(o->ctx,w->r.epoch,w->r.phase);}
++static int g24e_read(struct g24_workspace*w,const struct g24_io*o,unsigned sp,unsigned id,uint32_t*v){
++ w->r.last_space=sp;w->r.last_index=id;w->r.last_valid=0;
++ if(!g24_register_address(sp,id)||!g24e_owner(w,o)||!o->read(o->ctx,sp,id,v))return g24e_fail(w,G24_E_IO);w->r.last_value=*v;w->r.last_valid=1;w->r.reads++;return 1;
++}
++static int g24e_tick(struct g24_workspace*w,const struct g24_io*o,uint64_t*v){if(!o->now(o->ctx,v)||*v<w->r.end||*v-w->r.start>19200000ULL*15)return g24e_fail(w,G24_E_TIMEOUT);w->r.end=*v;return 1;}
++static int g24e_target(const struct g24_workspace*w,unsigned id,uint32_t*out){
++ switch(id){case G24_REQUEST:*out=0x40000000;break;case G24_ACK:*out=0x80000000;break;
++ case G24_SMR:*out=0x84000000;break;case G24_S2CR:*out=0x300;break;case G24_CBAR:*out=0x1f300;break;case G24_CBA2R:*out=1;break;
++ case G24_SCTLR:*out=w->r.smmu_cursor?0xc00127:0;break;case G24_TCR2:*out=0x38071;break;case G24_TCR:*out=0x803519;break;
++ case G24_TTBRLO:*out=(uint32_t)w->memory.translations.table_physical[0];break;case G24_TTBRHI:*out=(uint32_t)(w->memory.translations.table_physical[0]>>32);break;
++ case G24_TTBR1LO:case G24_TTBR1HI:case G24_TLBI:case G24_TLBSYNC:*out=0;break;case G24_MAIR0:*out=0xf404ff44;break;case G24_MAIR1:*out=0xefe4;break;
++ case G24_SQELO:*out=w->memory.sqe_iova;break;case G24_RBLO:*out=w->memory.ring_iova;break;case G24_RBHI:case G24_SQEHI:case G24_RPTRHI:*out=0;break;
++ case G24_RPTRLO:*out=w->memory.fence_iova+64;break;case G24_RBCNTL:*out=11u|(2u<<8);break;case G24_SQE_CONTROL:*out=1;break;case G24_WPTR:*out=w->r.ring_words;break;default:return 0;}
++ return 1;
++}
++int g24_store_allowed(const struct g24_workspace*w,unsigned sp,unsigned id,uint32_t value,uint32_t current){
++ if(!w||!w->r.epoch||w->r.error||!w->memory.valid||w->memory.epoch!=w->r.epoch)return 0;
++ if(sp==G24_PROFILE){if(w->r.phase!=G24_CONFIG||!w->r.profile_saved||id!=w->r.profile_cursor||id>=G24_PROFILE_COUNT||current!=w->r.profile_current[id])return 0;const struct g24_reg*d=&g24_profile[id];return value==((current&~d->mask)|d->value);}
++ if(sp!=G24_CTL)return 0;uint32_t want=0;if(!g24e_target(w,id,&want)||value!=want)return 0;
++ if(id==G24_REQUEST)return w->r.phase==G24_POWER&&!w->r.hardware_attempted;
++ if(id==G24_ACK)return w->r.phase==G24_POWER&&w->r.power_grant==0x80000000;
++ if((id>=G24_SMR&&id<=G24_MAIR1)||id==G24_TLBI||id==G24_TLBSYNC)return w->r.phase==G24_SMMU&&w->r.core_saved&&!w->r.route_live&&w->r.smmu_cursor<16&&id==g24_smmu_order[w->r.smmu_cursor];
++ if(id==G24_WPTR){unsigned end=w->r.phase==G24_ME_INIT?9:w->r.phase==G24_UNSECURE?11:w->r.phase==G24_FENCE?16:w->r.phase==G24_BLIT?103:0;return end&&value==end&&w->r.cp_started&&value>current;}
++ return w->r.phase==G24_ME_INIT&&w->r.route_live&&w->r.cp_cursor<8&&id==g24_cp_order[w->r.cp_cursor];
++}
++static int g24e_write(struct g24_workspace*w,const struct g24_io*o,unsigned sp,unsigned id,uint32_t value,int readback){
++ uint32_t current=0;if(id!=G24_REQUEST&&id!=G24_ACK&&!g24e_read(w,o,sp,id,&current))return 0;
++ if(!g24_store_allowed(w,sp,id,value,current)||!g24e_owner(w,o))return g24e_fail(w,G24_E_OWNER);
++ w->r.pending_space=sp;w->r.pending_index=id;w->r.pending_value=value;
++ if(!o->write(o->ctx,sp,id,value))return g24e_fail(w,G24_E_IO);w->r.writes++;w->r.hardware_attempted=1;
++ if(!o->order(o->ctx))return g24e_fail(w,G24_E_IO);
++ if(readback){uint32_t got;if(!g24e_read(w,o,sp,id,&got)||got!=value)return g24e_fail(w,G24_E_CONFIG);}
++ if(sp==G24_PROFILE)for(unsigned i=0;i<G24_PROFILE_COUNT;i++)if(g24_profile[i].address==g24_profile[id].address)w->r.profile_current[i]=value;
++ return 1;
++}
++static int g24e_put(struct g24_workspace*w,const struct g24_io*o,unsigned id){uint32_t v;if(!g24e_target(w,id,&v))return g24e_fail(w,G24_E_ARGUMENT);return g24e_write(w,o,G24_CTL,id,v,id!=G24_TLBI&&id!=G24_TLBSYNC&&id!=G24_REQUEST&&id!=G24_ACK);}
++static int g24e_faults(struct g24_workspace*w,const struct g24_io*o){
++ if(!g24e_read(w,o,G24_CTL,G24_STATUS,&w->r.status)||!g24e_read(w,o,G24_CTL,G24_INT,&w->r.int_status)||!g24e_read(w,o,G24_CTL,G24_CPFAULT,&w->r.cp_fault)||!g24e_read(w,o,G24_CTL,G24_CPPROTECT,&w->r.cp_protect)||!g24e_read(w,o,G24_CTL,G24_FSR,&w->r.smmu_fsr)||!g24e_read(w,o,G24_CTL,G24_GLOBAL_FSR,&w->r.global_fsr))return 0;
++ if(w->r.cp_fault||w->r.cp_protect||(w->r.int_status&0x13000282)||(w->r.smmu_fsr&0xc00001fe)||w->r.global_fsr){(void)g24e_read(w,o,G24_CTL,G24_FSYNR,&w->r.smmu_fsynr);(void)g24e_read(w,o,G24_CTL,G24_FARLO,&w->r.smmu_far_lo);(void)g24e_read(w,o,G24_CTL,G24_FARHI,&w->r.smmu_far_hi);return g24e_fail(w,G24_E_CP);}return 1;
++}
++static int g24e_submit(struct g24_workspace*w,const struct g24_io*o,const uint32_t*data,unsigned words){
++ if(!words||words>256||w->r.ring_words>4096-words||!g24e_owner(w,o))return g24e_fail(w,G24_E_ARGUMENT);
++ unsigned at=w->r.ring_words;for(unsigned i=0;i<words;i++){w->expected_ring[i]=data[i];w->ring[at+i]=data[i];}
++ if(!o->order(o->ctx))return g24e_fail(w,G24_E_IO);
++ for(unsigned i=0;i<words;i++)if(w->ring[at+i]!=w->expected_ring[i])return g24e_fail(w,G24_E_GUARD);
++ w->r.ring_words+=words;w->r.program_crc=gs_crc((const uint8_t*)w->expected_ring,words*4);
++ if(!g24e_put(w,o,G24_WPTR))return 0;uint64_t start,now;if(!g24e_tick(w,o,&start))return 0;
++ for(unsigned n=0;n<20000;n++){
++  if(!g24e_read(w,o,G24_CTL,G24_RPTR,&w->r.rptr)||!g24e_read(w,o,G24_CTL,G24_WPTR,&w->r.wptr)||!g24e_faults(w,o))return 0;
++  if(w->r.rptr==w->r.ring_words&&w->r.wptr==w->r.ring_words&&!(w->r.status&(1u<<23)))return 1;
++  if(!g24e_tick(w,o,&now)||now-start>=38400000||!o->delay(o->ctx,100))return g24e_fail(w,G24_E_TIMEOUT);
++ }return g24e_fail(w,G24_E_TIMEOUT);
++}
++static uint32_t g24e_parity(uint32_t x){unsigned p=1;while(x){p^=x&1;x>>=1;}return p;}
++static uint32_t g24e_pkt(uint32_t op,uint32_t n){return 0x70000000|n|(g24e_parity(n)<<15)|(op<<16)|(g24e_parity(op)<<23);}
++__attribute__((noinline)) int g24_run(struct g24_workspace*w,const struct g24_io*o){
++ if(!w||!o||!o->qualified||!o->read||!o->write||!o->order||!o->delay||!o->now||!o->zap_copy||!o->present||w->r.phase!=G24_READY||!w->ring||!w->pixels||!w->fence||!w->memory.valid||w->memory.epoch!=w->r.epoch)return 0;
++ if(!g24e_owner(w,o)||!o->now(o->ctx,&w->r.start))return g24e_fail(w,G24_E_OWNER);w->r.proofs=GP_NATIVE_HFI|GP_NATIVE_VISIBILITY;w->r.end=w->r.start;w->r.profile_count=G24_PROFILE_COUNT;
++ w->r.phase=G24_POWER;uint32_t v;if(!g24e_read(w,o,G24_CTL,G24_INFO,&v)||(v&0x80000000))return g24e_fail(w,G24_E_ACTIVE);
++ if(!g24e_put(w,o,G24_REQUEST))return 0;
++ for(unsigned n=0;n<5000;n++){if(!g24e_read(w,o,G24_CTL,G24_INFO,&v))return 0;if(v&0x80000000){w->r.power_grant=0x80000000;break;}if(!o->delay(o->ctx,100))return g24e_fail(w,G24_E_IO);}
++ if(!w->r.power_grant)return g24e_fail(w,G24_E_TIMEOUT);
++ if(!g24e_put(w,o,G24_ACK)||!g24e_read(w,o,G24_CTL,G24_SPTPRAC,&w->r.sptprac)||!g24e_read(w,o,G24_CTL,G24_GDSC,&w->r.gdsc)||(w->r.sptprac&0xc0)||!(w->r.gdsc&0x80000000))return g24e_fail(w,G24_E_ACTIVE);w->r.proofs|=GP_NATIVE_GX_POWER;
++ w->r.phase=G24_SNAPSHOT;
++ static const unsigned saved[]={G24_RPTR,G24_WPTR,G24_SQE_CONTROL,G24_RBLO,G24_RBHI,G24_SQELO,G24_SQEHI,G24_RBCNTL,G24_RPTRLO,G24_RPTRHI,G24_SMR,G24_S2CR,G24_CBAR,G24_CBA2R,G24_SCTLR,G24_ACTLR,G24_TCR2,G24_TCR,G24_TTBRLO,G24_TTBRHI,G24_TTBR1LO,G24_TTBR1HI,G24_MAIR0,G24_MAIR1};
++ for(unsigned pass=0;pass<2;pass++)for(unsigned i=0;i<sizeof(saved)/sizeof(saved[0]);i++){unsigned id=saved[i];if(!g24e_read(w,o,G24_CTL,id,&v)||(pass&&v!=w->r.initial[id]))return g24e_fail(w,G24_E_ACTIVE);w->r.initial[id]=v;}
++ if(w->r.initial[G24_RPTR]||w->r.initial[G24_WPTR]||w->r.initial[G24_RBLO]||w->r.initial[G24_RBHI]||w->r.initial[G24_SQELO]||w->r.initial[G24_SQEHI]||w->r.initial[G24_SMR]||w->r.initial[G24_S2CR]!=0x20000||w->r.initial[G24_CBAR]||w->r.initial[G24_CBA2R]||(w->r.initial[G24_SCTLR]&1))return g24e_fail(w,G24_E_ACTIVE);
++ if(!g24e_faults(w,o)||(w->r.status&(1u<<23)))return g24e_fail(w,G24_E_ACTIVE);w->r.core_saved=1;
++ w->r.phase=G24_SMMU;
++ for(unsigned i=0;i<14;i++){w->r.smmu_cursor=i;if(!g24e_put(w,o,g24_smmu_order[i]))return 0;}
++ for(unsigned n=0;n<10000;n++){if(!g24e_read(w,o,G24_CTL,G24_TLBSTATUS,&v))return 0;if(!v)break;if(v!=1||n==9999||!o->delay(o->ctx,1))return g24e_fail(w,G24_E_SMMU);}
++ w->r.smmu_cursor=14;if(!g24e_put(w,o,G24_S2CR))return 0;w->r.smmu_cursor=15;if(!g24e_put(w,o,G24_SMR))return 0;w->r.route_live=1;w->r.proofs|=GP_NATIVE_SMMU;
++ for(unsigned pass=0;pass<2;pass++)for(unsigned i=0;i<G24_PROFILE_COUNT;i++){if(!g24e_read(w,o,G24_PROFILE,i,&v)||(pass&&v!=w->r.profile_old[i]))return g24e_fail(w,G24_E_CONFIG);w->r.profile_old[i]=w->r.profile_current[i]=v;}w->r.profile_saved=1;
++ w->r.phase=G24_CONFIG;
++ for(unsigned i=0;i<G24_PROFILE_COUNT;i++){w->r.profile_cursor=i;const struct g24_reg*d=&g24_profile[i];v=(w->r.profile_current[i]&~d->mask)|d->value;if(!g24e_write(w,o,G24_PROFILE,i,v,1))return 0;}
++ w->r.phase=G24_ME_INIT;
++ for(unsigned i=0;i<8;i++){w->r.cp_cursor=i;if(!g24e_put(w,o,g24_cp_order[i]))return 0;}w->r.cp_started=1;
++ uint32_t init[9]={0,0x2f,3,0x20000000,0,0,0,0,0};init[0]=g24e_pkt(0x48,8);if(!g24e_submit(w,o,init,9))return 0;w->r.proofs|=GP_NATIVE_SQE;
++ w->r.phase=G24_ZAP;
++ if(!g24_pas_probe(&w->pas,w->r.epoch,&o->pas)||!g24_pas_init(&w->pas,w->pas.metadata_pa,&o->pas)||!g24_pas_memory(&w->pas,&o->pas)||!o->zap_copy(o->ctx)||!g24_pas_auth(&w->pas,&o->pas))return g24e_fail(w,G24_E_PAS);w->r.pas_authenticated=1;w->r.proofs|=GP_NATIVE_ZAP;
++ w->r.phase=G24_UNSECURE;uint32_t secure[2]={g24e_pkt(0x66,1),0};if(!g24e_submit(w,o,secure,2))return 0;
++ w->r.phase=G24_FENCE;uint32_t token=0xc0240000u|(uint32_t)(w->r.epoch&0xffffu);w->fence[2]=0;if(!o->order(o->ctx))return g24e_fail(w,G24_E_IO);
++ uint32_t fence[5]={g24e_pkt(0x3d,3),w->memory.fence_iova+8,0,token,g24e_pkt(0x26,0)};if(!g24e_submit(w,o,fence,5)||!o->order(o->ctx))return g24e_fail(w,G24_E_IO);w->r.fence_value=w->fence[2];if(w->r.fence_value!=token)return g24e_fail(w,G24_E_CP);w->r.proofs|=GP_NATIVE_CP_FENCE;
++ w->r.phase=G24_BLIT;w->r.blit_begin=w->r.ring_words;
++ uint32_t pixels[GP_WORDS];size_t words=0;if(gp_build(pixels,GP_WORDS,&w->pixel_request,&words)!=GP_OK||words!=GP_WORDS)return g24e_fail(w,G24_E_PIXELS);
++ w->r.blit_words=(uint32_t)words;if(!g24e_submit(w,o,pixels,(unsigned)words)||!o->order(o->ctx))return g24e_fail(w,G24_E_IO);
++ w->r.phase=G24_VERIFY;if(!g24e_owner(w,o))return g24e_fail(w,G24_E_OWNER);struct gp_observation observation={.epoch=w->pixel_request.epoch,.proof_flags=w->r.proofs,.rptr=w->r.rptr-w->r.blit_begin,.wptr=w->r.wptr-w->r.blit_begin,.color_token=w->fence[0],.flush_token=w->fence[1],.cp_fault=w->r.cp_fault,.smmu_fault=w->r.smmu_fsr&0xc00001fe,.gpu_busy=w->r.status&(1u<<23)};
++ w->r.verify_code=(uint32_t)gp_verify(&w->pixel_request,&observation,w->pixels,GP_PAGE,w->guard,(volatile uint8_t*)w->fence+128,64,&w->r.first_bad_byte);if(w->r.verify_code!=GP_OK)return g24e_fail(w,w->r.verify_code==GP_GUARD?G24_E_GUARD:G24_E_PIXELS);
++ w->r.verified_pixels=4096;w->r.pixel_crc=gs_crc((const uint8_t*)w->pixels,GP_PAGE);w->r.guard_crc=gs_crc(w->guard,64);
++ w->r.phase=G24_PRESENT;if(!o->present(o->ctx))return g24e_fail(w,G24_E_DISPLAY);w->r.presented=1;uint64_t end;if(!g24e_tick(w,o,&end))return 0;w->r.phase=G24_DONE;w->r.retained=1;return 1;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_engine.h
+@@ -0,0 +1,42 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_g24_firmware.h"
++#include "ziyi_g24_memory.h"
++#include "ziyi_g24_pixel.h"
++#include "ziyi_g24_pas.h"
++enum {G24_NEW,G24_READY,G24_POWER,G24_SNAPSHOT,G24_SMMU,G24_CONFIG,G24_ME_INIT,G24_ZAP,G24_UNSECURE,G24_FENCE,G24_BLIT,G24_VERIFY,G24_PRESENT,G24_DONE,G24_REFUSED};
++enum {G24_E_ARGUMENT=400,G24_E_OWNER,G24_E_IO,G24_E_TIMEOUT,G24_E_ACTIVE,G24_E_SMMU,G24_E_CONFIG,G24_E_CP,G24_E_PAS,G24_E_PIXELS,G24_E_GUARD,G24_E_DISPLAY};
++enum {G24_CTL=0,G24_PROFILE=1};
++enum {
++ G24_INFO,G24_ACK,G24_REQUEST,G24_SPTPRAC,G24_GDSC,G24_STATUS,G24_INT,G24_CPFAULT,G24_CPPROTECT,G24_RPTR,G24_WPTR,G24_SQE_CONTROL,G24_RBLO,G24_RBHI,G24_SQELO,G24_SQEHI,G24_RBCNTL,G24_RPTRLO,G24_RPTRHI,
++ G24_SMR,G24_S2CR,G24_CBAR,G24_CBA2R,G24_SCTLR,G24_ACTLR,G24_TCR2,G24_TCR,G24_TTBRLO,G24_TTBRHI,G24_TTBR1LO,G24_TTBR1HI,G24_MAIR0,G24_MAIR1,G24_FSR,G24_FSYNR,G24_FARLO,G24_FARHI,G24_TLBI,G24_TLBSYNC,G24_TLBSTATUS,G24_GLOBAL_FSR,G24_GMU_SMR,G24_GMU_S2CR,G24_GMU_SCTLR,G24_FW,G24_HFI,G24_RESET,G24_HALT,G24_CTL_COUNT
++};
++#define G24_MAX_PROFILE 160u
++struct g24_reg {uint64_t address;uint32_t value,mask;};
++struct g24_record {
++ uint32_t phase,error,reads,writes,pending_space,pending_index,pending_value,hardware_attempted;
++ uint32_t power_grant,sptprac,gdsc,profile_count,profile_cursor,smmu_cursor,ring_words,blit_begin,blit_words;
++ uint32_t rptr,wptr,status,cp_fault,cp_protect,smmu_fsr,smmu_fsynr,smmu_far_lo,smmu_far_hi,global_fsr;
++ uint32_t initial[G24_CTL_COUNT],profile_old[G24_MAX_PROFILE],profile_current[G24_MAX_PROFILE];
++ uint32_t core_saved,profile_saved,route_live,cp_started,pas_authenticated,fence_value,verified_pixels,first_bad_byte,presented,retained;
++ uint32_t program_crc,pixel_crc,guard_crc,proofs,cp_cursor,verify_code,int_status;
++ uint32_t failure_phase,last_space,last_index,last_value,last_valid;
++ uint64_t epoch,start,end;
++};
++struct g24_workspace {
++ struct g24_record r;struct g24_firmware fw;struct gc_plan memory;struct g24_pas pas;
++ volatile uint32_t *ring,*fence;volatile uint8_t*pixels;
++ struct gp_request pixel_request;
++ uint8_t guard[64];uint32_t expected_ring[256];
++};
++struct g24_io {
++ void*ctx;int(*qualified)(void*,uint64_t,unsigned);
++ int(*read)(void*,unsigned,unsigned,uint32_t*);
++ int(*write)(void*,unsigned,unsigned,uint32_t);
++ int(*order)(void*);int(*delay)(void*,uint32_t);int(*now)(void*,uint64_t*);
++ int(*zap_copy)(void*);int(*present)(void*);struct g24_pas_io pas;
++};
++uint64_t g24_register_address(unsigned,unsigned);
++unsigned g24_profile_count(void);
++int g24_store_allowed(const struct g24_workspace*,unsigned,unsigned,uint32_t,uint32_t);
++int g24_run(struct g24_workspace*,const struct g24_io*);
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_firmware.c
+@@ -0,0 +1,43 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g24_firmware.h"
++#include "ziyi_g7_sha256.h"
++#include <string.h>
++static uint32_t g24f_u32(const uint8_t*p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
++static uint32_t g24f_crc(const uint8_t*p,size_t n){uint32_t c=~0u;for(size_t i=0;i<n;i++){c^=p[i];for(unsigned b=0;b<8;b++)c=(c>>1)^(0xedb88320u&(0u-(c&1u)));}return ~c;}
++int g24_mdt_plan(const uint8_t*b,size_t n,size_t code_bytes,struct g24_firmware*out){
++ if(!b||!out||n!=3564||code_bytes!=1976||memcmp(b,"\177ELF\1\1\1",7)||b[16]!=2||b[17]||b[18]!=164||b[19])return 0;
++ /* Own MDT: three ELF32 program headers; b01 is executable and b02 hashes.
++  * A650's b02-as-code recipe is expressly not accepted. */
++ if(g24f_u32(b+28)!=52||b[40]!=52||b[41]||b[42]!=32||b[43]||b[44]!=3||b[45])return 0;
++ static const uint32_t expected[3][8]={{0,0,0,0,148,0,0x07000000,0},{1,0x1000,0x1000,0x1000,1976,1976,0x08000007,0x100000},{0,0x2000,0,0,3416,3416,0x02000000,0x1000}};
++ for(unsigned i=0;i<3;i++)for(unsigned j=0;j<8;j++)if(g24f_u32(b+52+32*i+4*j)!=expected[i][j])return 0;
++ if(148u+3416u!=n)return 0;
++ out->relocation=0x1000;out->load_bytes=4096;return 1;
++}
++int g24_capsule_view(const uint8_t*b,size_t n,const uint8_t pins[3][32],struct g24_firmware*out){
++ static const uint8_t magic[16]={'Z','I','Y','I','_','G','2','4','_','C','P','_','F','W','0','1'};
++ if(!b||!pins||!out||n!=G24_SLOT_BYTES||memcmp(b,magic,16)||g24f_u32(b+16)!=1||g24f_u32(b+20)!=n||g24f_u32(b+24)!=0x06060201||g24f_u32(b+28)!=1||g24f_u32(b+252)!=g24f_crc(b,252))return 0;
++ const uint32_t starts[3]={256,43328,46896},sizes[3]={43068,3564,1976};uint8_t hash[32];
++ for(unsigned i=0;i<3;i++){
++  if(g24f_u32(b+32+8*i)!=starts[i]||g24f_u32(b+36+8*i)!=sizes[i]||memcmp(b+64+32*i,pins[i],32))return 0;
++  g7_sha256(b+starts[i],sizes[i],hash);if(memcmp(hash,pins[i],32))return 0;
++ }
++ if(g24f_u32(b+56)!=4096||g24f_u32(b+60)!=4096)return 0;
++ for(unsigned i=192;i<252;i++)if(b[i])return 0;
++ for(unsigned i=256;i<n;i++){
++  int member=0;for(unsigned j=0;j<3;j++)member|=i>=starts[j]&&i-starts[j]<sizes[j];if(!member&&b[i])return 0;
++ }
++ g7_sha256(b+256,n-256,hash);if(memcmp(hash,b+160,32))return 0;
++ struct g24_firmware f={.sqe=b+starts[0],.mdt=b+starts[1],.code=b+starts[2],.sqe_bytes=sizes[0],.mdt_bytes=sizes[1],.code_bytes=sizes[2]};
++ if(g24f_u32(f.sqe)!=0||!g24_mdt_plan(f.mdt,f.mdt_bytes,f.code_bytes,&f))return 0;
++ f.sqe_version=g24f_u32(f.sqe+4);if(f.sqe_version!=0x016dc109)return 0;
++ *out=f;return 1;
++}
++#if defined(__APPLE__)
++#define G24S_ATTR __attribute__((section("__DATA_CONST,__ziyi_g24"),used,aligned(16384)))
++#else
++#define G24S_ATTR __attribute__((used,aligned(64)))
++#endif
++static const uint8_t g24_private_slot[G24_SLOT_BYTES] G24S_ATTR={'Z','I','Y','I','_','G','2','4','_','C','P','_','F','W','0','1'};
++#include "ziyi_g24_pins.inc"
++__attribute__((noinline)) int g24_slot_view(struct g24_firmware*out){return g24_capsule_view(g24_private_slot,sizeof(g24_private_slot),g24_own_sha,out);}
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_firmware.h
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stddef.h>
++#include <stdint.h>
++#define G24_SLOT_BYTES 65536u
++#define G24_ZAP_PA 0x8bb1a000ULL
++#define G24_ZAP_REGION_BYTES 8192u
++#define G24_ZAP_LOAD_BYTES 4096u
++struct g24_firmware {const uint8_t *sqe,*mdt,*code;uint32_t sqe_bytes,mdt_bytes,code_bytes,sqe_version,relocation,load_bytes;};
++/* Generic parser takes explicit pins for CPU fixtures. Native slot access
++ * binds the immutable own-device pins and never takes caller-supplied pins. */
++int g24_capsule_view(const uint8_t*,size_t,const uint8_t [3][32],struct g24_firmware*);
++int g24_mdt_plan(const uint8_t*,size_t,size_t,struct g24_firmware*);
++int g24_slot_view(struct g24_firmware*);
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_memory.c
+@@ -0,0 +1,30 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g24_memory.h"
++#include <stdint.h>
++static int gc_overlap(const void*a,size_t an,const void*b,size_t bn){
++ uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;
++ return an>UINTPTR_MAX-x||bn>UINTPTR_MAX-y||(x<y+bn&&y<x+an);
++}
++static int gc_page(uint64_t pa){return pa&&!(pa&(GC_CPU_PAGE-1u))&&pa<=GT_OAS_END-GC_CPU_PAGE;}
++int gc_build(struct gc_plan*out,const struct gc_request*r){
++ if(!out||!r)return GC_ARGUMENT;
++ if(gc_overlap(out,sizeof(*out),r,sizeof(*r)))return GC_OVERLAP;
++ if(!r->epoch||r->pages!=GC_PAGES||r->normal_nc!=1||r->private_owned!=1||!gc_page(r->hfi_pa))return GC_OWNERSHIP;
++ for(unsigned i=0;i<GC_PAGES;i++){
++  if(!gc_page(r->pa[i])||r->pa[i]==r->hfi_pa)return GC_OWNERSHIP;
++  for(unsigned j=0;j<i;j++)if(r->pa[i]==r->pa[j])return GC_OVERLAP;
++ }
++ uint64_t table_pa[GC_TABLES];struct gt_mapping maps[GC_MAPS];
++ for(unsigned i=0;i<GC_TABLES;i++)table_pa[i]=r->pa[0]+i*GT_PAGE;
++ for(unsigned i=0;i<GC_MAPS;i++)maps[i]=(struct gt_mapping){GC_IOVA+i*GT_PAGE,0,r->pa[1+i/4]+(i%4)*GT_PAGE};
++ *out=(struct gc_plan){0};
++ if(gt_build(&out->translations,out->tables,table_pa,GC_TABLES,maps,GC_MAPS)!=GT_OK)return GC_TABLE;
++ if(out->translations.table_count!=GC_TABLES||out->translations.mapped_pages!=GC_MAPS)return GC_TABLE;
++ for(unsigned i=0;i<GC_MAPS;i++){
++  uint64_t pa=0;
++  if(!gt_lookup(&out->translations,out->tables,maps[i].iova,&pa)||pa!=maps[i].physical)return GC_TABLE;
++ }
++ out->epoch=r->epoch;out->ring_iova=GC_IOVA;out->pixel_iova=GC_IOVA+GC_CPU_PAGE;
++ out->fence_iova=GC_IOVA+2*GC_CPU_PAGE;out->sqe_iova=GC_IOVA+3*GC_CPU_PAGE;
++ out->sqe_capacity=3*GC_CPU_PAGE;out->valid=1;return GC_OK;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_memory.h
+@@ -0,0 +1,27 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_g8_translation.h"
++#define GC_CPU_PAGE 16384u
++#define GC_PAGES 7u
++#define GC_TABLES 3u
++#define GC_MAPS 24u
++#define GC_IOVA 0x61000000u
++enum { GC_OK=0, GC_ARGUMENT=1, GC_OWNERSHIP=2, GC_OVERLAP=3, GC_TABLE=4 };
++/* CPU-only inputs. The native owner must independently validate its complete
++ * hop allocation and all aliases before passing these values. This structure
++ * is never proof of native ownership or permission to publish a route. */
++struct gc_request {
++ uint64_t epoch,hfi_pa,pa[GC_PAGES];
++ uint32_t pages,normal_nc,private_owned;
++};
++struct gc_plan {
++ uint64_t epoch;
++ uint32_t valid,ring_iova,pixel_iova,fence_iova,sqe_iova,sqe_capacity;
++ struct gt_plan translations;
++ uint64_t tables[GC_TABLES][GT_ENTRIES];
++};
++/* No physical dereference, device write, alias conversion or publication.
++ * Output is valid only on GC_OK. The table page's fourth 4-KiB quarter is not
++ * used; the native adapter must retain/check it as a guard. Table CPU output
++ * must be copied into the separately owned table backing before publication. */
++int gc_build(struct gc_plan*,const struct gc_request*);
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_native.inc
+@@ -0,0 +1,212 @@
++/* Explicit kernel-only CP bring-up. Never returns into G8 reset/cleanup once
++ * a new borrower can exist. No public user client or arbitrary command API. */
++#include "ziyi_g24_record.h"
++#include "ziyi_g7_sha256.h"
++#include <pexpert/arm64/ziyi_log_strip.h>
++static struct {
++ struct g24_workspace w;struct hop pages;struct hop_xnu owner;
++ struct zg_state*s;struct zg_mapping maps[3],zap;
++ unsigned mode,prepared,checked_phase,metadata_verified,zap_backed,zap_copied,smc_inflight;
++ uint32_t zap_crc,guard_error;
++ uint8_t zap_backup[2][4096];
++} g24n;
++static int g24n_stop(unsigned error){g24n.w.r.failure_phase=g24n.w.r.phase;g24n.w.r.phase=G24_REFUSED;g24n.w.r.error=error;g24n.w.r.retained=1;return 0;}
++static void*g24n_pointer(uint64_t at){
++ if(at&3)return NULL;
++ for(unsigned i=0;i<3;i++){struct zg_mapping*m=&g24n.maps[i];uint64_t off;if(m->page_va&&zg_region_offset(&m->region,at,4,&off))return(void*)(uintptr_t)(m->page_va+m->geometry.bias+off);}
++ return NULL;
++}
++static int g24n_raw(uint64_t at,uint32_t*out){void*p=g24n_pointer(at);if(!p)return 0;*out=*(volatile uint32_t*)p;zg_barrier(NULL);return 1;}
++static int g24n_lease(void){struct zg_state*s=g24n.s;return s==&zg&&g24n.mode==1&&g24n.prepared&&g24n.w.r.epoch&&s->lease_epoch==g24n.w.r.epoch&&__atomic_load_n(&s->lease,__ATOMIC_ACQUIRE)==1&&s->gmu_enabled==2&&zg_adt_check(s,0);}
++static int g24n_tables(void){
++ const struct gc_plan*p=&g24n.w.memory;const struct hop*h=&g24n.pages;
++ if(!p->valid||p->epoch!=g24n.w.r.epoch||h->count!=8||p->translations.valid!=1||p->translations.table_count!=3||p->translations.mapped_pages!=24||p->ring_iova!=GC_IOVA||p->pixel_iova!=GC_IOVA+16384||p->fence_iova!=GC_IOVA+32768||p->sqe_iova!=GC_IOVA+49152||p->sqe_capacity!=49152)return 0;
++ for(unsigned i=0;i<8;i++){
++  if(!h->page[i].pa||(h->page[i].pa&16383)||h->page[i].pa>=(1ULL<<36)||h->page[i].pa==g24n.s->hfi_memory.page[0].pa)return 0;
++  for(unsigned j=0;j<i;j++)if(h->page[j].pa==h->page[i].pa)return 0;
++ }
++ const volatile uint64_t*t=(volatile uint64_t*)(uintptr_t)h->va;
++ for(unsigned level=0;level<3;level++){
++  if(p->translations.table_physical[level]!=h->page[0].pa+level*4096)return 0;
++  for(unsigned index=0;index<512;index++){
++   uint64_t expected=0;
++   if(level==0&&index==(GC_IOVA>>30))expected=(h->page[0].pa+4096)|3;
++   if(level==1&&index==((GC_IOVA>>21)&511))expected=(h->page[0].pa+8192)|3;
++   unsigned first=(GC_IOVA>>12)&511;
++   if(level==2&&index>=first&&index<first+24){unsigned n=index-first;expected=(h->page[1+n/4].pa+(n%4)*4096)|GT_LEAF_ATTR|(n>=12?0xc0:0x40);}
++   if(t[level*512+index]!=expected||p->tables[level][index]!=expected)return 0;
++  }
++ }
++ for(unsigned i=3*4096;i<16384;i++)if(((volatile uint8_t*)t)[i]!=0xa5)return 0;
++ return 1;
++}
++static int g24n_qualified(void*ctx,uint64_t epoch,unsigned phase){
++ struct zg_state*s=ctx;uint32_t fw,hfi,reset,smr,s2cr,control;
++ if(s!=g24n.s||!g24n_lease()||epoch!=g24n.w.r.epoch||phase!=g24n.w.r.phase||g23.record.state!=GS_COMPLETE||g23.record.error||g23.record.acks!=5||g23.record.epoch!=epoch)return 0;
++ g24n.guard_error=1;
++ if(g24n.checked_phase!=phase){if(!hop_xnu_validate(&g24n.pages,&g24n.owner)||!hop_xnu_validate(&s->hfi_memory,&s->hfi_owner)||!g24n_tables())return 0;g24n.checked_phase=phase;}
++ g24n.guard_error=2;
++ if(!g24n_raw(0x3d7e070,&fw)||!g24n_raw(0x3d7e600,&hfi)||!g24n_raw(0x3d7e000,&reset)||fw!=0x100||hfi!=1||reset)return 0;
++ g24n.guard_error=3;
++ if(!g24n_raw(0x3da0800,&smr)||!g24n_raw(0x3da0c00,&s2cr)||!g24n_raw(0x3db2000,&control)||smr!=0x84000005||s2cr!=0x302||control!=0xc00027)return 0;
++ g24n.guard_error=4;
++ if(g24n.w.r.route_live){
++  const uint64_t at[]={0x3da0804,0x3da0c04,0x3da1000,0x3da1800,0x3db0000,0x3db0010,0x3db0030,0x3db0020,0x3db0024};
++  const uint32_t want[]={0x84000000,0x300,0x1f300,1,0xc00127,0x38071,0x803519,(uint32_t)g24n.pages.page[0].pa,(uint32_t)(g24n.pages.page[0].pa>>32)};
++  for(unsigned i=0;i<9;i++){uint32_t got;if(!g24n_raw(at[i],&got)||got!=want[i])return 0;}
++ }
++ g24n.guard_error=5;
++ for(unsigned i=2;i<6;i++)if(!g24n_raw(0x3da0800+4*i,&smr)||!g24n_raw(0x3da0c00+4*i,&s2cr)||smr||s2cr!=0x20000)return 0;
++ g24n.guard_error=6;
++ for(unsigned i=0;i<8;i++)if(kvtophys((vm_offset_t)(g24n.pages.va+16384*i))!=g24n.pages.page[i].pa)return 0;
++ g24n.guard_error=0;return 1;
++}
++static int g24n_read(void*ctx,unsigned space,unsigned id,uint32_t*out){
++ if(ctx!=g24n.s||!out||!g24n_qualified(ctx,g24n.w.r.epoch,g24n.w.r.phase))return 0;
++ uint64_t at=g24_register_address(space,id);if(!at)return 0;
++ /* No GX register load before grant/power proof. A map alone is not access. */
++ if(at<0x3d40000&&at>=0x3d00000&&(!g24n.w.r.power_grant||(g24n.w.r.sptprac&0xc0)))return 0;
++ return g24n_raw(at,out);
++}
++static int g24n_packet(void){
++ struct g24_workspace*w=&g24n.w;uint32_t expected[GP_WORDS];unsigned from=0,count=0;
++ if(w->r.phase==G24_ME_INIT){uint32_t init[9]={0x70c80008,0x2f,3,0x20000000,0,0,0,0,0};memcpy(expected,init,sizeof(init));count=9;}
++ else if(w->r.phase==G24_UNSECURE){expected[0]=0x70e60001;expected[1]=0;from=9;count=2;}
++ else if(w->r.phase==G24_FENCE){expected[0]=0x703d8003;expected[1]=w->memory.fence_iova+8;expected[2]=0;expected[3]=0xc0240000u|(uint32_t)(w->r.epoch&0xffffu);expected[4]=0x70268000;from=11;count=5;}
++ else if(w->r.phase==G24_BLIT){size_t words=0;if(gp_build(expected,GP_WORDS,&w->pixel_request,&words)!=GP_OK||words!=GP_WORDS)return 0;from=16;count=GP_WORDS;}else return 0;
++ if(w->r.ring_words!=from+count||w->r.program_crc!=gs_crc((uint8_t*)expected,count*4))return 0;
++ uint32_t previous;if(!g24n_raw(g24_register_address(G24_CTL,G24_WPTR),&previous)||previous!=from)return 0;
++ for(unsigned i=0;i<count;i++)if(w->ring[from+i]!=expected[i])return 0;
++ return 1;
++}
++static int g24n_write(void*ctx,unsigned space,unsigned id,uint32_t value){
++ struct g24_workspace*w=&g24n.w;if(ctx!=g24n.s||!g24n_qualified(ctx,w->r.epoch,w->r.phase)||w->r.pending_space!=space||w->r.pending_index!=id||w->r.pending_value!=value)return 0;
++ uint64_t at=g24_register_address(space,id);uint32_t current=0;
++ if(!at||((space!=G24_CTL||id!=G24_REQUEST)&&!(space==G24_CTL&&id==G24_ACK)&&!g24n_raw(at,&current))||!g24_store_allowed(w,space,id,value,current))return 0;
++ if(space==G24_CTL){
++  if(id==G24_REQUEST){uint32_t fresh;if(!g24n_raw(0x3d7e648,&fresh)||(fresh&0x80000000))return 0;}
++  if(id==G24_ACK){uint32_t fresh;if(!g24n_raw(0x3d7e648,&fresh)||!(fresh&0x80000000))return 0;}
++  if(id>=G24_SMR&&id<=G24_MAIR1){uint32_t smr,ctl;if(!g24n_raw(0x3da0804,&smr)||smr||!g24n_raw(0x3db0000,&ctl))return 0;if(id!=G24_SCTLR&&id!=G24_S2CR&&id!=G24_SMR&&(ctl&1))return 0;}
++  if(id==G24_WPTR&&!g24n_packet())return 0;
++ }
++ void*p=g24n_pointer(at);if(!p)return 0;
++ /* Retain before a store whose completion can be uncertain. */
++ w->r.hardware_attempted=1;*(volatile uint32_t*)p=value;zg_barrier(ctx);
++#if defined(G24_HOST_TEST)
++ g24_test_after_store(at,value);
++#endif
++ return 1;
++}
++static int g24n_order(void*ctx){if(ctx!=g24n.s)return 0;zg_barrier(ctx);return 1;}
++static int g24n_delay(void*ctx,uint32_t us){if(ctx!=g24n.s||us>100)return 0;zg_delay(ctx,us);return 1;}
++static int g24n_now(void*ctx,uint64_t*out){if(ctx!=g24n.s||!out||zg_frequency()!=19200000)return 0;*out=zg_ticks(ctx);return 1;}
++static int g24n_pas_qualified(void*ctx,uint64_t epoch,unsigned op){
++ struct g24_workspace*w=&g24n.w;if(!g24n_qualified(ctx,epoch,w->r.phase)||w->r.phase!=G24_ZAP||!w->r.cp_started||!g24n.metadata_verified)return 0;
++ if(op==G24P_INFO)return w->pas.state==G24P_NEW;
++ if(op==G24P_METADATA)return w->pas.state==G24P_PROBED&&w->pas.metadata_pa==g24n.pages.page[7].pa;
++ if(op==G24P_RANGE)return w->pas.state==G24P_INIT;
++ if(op==G24P_START)return w->pas.state==G24P_MEMORY&&g24n.zap_copied;
++ return 0;
++}
++static int g24n_smc(void*ctx,uint64_t r[8]){
++ struct g24_workspace*w=&g24n.w;unsigned op=w->pas.state==G24P_NEW?G24P_INFO:w->pas.state==G24P_PROBED?G24P_METADATA:w->pas.state==G24P_INIT?G24P_RANGE:w->pas.state==G24P_MEMORY?G24P_START:0;
++ if(!op||!g24n_pas_qualified(ctx,w->r.epoch,op))return 0;
++ /* Revalidate the original typed arguments even for interrupted calls.
++  * A continuation may carry only the token returned by this PAS session. */
++ if(!r||r[5]||r[7])return 0;
++ if(r[0]==1){if(w->pas.last[0]!=1||r[6]!=w->pas.last[6])return 0;}
++ else if(r[6])return 0;
++ if(op==G24P_INFO){if((r[0]!=1&&r[0]!=0xc2000601ULL&&r[0]!=0x42000601ULL)||r[1]!=1||(r[2]!=0x02000601&&r[2]!=0x02000201&&r[2]!=0x02000202&&r[2]!=0x02000205)||r[3]||r[4])return 0;}
++ else if(op==G24P_METADATA){if((r[0]!=1&&r[0]!=0x42000201)||r[1]!=130||r[2]!=13||r[3]!=g24n.pages.page[7].pa||r[4])return 0;}
++ else if(op==G24P_RANGE){if((r[0]!=1&&r[0]!=0x42000202)||r[1]!=3||r[2]!=13||r[3]!=G24_ZAP_PA||r[4]!=4096)return 0;}
++ else if((r[0]!=1&&r[0]!=0x42000205)||r[1]!=1||r[2]!=13||r[3]||r[4])return 0;
++ g24n.smc_inflight=1;
++#if defined(G24_HOST_TEST)
++ g24_test_smc(r);
++#else
++ register uint64_t x0 __asm__("x0")=r[0],x1 __asm__("x1")=r[1],x2 __asm__("x2")=r[2],x3 __asm__("x3")=r[3];
++ register uint64_t x4 __asm__("x4")=r[4],x5 __asm__("x5")=r[5],x6 __asm__("x6")=r[6],x7 __asm__("x7")=r[7];
++ __asm__ volatile("smc #0":"+r"(x0),"+r"(x1),"+r"(x2),"+r"(x3),"+r"(x4),"+r"(x5),"+r"(x6),"+r"(x7)::"x8","x9","x10","x11","x12","x13","x14","x15","x16","x17","memory");
++ r[0]=x0;r[1]=x1;r[2]=x2;r[3]=x3;r[4]=x4;r[5]=x5;r[6]=x6;r[7]=x7;
++#endif
++ g24n.smc_inflight=0;return 1;
++}
++static int g24n_zap_copy(void*ctx){
++ struct g24_workspace*w=&g24n.w;if(ctx!=g24n.s||!g24n_qualified(ctx,w->r.epoch,G24_ZAP)||w->pas.state!=G24P_MEMORY||!w->pas.image_retained||g24n.zap_copied||w->fw.code_bytes!=1976||w->fw.load_bytes!=4096)return 0;
++ struct zg_geometry geometry;if(!zg_map_geometry(G24_ZAP_PA,4096,PAGE_SIZE,&geometry)||geometry.page_base!=0x8bb18000||geometry.page_span!=16384||geometry.bias!=8192)return 0;
++ vm_offset_t va=io_map(geometry.page_base,geometry.page_span,VM_WIMG_WCOMB,VM_PROT_READ|VM_PROT_WRITE,true);if(!va)return 0;
++ g24n.zap.region=(struct zg_region){G24_ZAP_PA,4096};g24n.zap.geometry=geometry;g24n.zap.page_va=va;
++ /* This is a partial reserved page, never an owned allocator page. The
++  * lower shared 8KiB is not read or written. CPU accesses stay inside the
++  * 4KiB image authorized by successful PAS_MEM_SETUP. */
++ volatile uint8_t*dst=(volatile uint8_t*)(uintptr_t)(g24n.zap.page_va+g24n.zap.geometry.bias);
++ for(unsigned pass=0;pass<2;pass++){for(unsigned i=0;i<4096;i++)g24n.zap_backup[pass][i]=dst[i];zg_barrier(ctx);}
++ if(memcmp(g24n.zap_backup[0],g24n.zap_backup[1],4096))return 0;
++ uint8_t a[32],b[32];g7_sha256(g24n.zap_backup[0],4096,a);g7_sha256(g24n.zap_backup[1],4096,b);if(memcmp(a,b,32))return 0;
++ g24n.zap_crc=gs_crc(g24n.zap_backup[0],4096);g24n.zap_backed=1;
++ for(unsigned i=0;i<1976;i++)dst[i]=w->fw.code[i];zg_barrier(ctx);
++ for(unsigned i=0;i<4096;i++)if(dst[i]!=(i<1976?w->fw.code[i]:g24n.zap_backup[1][i]))return 0;
++ if(gs_crc(g24n.zap_backup[0],4096)!=g24n.zap_crc||memcmp(g24n.zap_backup[0],g24n.zap_backup[1],4096))return 0;
++ g24n.zap_copied=1;printf("ZIYI G24 ZAP b01 code1976 verified, original4KiB backupCRC%x; shared neighbour untouched\n",g24n.zap_crc);return 1;
++}
++static int g24n_present(void*ctx){
++ struct g24_workspace*w=&g24n.w;if(ctx!=g24n.s||!g24n_qualified(ctx,w->r.epoch,G24_PRESENT)||w->r.verified_pixels!=4096||w->r.proofs!=GP_NATIVE_ALL||!w->r.pas_authenticated||w->r.rptr!=103||w->r.wptr!=103)return 0;
++ uint32_t rptr,wptr,status,intr,cp,protect,fsr,global;
++ if(!g24n_raw(g24_register_address(G24_CTL,G24_RPTR),&rptr)||!g24n_raw(g24_register_address(G24_CTL,G24_WPTR),&wptr)||!g24n_raw(g24_register_address(G24_CTL,G24_STATUS),&status)||!g24n_raw(g24_register_address(G24_CTL,G24_INT),&intr)||!g24n_raw(g24_register_address(G24_CTL,G24_CPFAULT),&cp)||!g24n_raw(g24_register_address(G24_CTL,G24_CPPROTECT),&protect)||!g24n_raw(g24_register_address(G24_CTL,G24_FSR),&fsr)||!g24n_raw(g24_register_address(G24_CTL,G24_GLOBAL_FSR),&global)||rptr!=103||wptr!=103||protect||global||(intr&0x13000282))return 0;
++ struct gp_observation observation={.epoch=w->pixel_request.epoch,.proof_flags=w->r.proofs,.rptr=rptr-16,.wptr=wptr-16,.color_token=w->fence[0],.flush_token=w->fence[1],.cp_fault=cp,.smmu_fault=fsr&0xc00001fe,.gpu_busy=status&(1u<<23)};
++ uint32_t bad=0;if(gp_verify(&w->pixel_request,&observation,w->pixels,GP_PAGE,w->guard,(volatile uint8_t*)w->fence+128,64,&bad)!=GP_OK)return 0;
++ PE_Video video;PE_current_console(&video);
++ if(!zs_strip_pixels(11,video.v_baseAddr,(uint32_t)video.v_width,(uint32_t)video.v_height,(uint32_t)video.v_rowBytes))return 0;
++ const uint64_t first=ZS_PHYS+512ull*ZS_STRIDE+284*4,bytes=511ull*ZS_STRIDE+512*4;
++ struct zg_geometry geometry;if(!zg_map_geometry(first,bytes,PAGE_SIZE,&geometry))return 0;
++ vm_offset_t va=io_map(geometry.page_base,geometry.page_span,VM_WIMG_WCOMB,VM_PROT_READ|VM_PROT_WRITE,true);if(!va)return 0;
++ for(unsigned y=0;y<512;y++){volatile uint32_t*dst=(volatile uint32_t*)(uintptr_t)(va+geometry.bias+(uint64_t)y*ZS_STRIDE);const volatile uint32_t*src=(const volatile uint32_t*)(w->pixels+(y/8)*256);for(unsigned x=0;x<512;x++)dst[x]=src[x/8];}
++ zg_barrier(ctx);ml_io_unmap(va,geometry.page_span);return 1;
++}
++__attribute__((noinline)) int ziyi_gpu_cp_prepare(void*ctx){
++ unsigned enabled=0,preuser=0,startup=0;PE_parse_boot_argn("ziyi_gpu_cp",&enabled,sizeof(enabled));if(enabled!=1)return 1;
++ if(g24n.mode)return 0;g24n.mode=1;g24n.s=ctx;g24n.w.r.phase=G24_NEW;
++ PE_parse_boot_argn("ziyi_gpu_preuser",&preuser,sizeof(preuser));PE_parse_boot_argn("ziyi_gpu_startup",&startup,sizeof(startup));
++ struct zg_state*s=ctx;if(s!=&zg||s->gmu_enabled!=2||preuser!=1||startup!=1||!zg_adt_check(s,0)||!g24_slot_view(&g24n.w.fw))return g24n_stop(G24_E_ARGUMENT);
++ g24n.w.r.epoch=s->lease_epoch;g24n.owner.owner_ctx=s;g24n.owner.owner_evidence=zg_hfi_evidence;
++ if(!hop_xnu_prepare(&g24n.pages,&g24n.owner,s->lease_epoch,8))return g24n_stop(G24_E_OWNER);
++ struct gc_request request={.epoch=s->lease_epoch,.hfi_pa=s->hfi_memory.page[0].pa,.pages=7,.normal_nc=1,.private_owned=1};for(unsigned i=0;i<7;i++)request.pa[i]=g24n.pages.page[i].pa;
++ struct g24_workspace*w=&g24n.w;if(gc_build(&w->memory,&request)!=GC_OK)return g24n_stop(G24_E_SMMU);
++ /* Core unprivileged data; SQE leaves additionally read-only. Tables and
++  * PAS metadata are never exposed as data through the core's IOVA space. */
++ for(unsigned i=0;i<24;i++){unsigned index=((GC_IOVA+i*4096)>>12)&511;w->memory.tables[2][index]|=i>=12?0xc0:0x40;}
++ volatile uint8_t*base=(volatile uint8_t*)(uintptr_t)g24n.pages.va;for(unsigned i=0;i<3*4096;i++)base[i]=((uint8_t*)w->memory.tables)[i];for(unsigned i=3*4096;i<16384;i++)base[i]=0xa5;
++ w->ring=(volatile uint32_t*)(base+16384);w->pixels=base+2*16384;w->fence=(volatile uint32_t*)(base+3*16384);
++ for(unsigned i=0;i<16384;i++)w->pixels[i]=0x55;
++ for(unsigned i=0;i<64;i++)w->guard[i]=((volatile uint8_t*)w->fence)[128+i]=(uint8_t)(0xa5^i);
++ for(unsigned i=4;i<w->fw.sqe_bytes;i++)base[4*16384+i-4]=w->fw.sqe[i];
++ for(unsigned i=0;i<w->fw.mdt_bytes;i++)base[7*16384+i]=w->fw.mdt[i];zg_barrier(s);
++ for(unsigned i=4;i<w->fw.sqe_bytes;i++)if(base[4*16384+i-4]!=w->fw.sqe[i])return g24n_stop(G24_E_GUARD);
++ for(unsigned i=0;i<w->fw.mdt_bytes;i++)if(base[7*16384+i]!=w->fw.mdt[i])return g24n_stop(G24_E_GUARD);g24n.metadata_verified=1;w->pas.metadata_pa=g24n.pages.page[7].pa;
++ if(!hop_xnu_mark_live(&g24n.pages,&g24n.owner))return g24n_stop(G24_E_OWNER);
++ const struct zg_region regions[3]={{0x3d00000,0x40000},{0x3d68000,0x38000},{0x3da0000,0x20000}};
++ for(unsigned i=0;i<3;i++)if(!zg_map_one(&g24n.maps[i],regions[i],VM_PROT_READ|VM_PROT_WRITE))return g24n_stop(G24_E_IO);
++ uint32_t epoch=(uint32_t)s->lease_epoch;if(!epoch)epoch=1;
++ w->pixel_request=(struct gp_request){.epoch=epoch,.color_token=0xc0241001,.flush_token=0xc0241002,.ring={w->memory.ring_iova,16384,epoch,1},.target={w->memory.pixel_iova,16384,epoch,1},.fence={w->memory.fence_iova,16384,epoch,1}};
++ w->r.phase=G24_READY;w->r.retained=1;g24n.prepared=1;
++ printf("ZIYI G24 private NC pages8 prepared: core tables/ring/SQE/PAS metadata; no route or command yet\n");return 1;
++}
++static uint32_t g24n_record_word(const uint8_t*b,unsigned n){uint32_t x=0;for(unsigned j=0;j<4;j++)x|=(uint32_t)b[4*n+j]<<(8*j);return x;}
++__attribute__((noinline)) void ziyi_gpu_cp_print(void*ctx){
++ if(ctx!=g24n.s||g24n.mode!=1)return;
++ static unsigned page;uint8_t bytes[G24_RECORD_BYTES];
++ const struct g24_native_facts facts={g24n.zap_crc,g24n.zap_backed,g24n.zap_copied,g24n.guard_error};
++ if(!g24_record_pack(&g24n.w,&facts,bytes,sizeof(bytes))){printf("G24 record refused encoding\n");return;}
++ unsigned p=page++%2;printf("GCP1 page%u/2 phase%u failedAt%u err%u CRC%08x\n",p,g24n.w.r.phase,g24n.w.r.failure_phase,g24n.w.r.error,g24n_record_word(bytes,3));
++ for(unsigned row=0;row<10;row++){unsigned n=p*40+row*4;printf("C%02u %08x %08x %08x %08x\n",n/4,g24n_record_word(bytes,n),g24n_record_word(bytes,n+1),g24n_record_word(bytes,n+2),g24n_record_word(bytes,n+3));}
++}
++__attribute__((noinline)) int ziyi_gpu_cp_continue(void*ctx){
++ if(g24n.mode!=1)return 0;if(ctx!=g24n.s||!g24n.prepared||g24n.w.r.phase!=G24_READY)return 0;
++ const struct g24_io io={ctx,g24n_qualified,g24n_read,g24n_write,g24n_order,g24n_delay,g24n_now,g24n_zap_copy,g24n_present,{ctx,g24n_pas_qualified,g24n_smc}};
++ int ok=g24_run(&g24n.w,&io);ziyi_gpu_cp_print(ctx);
++ if(g24n.w.r.hardware_attempted||g24n.w.pas.metadata_retained){
++  printf("ZIYI G24 diagnostic parked with all borrowers retained; no return into GMU reset\n");
++  for(;;){zg_sleep(12000);ziyi_gpu_cp_print(ctx);}
++ }
++ return ok;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_pas.c
+@@ -0,0 +1,39 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g24_pas.h"
++#include "ziyi_g24_firmware.h"
++static int g24p_fail(struct g24_pas*p,uint32_t e){p->state=G24P_REFUSED;if(!p->error)p->error=e;return 0;}
++static int g24p_call(struct g24_pas*p,const struct g24_pas_io*o,unsigned op,uint32_t function,uint32_t info,uint64_t a,uint64_t b,uint64_t c){
++ uint64_t session=0;int first_probe=op==G24P_INFO&&p->calls==0;
++ for(unsigned n=0;n<100;n++){
++  if(!o||!o->qualified||!o->smc||!o->qualified(o->ctx,p->epoch,op))return g24p_fail(p,1);
++  uint64_t r[8]={n?1:0x42000000ULL|function|(first_probe?0x80000000ULL:0),info,a,b,c,0,session,0};
++  p->calls++;if(!o->smc(o->ctx,r))return g24p_fail(p,2);
++  for(unsigned i=0;i<8;i++)p->last[i]=r[i];session=r[6];
++  if(r[0]==1){p->interrupts++;continue;}
++  /* No WAITQ/EBUSY retry, no fake supported-peripheral result. */
++  if(r[0])return g24p_fail(p,3);return 1;
++ }
++ return g24p_fail(p,4);
++}
++int g24_pas_probe(struct g24_pas*p,uint64_t epoch,const struct g24_pas_io*o){
++ if(!p||p->state||p->epoch||!epoch)return 0;p->epoch=epoch;
++ const uint32_t query[]={0x0601,0x0201,0x0202,0x0205};
++ for(unsigned i=0;i<4;i++)if(!g24p_call(p,o,G24P_INFO,0x0601,1,0x02000000u|query[i],0,0)||p->last[1]!=1)return g24p_fail(p,5);
++ p->state=G24P_PROBED;return 1;
++}
++int g24_pas_init(struct g24_pas*p,uint64_t pa,const struct g24_pas_io*o){
++ if(!p||p->state!=G24P_PROBED||p->error||!pa||(pa&16383u)||pa>=(1ULL<<36))return 0;
++ p->metadata_pa=pa;p->metadata_retained=1;
++ if(!g24p_call(p,o,G24P_METADATA,0x0201,2u|(2u<<6),13,pa,0)||p->last[1])return g24p_fail(p,6);
++ p->state=G24P_INIT;return 1;
++}
++int g24_pas_memory(struct g24_pas*p,const struct g24_pas_io*o){
++ if(!p||p->state!=G24P_INIT||p->error)return 0;p->image_retained=1;
++ if(!g24p_call(p,o,G24P_RANGE,0x0202,3,13,G24_ZAP_PA,G24_ZAP_LOAD_BYTES)||p->last[1])return g24p_fail(p,7);
++ p->state=G24P_MEMORY;return 1;
++}
++int g24_pas_auth(struct g24_pas*p,const struct g24_pas_io*o){
++ if(!p||p->state!=G24P_MEMORY||p->error)return 0;
++ if(!g24p_call(p,o,G24P_START,0x0205,1,13,0,0)||p->last[1])return g24p_fail(p,8);
++ p->state=G24P_AUTH;return 1;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_pas.h
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stdint.h>
++enum {G24P_NEW=0,G24P_PROBED=1,G24P_INIT=2,G24P_MEMORY=3,G24P_AUTH=4,G24P_REFUSED=5};
++enum {G24P_INFO=1,G24P_METADATA,G24P_RANGE,G24P_START};
++struct g24_pas {uint64_t epoch,last[8],metadata_pa;uint32_t state,error,calls,interrupts,metadata_retained,image_retained;};
++struct g24_pas_io {void*ctx;int(*qualified)(void*,uint64_t,unsigned);int(*smc)(void*,uint64_t[8]);};
++int g24_pas_probe(struct g24_pas*,uint64_t,const struct g24_pas_io*);
++int g24_pas_init(struct g24_pas*,uint64_t,const struct g24_pas_io*);
++int g24_pas_memory(struct g24_pas*,const struct g24_pas_io*);
++int g24_pas_auth(struct g24_pas*,const struct g24_pas_io*);
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_pins.inc
+@@ -0,0 +1,6 @@
++/* Own firmware pins; no vendor bytes in public source. */
++static const uint8_t g24_own_sha[3][32]={
++ {0x01,0xca,0xca,0xfc,0x48,0xae,0x96,0xf0,0x61,0xca,0xa3,0x25,0xa2,0x94,0xa9,0x10,0x24,0xe6,0x26,0x40,0x3b,0x97,0xfa,0x55,0x6a,0x9b,0xcc,0x42,0xe4,0xde,0x67,0x68}, /* a660_sqe.fw */
++ {0xc6,0x6d,0x18,0x86,0x61,0x9a,0x37,0x0a,0x91,0x19,0x3d,0x3d,0xcd,0x65,0xbb,0x70,0xf7,0xab,0x89,0xd4,0xc7,0x58,0x72,0xa4,0x59,0x44,0x0b,0xf4,0x07,0xe3,0xf1,0x27}, /* a662_zap.mdt */
++ {0x1a,0x5f,0xdb,0xf4,0x58,0xea,0x54,0x7c,0x54,0x59,0xb3,0x01,0xab,0x57,0x7a,0x83,0x46,0x17,0x97,0xb7,0x7b,0xde,0x95,0x01,0xfb,0x48,0xfc,0x62,0xd2,0xd5,0xf1,0x85}, /* a662_zap.b01 */
++};
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_pixel.c
+@@ -0,0 +1,65 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ * CPU-only bounded A6xx solid-fill packet builder. No register access, DMA,
++ * ring publication, cache conversion, or fake rendering fallback.
++ * Mesa 25.0.7 fd6_blitter + a6xx.xml; Umi ring_fill (source pins in README).
++ */
++#include "ziyi_g24_pixel.h"
++static uint32_t g24pix_parity(uint32_t n){
++ /* A6xx headers have odd parity over the field and its parity bit. */
++ uint32_t p=1;while(n){p^=n&1u;n>>=1;}return p;
++}
++static uint32_t g24pix_pkt7(uint32_t op,uint32_t n){return 0x70000000u|n|(g24pix_parity(n)<<15)|(op<<16)|(g24pix_parity(op)<<23);}
++static uint32_t g24pix_pkt4(uint32_t reg){return 0x40000001u|(g24pix_parity(1)<<7)|(reg<<8)|(g24pix_parity(reg)<<27);}
++static void g24pix_reg(uint32_t*b,size_t*n,uint32_t r,uint32_t v){b[(*n)++]=g24pix_pkt4(r);b[(*n)++]=v;}
++static int g24pix_valid_page(const struct gp_page*p,uint32_t epoch){
++ return p->iova&&!(p->iova&(GP_PAGE-1))&&p->iova<=UINT32_MAX-GP_PAGE&&
++  p->bytes==GP_PAGE&&p->epoch==epoch&&p->private_owned==1;
++}
++static int g24pix_valid(const struct gp_request*r){
++ return r&&r->epoch&&r->color_token&&r->flush_token&&r->color_token!=r->flush_token&&
++  g24pix_valid_page(&r->ring,r->epoch)&&g24pix_valid_page(&r->target,r->epoch)&&g24pix_valid_page(&r->fence,r->epoch)&&
++  r->ring.iova!=r->target.iova&&r->ring.iova!=r->fence.iova&&r->target.iova!=r->fence.iova;
++}
++static void g24pix_band(uint32_t*b,size_t*n,const struct gp_request*r,uint32_t top,uint32_t bottom,uint32_t red,uint32_t blue){
++ g24pix_reg(b,n,0x8405,top<<16);g24pix_reg(b,n,0x8406,(GP_WIDTH-1)|((bottom-1)<<16));
++ g24pix_reg(b,n,0x8c2c,red);g24pix_reg(b,n,0x8c2d,128);g24pix_reg(b,n,0x8c2e,blue);g24pix_reg(b,n,0x8c2f,255);
++ g24pix_reg(b,n,0x8c00,0x10f03080);g24pix_reg(b,n,0x8400,0x10f03080);
++ g24pix_reg(b,n,0xacc0,0xf181);g24pix_reg(b,n,0x8c01,0);g24pix_reg(b,n,0x8c17,0x430);
++ g24pix_reg(b,n,0x8c18,r->target.iova);g24pix_reg(b,n,0x8c19,0);g24pix_reg(b,n,0x8c1a,GP_PITCH>>6);
++ b[(*n)++]=g24pix_pkt7(0x26,0);g24pix_reg(b,n,0x8e04,0x04100000);
++ b[(*n)++]=g24pix_pkt7(0x2c,1);b[(*n)++]=3;
++ b[(*n)++]=g24pix_pkt7(0x26,0);g24pix_reg(b,n,0x8e04,0);
++}
++static void g24pix_event(uint32_t*b,size_t*n,uint32_t id,uint32_t address,uint32_t token){
++ b[(*n)++]=g24pix_pkt7(0x46,4);b[(*n)++]=id;b[(*n)++]=address;b[(*n)++]=0;b[(*n)++]=token;
++}
++int gp_build(uint32_t*out,size_t capacity,const struct gp_request*r,size_t*words){
++ if(!out||!words||capacity<GP_WORDS)return GP_BAD_ARGUMENT;
++ if(!g24pix_valid(r))return GP_OWNERSHIP;
++ /* Preflight is complete. Invalid inputs leave both outputs untouched. */
++ size_t n=0;out[n++]=g24pix_pkt7(0x65,1);out[n++]=12;
++ g24pix_reg(out,&n,0x8e07,0x18000000); /* FD644/A662 has 3 CCUs, 64 KiB each. */
++ g24pix_band(out,&n,r,0,32,255,0);g24pix_band(out,&n,r,32,64,0,255);
++ g24pix_event(out,&n,0x1d,r->fence.iova,r->color_token);
++ g24pix_event(out,&n,4,r->fence.iova+4,r->flush_token);
++ out[n++]=g24pix_pkt7(0x26,0);*words=n;return GP_OK;
++}
++int gp_submit_allowed(const struct gp_request*r,const struct gp_observation*o){
++ if(!g24pix_valid(r)||!o)return GP_BAD_ARGUMENT;
++ if(o->epoch!=r->epoch||o->proof_flags!=GP_NATIVE_ALL)return GP_STALE;
++ if(o->cp_fault||o->smmu_fault||o->gpu_busy)return GP_FAULT;
++ return GP_OK;
++}
++int gp_verify(const struct gp_request*r,const struct gp_observation*o,
++ const volatile uint8_t*p,size_t bytes,const uint8_t*before,
++ const volatile uint8_t*after,size_t guards,uint32_t*bad){
++ if(!p||bytes!=GP_PAGE||!before||!after||guards!=64||!bad)return GP_BAD_ARGUMENT;
++ int result=gp_submit_allowed(r,o);if(result)return result;
++ if(o->rptr!=GP_WORDS||o->wptr!=GP_WORDS||o->color_token!=r->color_token||o->flush_token!=r->flush_token)return GP_STALE;
++ for(size_t i=0;i<guards;i++)if(before[i]!=after[i])return GP_GUARD;
++ for(uint32_t i=0;i<GP_PAGE;i++){
++  uint32_t c=i&3u;uint8_t expected=c==1?128:c==3?255:c==0?(i<GP_PAGE/2?0:255):(i<GP_PAGE/2?255:0);
++  if(p[i]!=expected){*bad=i;return GP_PIXEL;}
++ }
++ *bad=UINT32_MAX;return GP_OK;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_pixel.h
+@@ -0,0 +1,31 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include <stddef.h>
++#include <stdint.h>
++#define GP_PAGE 16384u
++#define GP_WIDTH 64u
++#define GP_HEIGHT 64u
++#define GP_PITCH 256u
++#define GP_WORDS 87u
++enum { GP_OK=0,GP_BAD_ARGUMENT=1,GP_OWNERSHIP=2,GP_STALE=3,GP_FAULT=4,GP_PIXEL=5,GP_GUARD=6 };
++/* These are CPU-side bounds, not proof that native mappings exist. Native
++ * translation, ownership and cache visibility must be established separately. */
++struct gp_page { uint32_t iova,bytes,epoch,private_owned; };
++struct gp_request {
++ uint32_t epoch,color_token,flush_token;
++ struct gp_page ring,target,fence;
++};
++enum {
++ GP_NATIVE_HFI=1u,GP_NATIVE_GX_POWER=2u,GP_NATIVE_SMMU=4u,
++ GP_NATIVE_SQE=8u,GP_NATIVE_ZAP=16u,GP_NATIVE_CP_FENCE=32u,
++ GP_NATIVE_VISIBILITY=64u,GP_NATIVE_ALL=127u
++};
++struct gp_observation {
++ uint32_t epoch,proof_flags,rptr,wptr,color_token,flush_token;
++ uint32_t cp_fault,smmu_fault,gpu_busy;
++};
++int gp_build(uint32_t *out,size_t capacity,const struct gp_request *request,size_t *words);
++int gp_submit_allowed(const struct gp_request *request,const struct gp_observation *observation);
++int gp_verify(const struct gp_request *request,const struct gp_observation *observation,
++ const volatile uint8_t *pixels,size_t bytes,const uint8_t *guard_before,
++ const volatile uint8_t *guard_after,size_t guard_bytes,uint32_t *first_bad_byte);
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_profile.inc
+@@ -0,0 +1,156 @@
++/* Exact A662 CP profile, KGSL d70a6765 + own DT cc31c7d2. */
++static const struct g24_reg g24_profile[]={
++ {0x03d02108ULL,0x00000001u,0xffffffffu}, /* A6XX_CP_ADDR_MODE_CNTL */
++ {0x03d03004ULL,0x00000001u,0xffffffffu}, /* A6XX_VSC_ADDR_MODE_CNTL */
++ {0x03d21804ULL,0x00000001u,0xffffffffu}, /* A6XX_GRAS_ADDR_MODE_CNTL */
++ {0x03d23814ULL,0x00000001u,0xffffffffu}, /* A6XX_RB_ADDR_MODE_CNTL */
++ {0x03d27804ULL,0x00000001u,0xffffffffu}, /* A6XX_PC_ADDR_MODE_CNTL */
++ {0x03d2f814ULL,0x00000001u,0xffffffffu}, /* A6XX_HLSQ_ADDR_MODE_CNTL */
++ {0x03d29804ULL,0x00000001u,0xffffffffu}, /* A6XX_VFD_ADDR_MODE_CNTL */
++ {0x03d25804ULL,0x00000001u,0xffffffffu}, /* A6XX_VPC_ADDR_MODE_CNTL */
++ {0x03d03800ULL,0x00000001u,0xffffffffu}, /* A6XX_UCHE_ADDR_MODE_CNTL */
++ {0x03d2b804ULL,0x00000001u,0xffffffffu}, /* A6XX_SP_ADDR_MODE_CNTL */
++ {0x03d2d804ULL,0x00000001u,0xffffffffu}, /* A6XX_TPL1_ADDR_MODE_CNTL */
++ {0x03d3e040ULL,0x00000001u,0xffffffffu}, /* A6XX_RBBM_SECVID_TSB_ADDR_MODE_CNTL */
++ {0x03d0f00cULL,0x00071620u,0xffffffffu}, /* 15363 */
++ {0x03d0f010ULL,0x00071620u,0xffffffffu}, /* 15364 */
++ {0x03d0f014ULL,0x00071620u,0xffffffffu}, /* 15365 */
++ {0x03d0f018ULL,0x00071620u,0xffffffffu}, /* 15366 */
++ {0x03d0142cULL,0xffffffffu,0xffffffffu}, /* A6XX_RBBM_PERFCTR_GPU_BUSY_MASKED */
++ {0x03d03814ULL,0xffffffc0u,0xffffffffu}, /* A6XX_UCHE_WRITE_RANGE_MAX_LO */
++ {0x03d03818ULL,0x0001ffffu,0xffffffffu}, /* A6XX_UCHE_WRITE_RANGE_MAX_HI */
++ {0x03d03824ULL,0xfffff000u,0xffffffffu}, /* A6XX_UCHE_TRAP_BASE_LO */
++ {0x03d03828ULL,0x0001ffffu,0xffffffffu}, /* A6XX_UCHE_TRAP_BASE_HI */
++ {0x03d0381cULL,0xfffff000u,0xffffffffu}, /* A6XX_UCHE_WRITE_THRU_BASE_LO */
++ {0x03d03820ULL,0x0001ffffu,0xffffffffu}, /* A6XX_UCHE_WRITE_THRU_BASE_HI */
++ {0x03d03860ULL,0x00000804u,0xffffffffu}, /* A6XX_UCHE_FILTER_CNTL */
++ {0x03d0385cULL,0x00000004u,0xffffffffu}, /* A6XX_UCHE_CACHE_WAYS */
++ {0x03d02308ULL,0x02000140u,0xffffffffu}, /* A6XX_CP_ROQ_THRESHOLDS_2 */
++ {0x03d02304ULL,0x8040362cu,0xffffffffu}, /* A6XX_CP_ROQ_THRESHOLDS_1 */
++ {0x03d02cd0ULL,0x00000020u,0xffffffffu}, /* A6XX_CP_LPAC_PROG_FIFO_SIZE */
++ {0x03d0230cULL,0x00000080u,0xffffffffu}, /* A6XX_CP_MEM_POOL_SIZE */
++ {0x03d27800ULL,0x00300200u,0xffffffffu}, /* A6XX_PC_DBG_ECO_CNTL */
++ {0x03d02634ULL,0x00000001u,0xffffffffu}, /* A6XX_CP_AHB_CNTL */
++ {0x03d01400ULL,0x00000001u,0xffffffffu}, /* A6XX_RBBM_PERFCTR_CNTL */
++ {0x03d23820ULL,0x00000814u,0xffffffffu}, /* A6XX_RB_NC_MODE_CNTL */
++ {0x03d2d810ULL,0x00000004u,0xffffffffu}, /* A6XX_TPL1_NC_MODE_CNTL */
++ {0x03d2b808ULL,0x00000024u,0xffffffffu}, /* A6XX_SP_NC_MODE_CNTL */
++ {0x03d03804ULL,0x00400000u,0xffffffffu}, /* A6XX_UCHE_MODE_CNTL */
++ {0x03d0007cULL,0x4003ffffu,0xffffffffu}, /* A6XX_RBBM_INTERFACE_HANG_INT_CNTL */
++ {0x03d03864ULL,0x00000084u,0xffffffffu}, /* A6XX_UCHE_CLIENT_PF */
++ {0x03d2d820ULL,0x00000000u,0xffffffffu}, /* A6XX_TPL1_BICUBIC_WEIGHTS_TABLE_0 */
++ {0x03d2d824ULL,0x3fe05ff4u,0xffffffffu}, /* A6XX_TPL1_BICUBIC_WEIGHTS_TABLE_1 */
++ {0x03d2d828ULL,0x3fa0ebeeu,0xffffffffu}, /* A6XX_TPL1_BICUBIC_WEIGHTS_TABLE_2 */
++ {0x03d2d82cULL,0x3f5193edu,0xffffffffu}, /* A6XX_TPL1_BICUBIC_WEIGHTS_TABLE_3 */
++ {0x03d2d830ULL,0x3f0243f0u,0xffffffffu}, /* A6XX_TPL1_BICUBIC_WEIGHTS_TABLE_4 */
++ {0x03d02104ULL,0x00000001u,0xffffffffu}, /* A6XX_CP_CHICKEN_DBG */
++ {0x03d00044ULL,0x00000000u,0xffffffffu}, /* A6XX_RBBM_GBIF_CLIENT_QOS_CNTL */
++ {0x03d038f0ULL,0x00066906u,0xffffffffu}, /* A6XX_UCHE_CMDQ_CONFIG */
++ {0x03d02110ULL,0x0000006eu,0xffffffffu}, /* A6XX_CP_APRIV_CNTL */
++ {0x03d3e00cULL,0x00000000u,0xffffffffu}, /* A6XX_RBBM_SECVID_TSB_CNTL */
++ {0x03d3e000ULL,0x00000000u,0xffffffffu}, /* A6XX_RBBM_SECVID_TSB_TRUSTED_BASE_LO */
++ {0x03d3e004ULL,0x00000000u,0xffffffffu}, /* A6XX_RBBM_SECVID_TSB_TRUSTED_BASE_HI */
++ {0x03d3e008ULL,0x00000000u,0xffffffffu}, /* A6XX_RBBM_SECVID_TSB_TRUSTED_SIZE */
++ {0x03d0f000ULL,0x00000140u,0x000003c0u}, /* A6XX_GBIF_CX_CONFIG */
++ {0x03d0213cULL,0x0000000bu,0xffffffffu}, /* A6XX_CP_PROTECT_CNTL */
++ {0x03d02140ULL,0x13fc0000u,0xffffffffu}, /* 2128 */
++ {0x03d02144ULL,0x00140501u,0xffffffffu}, /* 2129 */
++ {0x03d02148ULL,0x0bd0050bu,0xffffffffu}, /* 2130 */
++ {0x03d0214cULL,0x8000050eu,0xffffffffu}, /* 2131 */
++ {0x03d02150ULL,0x80000510u,0xffffffffu}, /* 2132 */
++ {0x03d02154ULL,0x80000534u,0xffffffffu}, /* 2133 */
++ {0x03d02158ULL,0x82080800u,0xffffffffu}, /* 2134 */
++ {0x03d0215cULL,0x802008a0u,0xffffffffu}, /* 2135 */
++ {0x03d02160ULL,0x809008abu,0xffffffffu}, /* 2136 */
++ {0x03d02164ULL,0x02f008d0u,0xffffffffu}, /* 2137 */
++ {0x03d02168ULL,0x81340900u,0xffffffffu}, /* 2138 */
++ {0x03d0216cULL,0x89c8098du,0xffffffffu}, /* 2139 */
++ {0x03d02170ULL,0x80040e00u,0xffffffffu}, /* 2140 */
++ {0x03d02174ULL,0x80300e03u,0xffffffffu}, /* 2141 */
++ {0x03d02178ULL,0x830c3c00u,0xffffffffu}, /* 2142 */
++ {0x03d0217cULL,0x7ffc3cc4u,0xffffffffu}, /* 2143 */
++ {0x03d02180ULL,0x873c8630u,0xffffffffu}, /* 2144 */
++ {0x03d02184ULL,0x80008e00u,0xffffffffu}, /* 2145 */
++ {0x03d02188ULL,0x80008e08u,0xffffffffu}, /* 2146 */
++ {0x03d0218cULL,0x807c8e50u,0xffffffffu}, /* 2147 */
++ {0x03d02190ULL,0x89fc8e80u,0xffffffffu}, /* 2148 */
++ {0x03d02194ULL,0x876c9624u,0xffffffffu}, /* 2149 */
++ {0x03d02198ULL,0x80449e60u,0xffffffffu}, /* 2150 */
++ {0x03d0219cULL,0x861c9e78u,0xffffffffu}, /* 2151 */
++ {0x03d021a0ULL,0x873ca630u,0xffffffffu}, /* 2152 */
++ {0x03d021a4ULL,0x8000ae02u,0xffffffffu}, /* 2153 */
++ {0x03d021a8ULL,0x84bcae50u,0xffffffffu}, /* 2154 */
++ {0x03d021acULL,0x8000b604u,0xffffffffu}, /* 2155 */
++ {0x03d021b0ULL,0x8018b608u,0xffffffffu}, /* 2156 */
++ {0x03d021b4ULL,0x8004be02u,0xffffffffu}, /* 2157 */
++ {0x03d021b8ULL,0x857cbe20u,0xffffffffu}, /* 2158 */
++ {0x03d021bcULL,0x97fcd000u,0xffffffffu}, /* 2159 */
++ {0x03d021c0ULL,0xaffcf000u,0xffffffffu}, /* 2160 */
++ {0x03d021c4ULL,0x7ffcfc00u,0xffffffffu}, /* 2161 */
++ {0x03d021c8ULL,0xfffd8400u,0xffffffffu}, /* 2162 */
++ {0x03d021ccULL,0xfffda400u,0xffffffffu}, /* 2163 */
++ {0x03d021d0ULL,0xfffdc400u,0xffffffffu}, /* 2164 */
++ {0x03d021d4ULL,0x910df400u,0xffffffffu}, /* 2165 */
++ {0x03d021d8ULL,0x01edf844u,0xffffffffu}, /* 2166 */
++ {0x03d021dcULL,0x8001f860u,0xffffffffu}, /* 2167 */
++ {0x03d021e0ULL,0x806df887u,0xffffffffu}, /* 2168 */
++ {0x03d021fcULL,0x8001f8c0u,0xffffffffu}, /* 2175 */
++ {0x03d8ec24ULL,0x00020200u,0xffffffffu}, /* A6XX_GPU_GMU_AO_GMU_CGC_MODE_CNTL */
++ {0x03d8ec28ULL,0x00010111u,0xffffffffu}, /* A6XX_GPU_GMU_AO_GMU_CGC_DELAY_CNTL */
++ {0x03d8ec2cULL,0x00005555u,0xffffffffu}, /* A6XX_GPU_GMU_AO_GMU_CGC_HYST_CNTL */
++ {0x03d7e008ULL,0x00000000u,0xffffffffu}, /* A6XX_GMU_CX_GMU_WFI_CONFIG */
++ {0x03d038e8ULL,0x00020000u,0x00070000u}, /* A6XX_UCHE_GBIF_GX_CONFIG */
++ {0x03d6a200ULL,0x00000000u,0x00000001u}, /* A6XX_GPU_GMU_GX_SPTPRAC_CLOCK_CONTROL */
++ {0x03d002c0ULL,0x02222222u,0xffffffffu}, /* 176 */
++ {0x03d002d0ULL,0x02222220u,0xffffffffu}, /* 180 */
++ {0x03d002e0ULL,0x00000080u,0xffffffffu}, /* 184 */
++ {0x03d002f0ULL,0x0000f3cfu,0xffffffffu}, /* 188 */
++ {0x03d00300ULL,0x22222222u,0xffffffffu}, /* 192 */
++ {0x03d00310ULL,0x22222222u,0xffffffffu}, /* 196 */
++ {0x03d00320ULL,0x22222222u,0xffffffffu}, /* 200 */
++ {0x03d00330ULL,0x00022222u,0xffffffffu}, /* 204 */
++ {0x03d00340ULL,0x11111111u,0xffffffffu}, /* 208 */
++ {0x03d00350ULL,0x11111111u,0xffffffffu}, /* 212 */
++ {0x03d00360ULL,0x11111111u,0xffffffffu}, /* 216 */
++ {0x03d00370ULL,0x00011111u,0xffffffffu}, /* 220 */
++ {0x03d00380ULL,0x77777777u,0xffffffffu}, /* 224 */
++ {0x03d00390ULL,0x77777777u,0xffffffffu}, /* 228 */
++ {0x03d003a0ULL,0x77777777u,0xffffffffu}, /* 232 */
++ {0x03d003b0ULL,0x00077777u,0xffffffffu}, /* 236 */
++ {0x03d003c0ULL,0x22222222u,0xffffffffu}, /* 240 */
++ {0x03d003d0ULL,0x01002222u,0xffffffffu}, /* 244 */
++ {0x03d003e0ULL,0x00002220u,0xffffffffu}, /* 248 */
++ {0x03d00400ULL,0x00040f00u,0xffffffffu}, /* 256 */
++ {0x03d00410ULL,0x25222022u,0xffffffffu}, /* 260 */
++ {0x03d00414ULL,0x00005555u,0xffffffffu}, /* 261 */
++ {0x03d00418ULL,0x00000011u,0xffffffffu}, /* 262 */
++ {0x03d0041cULL,0x00445044u,0xffffffffu}, /* 263 */
++ {0x03d00420ULL,0x04222222u,0xffffffffu}, /* 264 */
++ {0x03d00444ULL,0x00002222u,0xffffffffu}, /* 273 */
++ {0x03d00450ULL,0x00222222u,0xffffffffu}, /* 276 */
++ {0x03d0045cULL,0x00000002u,0xffffffffu}, /* 279 */
++ {0x03d0046cULL,0x00002222u,0xffffffffu}, /* 283 */
++ {0x03d00424ULL,0x00004000u,0xffffffffu}, /* 265 */
++ {0x03d00448ULL,0x00002222u,0xffffffffu}, /* 274 */
++ {0x03d00454ULL,0x00000200u,0xffffffffu}, /* 277 */
++ {0x03d00470ULL,0x00000000u,0xffffffffu}, /* 284 */
++ {0x03d00428ULL,0x00000000u,0xffffffffu}, /* 266 */
++ {0x03d0044cULL,0x00000000u,0xffffffffu}, /* 275 */
++ {0x03d00458ULL,0x04104004u,0xffffffffu}, /* 278 */
++ {0x03d00474ULL,0x00000000u,0xffffffffu}, /* 285 */
++ {0x03d00480ULL,0x00000222u,0xffffffffu}, /* 288 */
++ {0x03d00484ULL,0x00000111u,0xffffffffu}, /* 289 */
++ {0x03d00488ULL,0x00000000u,0xffffffffu}, /* 290 */
++ {0x03d0042cULL,0x22222222u,0xffffffffu}, /* 267 */
++ {0x03d00440ULL,0x00000004u,0xffffffffu}, /* 272 */
++ {0x03d0043cULL,0x00000002u,0xffffffffu}, /* 271 */
++ {0x03d014ccULL,0x00000182u,0xffffffffu}, /* 1331 */
++ {0x03d00110ULL,0x00000000u,0xffffffffu}, /* 68 */
++ {0x03d00108ULL,0x00000000u,0xffffffffu}, /* 66 */
++ {0x03d00460ULL,0x00000222u,0xffffffffu}, /* 280 */
++ {0x03d00464ULL,0x00000111u,0xffffffffu}, /* 281 */
++ {0x03d00468ULL,0x00000555u,0xffffffffu}, /* 282 */
++ {0x03d6a200ULL,0x00000001u,0x00000001u}, /* A6XX_GPU_GMU_GX_SPTPRAC_CLOCK_CONTROL */
++ {0x03d002b8ULL,0x8aa8aa82u,0xffffffffu}, /* A6XX_RBBM_CLOCK_CNTL */
++};
++#define G24_PROFILE_COUNT 152u
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_record.c
+@@ -0,0 +1,92 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#include "ziyi_g24_record.h"
++#include "ziyi_g23_startup.h"
++static void g24r_put(uint8_t*b,unsigned n,uint32_t x){for(unsigned j=0;j<4;j++)b[4*n+j]=(uint8_t)(x>>(8*j));}
++static uint32_t g24r_get(const uint8_t*b,unsigned n){uint32_t x=0;for(unsigned j=0;j<4;j++)x|=(uint32_t)b[4*n+j]<<(8*j);return x;}
++int g24_record_valid(const uint8_t*b,size_t n){
++ if(!b||n!=G24_RECORD_BYTES||g24r_get(b,0)!=0x31504347||g24r_get(b,1)!=1||g24r_get(b,2)!=n||g24r_get(b,3)!=gs_crc(b+16,n-16))return 0;
++ if(g24r_get(b,4)>G24_REFUSED||g24r_get(b,5)>G24_REFUSED||g24r_get(b,7)>127||g24r_get(b,79))return 0;
++ if(g24r_get(b,4)==G24_DONE&&(g24r_get(b,6)||g24r_get(b,7)!=127||g24r_get(b,24)!=103||g24r_get(b,25)!=103||g24r_get(b,41)!=4096||g24r_get(b,43)!=1))return 0;
++ return 1;
++}
++__attribute__((noinline)) int g24_record_pack(const struct g24_workspace*w,const struct g24_native_facts*f,uint8_t*out,size_t n){
++ if(!w||!f||!out||n!=G24_RECORD_BYTES)return 0;
++ uint8_t b[G24_RECORD_BYTES]={0};const struct g24_record*r=&w->r;
++ g24r_put(b,0,0x31504347);g24r_put(b,1,1);g24r_put(b,2,G24_RECORD_BYTES);
++ g24r_put(b,4,r->phase);
++ g24r_put(b,5,r->failure_phase);
++ g24r_put(b,6,r->error);
++ g24r_put(b,7,r->proofs);
++ g24r_put(b,8,r->reads);
++ g24r_put(b,9,r->writes);
++ g24r_put(b,10,r->pending_space);
++ g24r_put(b,11,r->pending_index);
++ g24r_put(b,12,r->pending_value);
++ g24r_put(b,13,r->hardware_attempted);
++ g24r_put(b,14,r->power_grant);
++ g24r_put(b,15,r->sptprac);
++ g24r_put(b,16,r->gdsc);
++ g24r_put(b,17,r->profile_count);
++ g24r_put(b,18,r->profile_cursor);
++ g24r_put(b,19,r->smmu_cursor);
++ g24r_put(b,20,r->cp_cursor);
++ g24r_put(b,21,r->ring_words);
++ g24r_put(b,22,r->blit_begin);
++ g24r_put(b,23,r->blit_words);
++ g24r_put(b,24,r->rptr);
++ g24r_put(b,25,r->wptr);
++ g24r_put(b,26,r->status);
++ g24r_put(b,27,r->int_status);
++ g24r_put(b,28,r->cp_fault);
++ g24r_put(b,29,r->cp_protect);
++ g24r_put(b,30,r->smmu_fsr);
++ g24r_put(b,31,r->smmu_fsynr);
++ g24r_put(b,32,r->smmu_far_lo);
++ g24r_put(b,33,r->smmu_far_hi);
++ g24r_put(b,34,r->global_fsr);
++ g24r_put(b,35,r->core_saved);
++ g24r_put(b,36,r->profile_saved);
++ g24r_put(b,37,r->route_live);
++ g24r_put(b,38,r->cp_started);
++ g24r_put(b,39,r->pas_authenticated);
++ g24r_put(b,40,r->fence_value);
++ g24r_put(b,41,r->verified_pixels);
++ g24r_put(b,42,r->first_bad_byte);
++ g24r_put(b,43,r->presented);
++ g24r_put(b,44,r->retained);
++ g24r_put(b,45,r->program_crc);
++ g24r_put(b,46,r->pixel_crc);
++ g24r_put(b,47,r->guard_crc);
++ g24r_put(b,48,r->proofs);
++ g24r_put(b,49,r->verify_code);
++ g24r_put(b,50,r->last_space);
++ g24r_put(b,51,r->last_index);
++ g24r_put(b,52,r->last_value);
++ g24r_put(b,53,r->last_valid);
++ g24r_put(b,54,(uint32_t)r->epoch);
++ g24r_put(b,55,(uint32_t)(r->epoch>>32));
++ g24r_put(b,56,(uint32_t)r->start);
++ g24r_put(b,57,(uint32_t)(r->start>>32));
++ g24r_put(b,58,(uint32_t)r->end);
++ g24r_put(b,59,(uint32_t)(r->end>>32));
++ g24r_put(b,60,w->pas.state);
++ g24r_put(b,61,w->pas.error);
++ g24r_put(b,62,w->pas.calls);
++ g24r_put(b,63,w->pas.interrupts);
++ g24r_put(b,64,w->pas.metadata_retained);
++ g24r_put(b,65,w->pas.image_retained);
++ g24r_put(b,66,(uint32_t)w->pas.last[0]);
++ g24r_put(b,67,(uint32_t)(w->pas.last[0]>>32));
++ g24r_put(b,68,(uint32_t)w->pas.last[1]);
++ g24r_put(b,69,(uint32_t)(w->pas.last[1]>>32));
++ g24r_put(b,70,f->zap_crc);
++ g24r_put(b,71,f->zap_backed);
++ g24r_put(b,72,f->zap_copied);
++ g24r_put(b,73,f->guard_error);
++ g24r_put(b,74,r->initial[G24_SMR]);
++ g24r_put(b,75,r->initial[G24_S2CR]);
++ g24r_put(b,76,r->initial[G24_SCTLR]);
++ g24r_put(b,77,r->initial[G24_RPTR]);
++ g24r_put(b,78,r->initial[G24_WPTR]);
++ g24r_put(b,3,gs_crc(b+16,G24_RECORD_BYTES-16));if(!g24_record_valid(b,sizeof(b)))return 0;for(unsigned i=0;i<G24_RECORD_BYTES;i++)out[i]=b[i];return 1;
++}
+--- /dev/null
++++ b/bsd/dev/ziyi_g24_record.h
+@@ -0,0 +1,7 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#pragma once
++#include "ziyi_g24_engine.h"
++#define G24_RECORD_BYTES 320u
++struct g24_native_facts {uint32_t zap_crc,zap_backed,zap_copied,guard_error;};
++int g24_record_pack(const struct g24_workspace*,const struct g24_native_facts*,uint8_t*,size_t);
++int g24_record_valid(const uint8_t*,size_t);
+--- a/bsd/dev/ziyi_gpu_probe.c
++++ b/bsd/dev/ziyi_gpu_probe.c
+@@ -170,11 +170,15 @@
+  /* Re-decode fixed immutable file-backed section, never a boot pointer/flag. */
+  return g8_slot_copy(s->firmware.firmware,sizeof(s->firmware.firmware),&actual)&&memcmp(&actual,b,sizeof(actual))==0;
+ }
++int ziyi_gpu_cp_prepare(void*);
++int ziyi_gpu_cp_continue(void*);
++void ziyi_gpu_cp_print(void*);
+ int ziyi_gpu_startup_prepare(void*);
+ int ziyi_gpu_startup_continue(void*);
+ void ziyi_gpu_startup_print(void*);
+ #include "ziyi_g19_native.inc"
+ #include "ziyi_g23_native.inc"
++#include "ziyi_g24_native.inc"
+ /* G11_RETAINED_CODEC_BEGIN */
+ /* SPDX-License-Identifier: MIT */
+ #include <stddef.h>
+@@ -315,7 +319,7 @@
+   s->hfi_record.last_health.helper_phase=0x10000u|r->phase;
+   s->hfi_record.last_health.helper_error=r->error|(s->hfi_memory.error<<8)|(ziyi_hop_pmap_last_error()<<16);
+  }
+- zg_hfi_print(s);ziyi_gpu_startup_print(s);zg_g20_trace_print(s);
++ zg_hfi_print(s);ziyi_gpu_startup_print(s);ziyi_gpu_cp_print(s);zg_g20_trace_print(s);
+  /* CPU-only snapshot. No additional MMIO, including on a poisoned lease. */
+  if(r->flags&G8_SAVED){
+   char pages[GSR_PAGES][GSR_PARTS][GSR_CHARS+1];
+@@ -407,3 +411,15 @@
+ 
+ #include "ziyi_g23_resources.c"
+ #include "ziyi_g23_startup.c"
++
++#include "ziyi_g24_firmware.c"
++
++#include "ziyi_g24_pas.c"
++
++#include "ziyi_g24_memory.c"
++
++#include "ziyi_g24_pixel.c"
++
++#include "ziyi_g24_engine.c"
++
++#include "ziyi_g24_record.c"
+--- a/bsd/dev/ziyi_g19_native.inc
++++ b/bsd/dev/ziyi_g19_native.inc
+@@ -1,166 +1,167 @@
+-/* G19 one-command HFI adapter. No CoreAnimation/Metal/client publication. */
+-#define G19_INIT 0x03d7e618ULL
+-#define G19_BELL 0x03d7e650ULL
+-#define G19_STATUS 0x03d7e600ULL
+-#define G19_FW 0x03d7e070ULL
+-extern unsigned int ziyi_hop_pmap_last_error(void);
+-
+-static int zg_hfi_lease(struct zg_state*s,uint64_t epoch){
+- return s->gmu_enabled==2 && epoch &&
+-  __atomic_load_n(&s->lease,__ATOMIC_ACQUIRE)==1 &&
+-  s->lease_epoch==epoch && s->firmware.record.epoch==epoch;
+-}
+-static int zg_hfi_evidence(void*ctx,uint64_t epoch,uint32_t*facts){
+- struct zg_state*s=ctx;struct g8_record*r=&s->firmware.record;*facts=0;
+- if(!zg_hfi_lease(s,epoch)||r->poison||!zg_adt_check(s,0))return 0;
+- *facts=HOP_LEASE_HELD;
+- int ok;uint32_t reset=(uint32_t)zg_g8_load(s,GD_RESET,4,&ok);if(!ok)return 0;
+- if(reset!=1)return 1;
+- *facts|=HOP_RESET_HELD;
+- /* Preparation is before this GMU's own route/publication, while the
+-  * qualified inherited halt/ACK tuple and reset keep its bus quiescent. */
+- if((r->flags&(G8_SAVED|G8_SCOPED))!=(G8_SAVED|G8_SCOPED)||
+-    r->flags&(G8_MAPPED|G8_PUBLISHED|G8_RELEASED_RESET))return 1;
+- uint32_t halt=(uint32_t)zg_g8_load(s,GD_HALT,4,&ok);if(!ok)return 0;
+- uint32_t ack=(uint32_t)zg_g8_load(s,GD_ACK,4,&ok);if(!ok)return 0;
+- if(r->bus_observations!=2||halt!=r->initial_halt||ack!=r->initial_ack||
+-    !((halt==8&&ack==3)||(!halt&&!ack)))return 1;
+- *facts|=HOP_DRAINED|HOP_GMU_UNMAPPED;return 1;
+-}
+-static void zg_hfi_memory_failure(struct zg_state*s){
+- struct g19_hfi_record*d=&s->hfi_record;
+- d->stage=G19_HFI_OWNER;d->error=G19_HFI_OWNERSHIP;
+- d->last_health.helper_phase=s->hfi_memory.state;
+- d->last_health.helper_error=(s->hfi_memory.error<<8)|ziyi_hop_pmap_last_error();
+- printf("ZIYI HFI memory STOP state%u err%u pmap%u va%llx pa%llx alias%llx retained1\n",
+-  s->hfi_memory.state,s->hfi_memory.error,ziyi_hop_pmap_last_error(),
+-  s->hfi_memory.va,s->hfi_memory.page[0].pa,s->hfi_memory.page[0].aperture);
+-}
+-static int zg_hfi_prepare(void*ctx,struct g8_workspace*w,const struct g8_io*io){
+- (void)io;struct zg_state*s=ctx;struct g19_hfi_record*d=&s->hfi_record;
+- bzero(d,sizeof(*d));d->stage=G19_HFI_OWNER;d->flags=G19_HFI_RETAIN|G19_HFI_PLANNED;
+- d->error=G19_HFI_OWNERSHIP;
+- d->epoch=w->record.epoch;d->gmu_address=w->firmware_plan.hfi_address;
+- d->sequence=1;d->poll_cap=50000;d->delay_us=100;d->timeout_ticks=5*zg_frequency();
+- (void)gh_version_command(1,d->sent);
+- s->hfi_owner.owner_ctx=s;s->hfi_owner.owner_evidence=zg_hfi_evidence;
+- if(w!=&s->firmware||!hop_xnu_prepare(&s->hfi_memory,&s->hfi_owner,w->record.epoch,1)||
+-    !gm_memory_bind_hfi(&w->memory,(void*)(uintptr_t)s->hfi_memory.va,
+-                        GN_HFI_BYTES,w->firmware_plan.hfi_address)){
+-  zg_hfi_memory_failure(s);return 0;
+- }
+- printf("ZIYI HFI page NormalNC16K pa%llx aperture%llx, queueIOVA%x bytes%u\n",
+-  s->hfi_memory.page[0].pa,s->hfi_memory.page[0].aperture,
+-  w->firmware_plan.hfi_address,GN_HFI_BYTES);
+- return 1;
+-}
+-static int zg_hfi_publish(void*ctx,struct g8_workspace*w,const struct g8_io*io){
+- (void)io;struct zg_state*s=ctx;
+- if(w!=&s->firmware||w->memory.external_hfi!=(void*)(uintptr_t)s->hfi_memory.va||
+-    !hop_xnu_mark_live(&s->hfi_memory,&s->hfi_owner)){
+-  zg_hfi_memory_failure(s);return 0;
+- }
+- /* All four GMU pages must map the qualified allocation, never its former
+-  * unused static placeholder. Publication follows this exact table check. */
+- for(unsigned off=0;off<GN_HFI_BYTES;off+=GT_PAGE){
+-  uint64_t pa=0;
+-  if(gt_lookup(&w->memory.table_plan,w->memory.tables,
+-     w->firmware_plan.hfi_address+off,&pa)!=1||
+-     pa!=s->hfi_memory.page[0].pa+off){zg_hfi_memory_failure(s);return 0;}
+- }
+- return 1;
+-}
+-static int zg_hfi_qualified(void*ctx,uint64_t epoch){
+- struct zg_state*s=ctx;struct g8_record*r=&s->firmware.record;
+- return zg_hfi_lease(s,epoch)&&!r->poison&&r->phase==G8_WAIT&&
+-  (r->flags&(G8_FW100|G8_PUBLISHED|G8_MAPPED|G8_LOADED|G8_RELEASED_RESET))==
+-   (G8_FW100|G8_PUBLISHED|G8_MAPPED|G8_LOADED|G8_RELEASED_RESET)&&
+-  s->hfi_memory.state==HOP_LIVE&&s->firmware.memory.state==2&&
+-  s->firmware.memory.external_hfi==(void*)(uintptr_t)s->hfi_memory.va&&
+-  hop_xnu_validate(&s->hfi_memory,&s->hfi_owner);
+-}
+-static int zg_hfi_read32(void*ctx,uint32_t offset,uint32_t*out){
+- struct zg_state*s=ctx;if(!out||offset>GN_HFI_BYTES-4||(offset&3)||
+-  !zg_hfi_qualified(s,s->lease_epoch))return 0;
+- *out=*(volatile uint32_t*)(uintptr_t)(s->hfi_memory.va+offset);return 1;
+-}
+-static int zg_hfi_write32(void*ctx,uint32_t offset,uint32_t value){
+- struct zg_state*s=ctx;
+- if(offset>GN_HFI_BYTES-4||(offset&3)||
+-    (offset!=68&&offset!=112&&!(offset>=GN_HFI_QUEUE0&&offset<GN_HFI_QUEUE0+4096))||
+-    !zg_hfi_qualified(s,s->lease_epoch))return 0;
+- *(volatile uint32_t*)(uintptr_t)(s->hfi_memory.va+offset)=value;return 1;
+-}
+-static int zg_hfi_order(void*ctx,enum gh_live_order order){
+- struct zg_state*s=ctx;if(!zg_hfi_qualified(s,s->lease_epoch))return 0;
+- if(order==GH_LIVE_RELEASE)__asm__ volatile("dmb oshst":::"memory");
+- else if(order==GH_LIVE_ACQUIRE)__asm__ volatile("dmb oshld":::"memory");
+- else return 0;
+- return 1;
+-}
+-static int zg_hfi_health(void*ctx,struct g19_hfi_health*h){
+- struct zg_state*s=ctx;h->helper_phase=s->hfi_memory.state;
+- h->helper_error=(s->hfi_memory.error<<8)|ziyi_hop_pmap_last_error();
+- if(!zg_hfi_qualified(s,s->lease_epoch))return 0;
+- int good;h->fw_result=(uint32_t)zg_g8_load(s,G19_FW,4,&good);if(!good)return 0;
+- h->hfi_status=(uint32_t)zg_g8_load(s,G19_STATUS,4,&good);if(!good)return 0;
+- h->reset=(uint32_t)zg_g8_load(s,GD_RESET,4,&good);if(!good)return 0;
+- if(h->reset||h->hfi_status&~1u||h->fw_result!=0x100u)return 0;
+- uint32_t fsr=(uint32_t)zg_g8_load(s,0x03db2058,4,&good);if(!good||fsr!=0x400)return 0;
+- uint32_t halt=(uint32_t)zg_g8_load(s,GD_HALT,4,&good);if(!good||halt)return 0;
+- uint32_t ack=(uint32_t)zg_g8_load(s,GD_ACK,4,&good);if(!good||(ack!=0&&ack!=3))return 0;
+- return 1;
+-}
+-static int zg_hfi_store(void*ctx,uint64_t address){
+- struct zg_state*s=ctx;struct g19_hfi_health health={0};
+- if((address!=G19_INIT&&address!=G19_BELL)||!zg_adt_check(s,0)||
+-    !zg_hfi_health(s,&health))return 0;
+- if(address==G19_INIT){
+-  if(s->hfi_record.stage!=G19_HFI_INITIALIZE||s->hfi_record.start_calls!=1)return 0;
+-  int good;uint32_t before=(uint32_t)zg_g8_load(s,G19_INIT,4,&good);
+-  if(!good||before>1)return 0;
+- }else{
+-  if(s->hfi_record.stage!=G19_HFI_PUBLISH||s->hfi_record.doorbells!=1||
+-     s->hfi_record.q0_write_stores!=1||s->hfi_record.stores!=5)return 0;
+-  volatile uint32_t*q=(volatile uint32_t*)(uintptr_t)s->hfi_memory.va;
+-  if(q[68/4]!=4||q[GN_HFI_QUEUE0/4]!=0x00100201||
+-     q[GN_HFI_QUEUE0/4+1]!=GH_A662_SUPPORTED_VERSION)return 0;
+- }
+- /* Exact finite source-qualified stores. Doorbell is write-only: no
+-  * fictitious readback or general bit mask is used as authorization. */
+- void*p=zg_g8_pointer(s,address,4,1);if(!p)return 0;
+- zg_barrier(s);*(volatile uint32_t*)p=1;zg_barrier(s);return 1;
+-}
+-static int zg_hfi_start(void*ctx){return zg_hfi_store(ctx,G19_INIT);}
+-static int zg_hfi_bell(void*ctx){return zg_hfi_store(ctx,G19_BELL);}
+-static int zg_hfi_now(void*ctx,uint64_t*out){*out=zg_ticks(ctx);return 1;}
+-static int zg_hfi_delay(void*ctx,uint32_t us){if(us>100)return 0;zg_delay(ctx,us);return 1;}
+-static void zg_hfi_ready(void*ctx,struct g8_workspace*w,const struct g8_io*io){
+- (void)io;struct zg_state*s=ctx;if(w!=&s->firmware)return;
+- const struct g19_hfi_config config={w->record.epoch,5*zg_frequency(),
+-  w->firmware_plan.hfi_address,1,50000,100};
+- const struct g19_hfi_ops ops={s,{s,zg_hfi_qualified,zg_hfi_read32,zg_hfi_write32,
+-  zg_hfi_order,zg_hfi_bell},zg_hfi_health,zg_hfi_start,zg_hfi_now,zg_hfi_delay};
+- int error=g19_hfi_run(&s->hfi_runtime,&config,&ops,&s->hfi_record);
+- printf("ZIYI HFI result stage%u err%d sent%08x/%08x raw%u status%x version%x polls%u retained1\n",
+-  s->hfi_record.stage,error,s->hfi_record.sent[0],s->hfi_record.sent[1],
++/* G19 one-command HFI adapter. No CoreAnimation/Metal/client publication. */
++#define G19_INIT 0x03d7e618ULL
++#define G19_BELL 0x03d7e650ULL
++#define G19_STATUS 0x03d7e600ULL
++#define G19_FW 0x03d7e070ULL
++extern unsigned int ziyi_hop_pmap_last_error(void);
++
++static int zg_hfi_lease(struct zg_state*s,uint64_t epoch){
++ return s->gmu_enabled==2 && epoch &&
++  __atomic_load_n(&s->lease,__ATOMIC_ACQUIRE)==1 &&
++  s->lease_epoch==epoch && s->firmware.record.epoch==epoch;
++}
++static int zg_hfi_evidence(void*ctx,uint64_t epoch,uint32_t*facts){
++ struct zg_state*s=ctx;struct g8_record*r=&s->firmware.record;*facts=0;
++ if(!zg_hfi_lease(s,epoch)||r->poison||!zg_adt_check(s,0))return 0;
++ *facts=HOP_LEASE_HELD;
++ int ok;uint32_t reset=(uint32_t)zg_g8_load(s,GD_RESET,4,&ok);if(!ok)return 0;
++ if(reset!=1)return 1;
++ *facts|=HOP_RESET_HELD;
++ /* Preparation is before this GMU's own route/publication, while the
++  * qualified inherited halt/ACK tuple and reset keep its bus quiescent. */
++ if((r->flags&(G8_SAVED|G8_SCOPED))!=(G8_SAVED|G8_SCOPED)||
++    r->flags&(G8_MAPPED|G8_PUBLISHED|G8_RELEASED_RESET))return 1;
++ uint32_t halt=(uint32_t)zg_g8_load(s,GD_HALT,4,&ok);if(!ok)return 0;
++ uint32_t ack=(uint32_t)zg_g8_load(s,GD_ACK,4,&ok);if(!ok)return 0;
++ if(r->bus_observations!=2||halt!=r->initial_halt||ack!=r->initial_ack||
++    !((halt==8&&ack==3)||(!halt&&!ack)))return 1;
++ *facts|=HOP_DRAINED|HOP_GMU_UNMAPPED;return 1;
++}
++static void zg_hfi_memory_failure(struct zg_state*s){
++ struct g19_hfi_record*d=&s->hfi_record;
++ d->stage=G19_HFI_OWNER;d->error=G19_HFI_OWNERSHIP;
++ d->last_health.helper_phase=s->hfi_memory.state;
++ d->last_health.helper_error=(s->hfi_memory.error<<8)|ziyi_hop_pmap_last_error();
++ printf("ZIYI HFI memory STOP state%u err%u pmap%u va%llx pa%llx alias%llx retained1\n",
++  s->hfi_memory.state,s->hfi_memory.error,ziyi_hop_pmap_last_error(),
++  s->hfi_memory.va,s->hfi_memory.page[0].pa,s->hfi_memory.page[0].aperture);
++}
++static int zg_hfi_prepare(void*ctx,struct g8_workspace*w,const struct g8_io*io){
++ (void)io;struct zg_state*s=ctx;struct g19_hfi_record*d=&s->hfi_record;
++ bzero(d,sizeof(*d));d->stage=G19_HFI_OWNER;d->flags=G19_HFI_RETAIN|G19_HFI_PLANNED;
++ d->error=G19_HFI_OWNERSHIP;
++ d->epoch=w->record.epoch;d->gmu_address=w->firmware_plan.hfi_address;
++ d->sequence=1;d->poll_cap=50000;d->delay_us=100;d->timeout_ticks=5*zg_frequency();
++ (void)gh_version_command(1,d->sent);
++ s->hfi_owner.owner_ctx=s;s->hfi_owner.owner_evidence=zg_hfi_evidence;
++ if(w!=&s->firmware||!hop_xnu_prepare(&s->hfi_memory,&s->hfi_owner,w->record.epoch,1)||
++    !gm_memory_bind_hfi(&w->memory,(void*)(uintptr_t)s->hfi_memory.va,
++                        GN_HFI_BYTES,w->firmware_plan.hfi_address)){
++  zg_hfi_memory_failure(s);return 0;
++ }
++ if(!ziyi_gpu_cp_prepare(s))return 0;
++ printf("ZIYI HFI page NormalNC16K pa%llx aperture%llx, queueIOVA%x bytes%u\n",
++  s->hfi_memory.page[0].pa,s->hfi_memory.page[0].aperture,
++  w->firmware_plan.hfi_address,GN_HFI_BYTES);
++ return 1;
++}
++static int zg_hfi_publish(void*ctx,struct g8_workspace*w,const struct g8_io*io){
++ (void)io;struct zg_state*s=ctx;
++ if(w!=&s->firmware||w->memory.external_hfi!=(void*)(uintptr_t)s->hfi_memory.va||
++    !hop_xnu_mark_live(&s->hfi_memory,&s->hfi_owner)){
++  zg_hfi_memory_failure(s);return 0;
++ }
++ /* All four GMU pages must map the qualified allocation, never its former
++  * unused static placeholder. Publication follows this exact table check. */
++ for(unsigned off=0;off<GN_HFI_BYTES;off+=GT_PAGE){
++  uint64_t pa=0;
++  if(gt_lookup(&w->memory.table_plan,w->memory.tables,
++     w->firmware_plan.hfi_address+off,&pa)!=1||
++     pa!=s->hfi_memory.page[0].pa+off){zg_hfi_memory_failure(s);return 0;}
++ }
++ return 1;
++}
++static int zg_hfi_qualified(void*ctx,uint64_t epoch){
++ struct zg_state*s=ctx;struct g8_record*r=&s->firmware.record;
++ return zg_hfi_lease(s,epoch)&&!r->poison&&r->phase==G8_WAIT&&
++  (r->flags&(G8_FW100|G8_PUBLISHED|G8_MAPPED|G8_LOADED|G8_RELEASED_RESET))==
++   (G8_FW100|G8_PUBLISHED|G8_MAPPED|G8_LOADED|G8_RELEASED_RESET)&&
++  s->hfi_memory.state==HOP_LIVE&&s->firmware.memory.state==2&&
++  s->firmware.memory.external_hfi==(void*)(uintptr_t)s->hfi_memory.va&&
++  hop_xnu_validate(&s->hfi_memory,&s->hfi_owner);
++}
++static int zg_hfi_read32(void*ctx,uint32_t offset,uint32_t*out){
++ struct zg_state*s=ctx;if(!out||offset>GN_HFI_BYTES-4||(offset&3)||
++  !zg_hfi_qualified(s,s->lease_epoch))return 0;
++ *out=*(volatile uint32_t*)(uintptr_t)(s->hfi_memory.va+offset);return 1;
++}
++static int zg_hfi_write32(void*ctx,uint32_t offset,uint32_t value){
++ struct zg_state*s=ctx;
++ if(offset>GN_HFI_BYTES-4||(offset&3)||
++    (offset!=68&&offset!=112&&!(offset>=GN_HFI_QUEUE0&&offset<GN_HFI_QUEUE0+4096))||
++    !zg_hfi_qualified(s,s->lease_epoch))return 0;
++ *(volatile uint32_t*)(uintptr_t)(s->hfi_memory.va+offset)=value;return 1;
++}
++static int zg_hfi_order(void*ctx,enum gh_live_order order){
++ struct zg_state*s=ctx;if(!zg_hfi_qualified(s,s->lease_epoch))return 0;
++ if(order==GH_LIVE_RELEASE)__asm__ volatile("dmb oshst":::"memory");
++ else if(order==GH_LIVE_ACQUIRE)__asm__ volatile("dmb oshld":::"memory");
++ else return 0;
++ return 1;
++}
++static int zg_hfi_health(void*ctx,struct g19_hfi_health*h){
++ struct zg_state*s=ctx;h->helper_phase=s->hfi_memory.state;
++ h->helper_error=(s->hfi_memory.error<<8)|ziyi_hop_pmap_last_error();
++ if(!zg_hfi_qualified(s,s->lease_epoch))return 0;
++ int good;h->fw_result=(uint32_t)zg_g8_load(s,G19_FW,4,&good);if(!good)return 0;
++ h->hfi_status=(uint32_t)zg_g8_load(s,G19_STATUS,4,&good);if(!good)return 0;
++ h->reset=(uint32_t)zg_g8_load(s,GD_RESET,4,&good);if(!good)return 0;
++ if(h->reset||h->hfi_status&~1u||h->fw_result!=0x100u)return 0;
++ uint32_t fsr=(uint32_t)zg_g8_load(s,0x03db2058,4,&good);if(!good||fsr!=0x400)return 0;
++ uint32_t halt=(uint32_t)zg_g8_load(s,GD_HALT,4,&good);if(!good||halt)return 0;
++ uint32_t ack=(uint32_t)zg_g8_load(s,GD_ACK,4,&good);if(!good||(ack!=0&&ack!=3))return 0;
++ return 1;
++}
++static int zg_hfi_store(void*ctx,uint64_t address){
++ struct zg_state*s=ctx;struct g19_hfi_health health={0};
++ if((address!=G19_INIT&&address!=G19_BELL)||!zg_adt_check(s,0)||
++    !zg_hfi_health(s,&health))return 0;
++ if(address==G19_INIT){
++  if(s->hfi_record.stage!=G19_HFI_INITIALIZE||s->hfi_record.start_calls!=1)return 0;
++  int good;uint32_t before=(uint32_t)zg_g8_load(s,G19_INIT,4,&good);
++  if(!good||before>1)return 0;
++ }else{
++  if(s->hfi_record.stage!=G19_HFI_PUBLISH||s->hfi_record.doorbells!=1||
++     s->hfi_record.q0_write_stores!=1||s->hfi_record.stores!=5)return 0;
++  volatile uint32_t*q=(volatile uint32_t*)(uintptr_t)s->hfi_memory.va;
++  if(q[68/4]!=4||q[GN_HFI_QUEUE0/4]!=0x00100201||
++     q[GN_HFI_QUEUE0/4+1]!=GH_A662_SUPPORTED_VERSION)return 0;
++ }
++ /* Exact finite source-qualified stores. Doorbell is write-only: no
++  * fictitious readback or general bit mask is used as authorization. */
++ void*p=zg_g8_pointer(s,address,4,1);if(!p)return 0;
++ zg_barrier(s);*(volatile uint32_t*)p=1;zg_barrier(s);return 1;
++}
++static int zg_hfi_start(void*ctx){return zg_hfi_store(ctx,G19_INIT);}
++static int zg_hfi_bell(void*ctx){return zg_hfi_store(ctx,G19_BELL);}
++static int zg_hfi_now(void*ctx,uint64_t*out){*out=zg_ticks(ctx);return 1;}
++static int zg_hfi_delay(void*ctx,uint32_t us){if(us>100)return 0;zg_delay(ctx,us);return 1;}
++static void zg_hfi_ready(void*ctx,struct g8_workspace*w,const struct g8_io*io){
++ (void)io;struct zg_state*s=ctx;if(w!=&s->firmware)return;
++ const struct g19_hfi_config config={w->record.epoch,5*zg_frequency(),
++  w->firmware_plan.hfi_address,1,50000,100};
++ const struct g19_hfi_ops ops={s,{s,zg_hfi_qualified,zg_hfi_read32,zg_hfi_write32,
++  zg_hfi_order,zg_hfi_bell},zg_hfi_health,zg_hfi_start,zg_hfi_now,zg_hfi_delay};
++ int error=g19_hfi_run(&s->hfi_runtime,&config,&ops,&s->hfi_record);
++ printf("ZIYI HFI result stage%u err%d sent%08x/%08x raw%u status%x version%x polls%u retained1\n",
++  s->hfi_record.stage,error,s->hfi_record.sent[0],s->hfi_record.sent[1],
+   s->hfi_record.raw_count,s->hfi_record.remote_status,s->hfi_record.version,s->hfi_record.polls);
+- if(!error)(void)ziyi_gpu_startup_continue(s);
+-}
+-static void zg_hfi_print(struct zg_state*s){
+- if(s->gmu_enabled!=2)return;
+- uint8_t bytes[G19_HFI_RECORD_BYTES];
+- if(g19_hfi_record_encode(&s->hfi_record,bytes)){
+-  printf("ZIYI HFI record invalid stage%u error%u\n",s->hfi_record.stage,s->hfi_record.error);return;
+- }
+- const char*alphabet="ABCDEFGHJKLMNPQR";char lines[20][33];
+- for(unsigned i=0;i<sizeof(bytes);i++){
+-  lines[i/16][2*(i%16)]=alphabet[bytes[i]>>4];
+-  lines[i/16][2*(i%16)+1]=alphabet[bytes[i]&15];
+- }
+- for(unsigned i=0;i<20;i++)lines[i][32]=0;
+- for(unsigned repeat=0;repeat<3;repeat++)for(unsigned page=0;page<5;page++){
+-  for(unsigned part=0;part<4;part++)printf("ZGHF%u%u %s\n",page+1,part+1,lines[page*4+part]);
+-  zg_sleep(1500);
+- }
+-}
++ if(!error&&ziyi_gpu_startup_continue(s))(void)ziyi_gpu_cp_continue(s);
++}
++static void zg_hfi_print(struct zg_state*s){
++ if(s->gmu_enabled!=2)return;
++ uint8_t bytes[G19_HFI_RECORD_BYTES];
++ if(g19_hfi_record_encode(&s->hfi_record,bytes)){
++  printf("ZIYI HFI record invalid stage%u error%u\n",s->hfi_record.stage,s->hfi_record.error);return;
++ }
++ const char*alphabet="ABCDEFGHJKLMNPQR";char lines[20][33];
++ for(unsigned i=0;i<sizeof(bytes);i++){
++  lines[i/16][2*(i%16)]=alphabet[bytes[i]>>4];
++  lines[i/16][2*(i%16)+1]=alphabet[bytes[i]&15];
++ }
++ for(unsigned i=0;i<20;i++)lines[i][32]=0;
++ for(unsigned repeat=0;repeat<3;repeat++)for(unsigned page=0;page<5;page++){
++  for(unsigned part=0;part<4;part++)printf("ZGHF%u%u %s\n",page+1,part+1,lines[page*4+part]);
++  zg_sleep(1500);
++ }
++}
