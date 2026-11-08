@@ -46,3 +46,6 @@
 
 /xnu/patches/0107-ziyi-g25-defer-optional-counter-and-readable-record.patch -text whitespace=cr-at-eol
 /tools/ziyi-g25/** -text
+
+/xnu/patches/0108-ziyi-g26-initialize-hwcg-before-core-config.patch -text whitespace=cr-at-eol
+/tools/ziyi-g26/** -text

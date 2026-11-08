@@ -11,7 +11,7 @@ raw=(R/'dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_byte
 profile=(O/'sources/bsd/dev/ziyi_g24_profile.inc').read_text();values=[tuple(int(v,16) for v in row) for row in re.findall(r'\{0x([0-9a-f]+)ULL,0x([0-9a-f]+)u,0x([0-9a-f]+)u\}',profile)];assert len(values)==151 and all(v[0]!=0x03d0142c for v in values)
 blob=b''.join(struct.pack('<QII',*v) for v in values);assert raw.count(blob)==1
 assert sha((R/'dxb/xnu/bsd/dev/ziyi_g24_record.c').read_bytes())=='ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f'
-assert sha((R/'dxb/xnu/bsd/dev/ziyi_g24_engine.c').read_bytes())=='edd9f486e3c89414709d4d162c09d7eb28e43b444c922b1f3aa98699ad1361e0'
+assert sha((R/'dxb/xnu/bsd/dev/ziyi_g24_engine.c').read_bytes())=='319a6eb3fee2a78af13e360e4b33f8e43ef5688d790fb4bc2e7e794fbc8c2c35'
 native=(O/'sources/bsd/dev/ziyi_g24_native.inc').read_text();assert 'page++%5' in native and 'row<4' in native and 'unsigned n=p*16+row*4' in native and 'zg_sleep(2000);ziyi_gpu_cp_print(ctx);' in native and b'GCP1 page%u/5' in raw
 host=json.loads((R/'u1-evidence/g25-host/audit.json').read_text());assert host['result']=='G25_DELTA_CONTROLS_PASS' and host['remainingExactReadbackRefusals']==151 and host['sentinels']==4 and host['optionalStores']==0 and host['actualPrinterLossless']
 sys.path.insert(0,str(R/'tools/ziyi-hw'));from macho_text import text_symbols,function_bytes
