@@ -109,8 +109,8 @@
     },
     {
       "path": "tools/ziyi-g24/audit_ci.py",
-      "sha256": "93609a25e3fe6e0569424a504ab88b9c50722f0793529533d4b1d74fe25f33c1",
-      "bytes": 2966
+      "sha256": "62218b7494ad95b61ad61ca543d5468f6bce2bad9beff16d12caf42591c69381",
+      "bytes": 3062
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_engine.c",
@@ -221,6 +221,11 @@
       "path": "tools/ziyi-g24/test_record.c",
       "sha256": "7897fe9f7f2b92b123dd8758d53becdc5505923b639a711e16e8123d5e40e809",
       "bytes": 1073
+    },
+    {
+      "path": "tools/ziyi-g24/linked.py",
+      "sha256": "4b2dda3fc72c7279e378c39e46f82f057509360d13e17b53f4c57f6a15e17529",
+      "bytes": 2654
     }
   ],
   "native": false,

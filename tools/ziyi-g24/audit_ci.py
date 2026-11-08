@@ -2,6 +2,7 @@
 from pathlib import Path
 import hashlib,json,os,struct,sys
 R=Path.cwd();sys.path.insert(0,str(R/'tools/ziyi-hw'));from macho_text import text_symbols,function_bytes
+sys.path.insert(0,str(R/'tools/ziyi-g24'));from linked import audited_function
 sha=lambda b:hashlib.sha256(b).hexdigest();M=json.loads((R/'tools/ziyi-g24/manifest.json').read_text());O=R/'u1-evidence/g24';O.mkdir(exist_ok=False);rows=[]
 for row in M['files']:
  d=(R/'dxb/xnu'/row['path']).read_bytes();assert sha(d)==row['after'],row['path'];p=O/'sources'/row['path'];p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(d);rows.append(dict(path=row['path'],sha256=sha(d),bytes=len(d)))
@@ -12,7 +13,7 @@ raw=(R/'dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_byte
 def body(name):
  f=function_bytes(raw,parsed,name);e=parsed['symbols'][name][0];s=parsed['sections'][e['section']];off=s['offset']+e['address']-s['address'];return e['address'],raw[off:off+f['bytesToNextTextSymbol']]
 for name in M['linkedFunctions']:
- f=function_bytes(raw,parsed,name);f['sampleSHA256']=sha(f.pop('sample'));linked.append(f)
+ f=audited_function(raw,parsed,name,function_bytes);f['sampleSHA256']=sha(f.pop('sample'));linked.append(f)
 def one(caller,callee,tail=False):
  start,b=body(caller);dest=parsed['symbols'][callee][0]['address'];out=[]
  for at in range(0,len(b)-3,4):
