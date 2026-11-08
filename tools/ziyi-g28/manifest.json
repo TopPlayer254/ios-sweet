@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "parentCommit": "36a3d2da6a402010cb85d54e8840ff8081cdab51",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_engine.c",
+      "before": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b",
+      "after": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_engine.h",
+      "before": "57df390dd108decc82d16e1c7f2289a9367876d5843a220d5eb23635ee408e4e",
+      "after": "01ada7cbf03688fabf48846bec00a007db0b7a01f9b39da0c371893a543fb29c"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": "c521d5db2614879e936b02d71fd97d407357f0fb45aa1e0a39d91be3cc25facf",
+      "after": "7def6afd69e4aa41ecb944c20c84c53920209110be13aa426c003e078fe699bb"
+    }
+  ],
+  "patch": "xnu/patches/0110-ziyi-g28-qualify-already-off-clock-noop.patch",
+  "patchSHA256": "338c2e17ca4ad4656052ef6e4e4a27d096bd48c02b984ec3f75dbd480a16523a",
+  "linkedFunctions": [
+    "_g28_clock_select",
+    "_g24_clock_view",
+    "_ziyi_gpu_cp_print"
+  ],
+  "profileSHA256": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+  "recordSHA256": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f",
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g28/README.md",
+      "sha256": "457baec26fa12927ccd181ca9e3f6ec3de65dae2461541b475bffa3dbf6e7430",
+      "bytes": 595
+    },
+    {
+      "path": "tools/ziyi-g28/audit_ci.py",
+      "sha256": "004b128a11f57dcb409f6e43bea20bd5c54e5254f9878610de0830a204f4970a",
+      "bytes": 3796
+    },
+    {
+      "path": "tools/ziyi-g28/g27-engine-before.c",
+      "sha256": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b",
+      "bytes": 14126
+    },
+    {
+      "path": "tools/ziyi-g28/g27-profile-before.inc",
+      "sha256": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+      "bytes": 9444
+    },
+    {
+      "path": "tools/ziyi-g28/hwcg-block.inc",
+      "sha256": "dc03473b6a3dfdb62e79f3ecdeecf43aef398de6a18f08db02cca592d5ec3d4e",
+      "bytes": 2261
+    },
+    {
+      "path": "tools/ziyi-g28/run_already_off_tests.py",
+      "sha256": "136e12a674bdedabf6c60d7d9eb41293eb7926742c2de1a24125673b0d1e3965",
+      "bytes": 3682
+    },
+    {
+      "path": "tools/ziyi-g28/test_already_off.c",
+      "sha256": "3de4d164810053c66904cb4e9e8a58f50a35e2e098a59ce7d884d15392a6abcf",
+      "bytes": 21401
+    }
+  ],
+  "native": false,
+  "gpuPixels": false
+}

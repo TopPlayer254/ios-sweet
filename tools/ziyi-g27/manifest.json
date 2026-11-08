@@ -10,7 +10,7 @@
     {
       "path": "bsd/dev/ziyi_g24_engine.c",
       "before": "319a6eb3fee2a78af13e360e4b33f8e43ef5688d790fb4bc2e7e794fbc8c2c35",
-      "after": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b"
+      "after": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798"
     }
   ],
   "patch": "xnu/patches/0109-ziyi-g27-select-defined-gx-hwcg-off-mode.patch",
@@ -51,10 +51,20 @@
     },
     {
       "path": "tools/ziyi-g27/test_gx_off.c",
-      "sha256": "e8d2d809f1f86ea6613b1a208f067ec0e3cc6f1627eec3cb094c9f7aa7086655",
-      "bytes": 16182
+      "sha256": "6d42078c5ab0c46ae81d66aaf3a95e790f86bffc2b5a61c5e894a213ea621970",
+      "bytes": 16226
     }
   ],
   "native": false,
-  "gpuPixels": false
+  "gpuPixels": false,
+  "g28ClockSelector": {
+    "patch": "xnu/patches/0110-ziyi-g28-qualify-already-off-clock-noop.patch",
+    "sha256": "338c2e17ca4ad4656052ef6e4e4a27d096bd48c02b984ec3f75dbd480a16523a",
+    "engineSHA256": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798",
+    "profileUnchanged": true,
+    "recordUnchanged": true,
+    "alreadyOffReadOnlySelector": true,
+    "strictSPReadback": true,
+    "auxiliaryBytes": 80
+  }
 }

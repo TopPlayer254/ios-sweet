@@ -52,3 +52,6 @@
 
 /xnu/patches/0109-ziyi-g27-select-defined-gx-hwcg-off-mode.patch -text whitespace=cr-at-eol
 /tools/ziyi-g27/** -text
+
+/xnu/patches/0110-ziyi-g28-qualify-already-off-clock-noop.patch -text whitespace=cr-at-eol
+/tools/ziyi-g28/** -text

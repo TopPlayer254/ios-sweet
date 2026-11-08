@@ -20,8 +20,9 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27]
+    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27, codex/ziyi-gpu-already-off-g28]
     paths:
+      - "tools/ziyi-g28/**"
       - "tools/ziyi-g27/**"
       - "tools/ziyi-g26/**"
       - "tools/ziyi-g25/**"
@@ -279,6 +280,9 @@ jobs:
       - name: G27 GX-only HWCG-off exact readback and ROQ controls
         run: python3 tools/ziyi-g27/run_gx_off_tests.py --fixture u1-evidence/g24-host/synthetic-not-signed-capsule.bin --out u1-evidence/g27-host
 
+      - name: G28 already-off clock no-op and strict SP readback controls
+        run: python3 tools/ziyi-g28/run_already_off_tests.py --fixture u1-evidence/g24-host/synthetic-not-signed-capsule.bin --out u1-evidence/g28-host
+
       - name: Build
         working-directory: dxb
         env:
@@ -334,6 +338,9 @@ jobs:
 
       - name: Exact G27 defined GX clock mode and linked guard
         run: python3 tools/ziyi-g27/audit_ci.py
+
+      - name: Exact G28 clock selector and auxiliary telemetry linked paths
+        run: python3 tools/ziyi-g28/audit_ci.py
 
       - uses: actions/upload-artifact@v4
         if: always()

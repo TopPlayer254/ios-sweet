@@ -23,11 +23,18 @@ struct g24_record {
  uint32_t failure_phase,last_space,last_index,last_value,last_valid;
  uint64_t epoch,start,end;
 };
+/* GCK1 is auxiliary telemetry; the320-byte GCP1 ABI is unchanged. */
+#define G28_CLOCK_BYTES 80u
+enum {G28_CLOCK_NONE,G28_CLOCK_PROGRAM,G28_CLOCK_SKIP,G28_CLOCK_REFUSED};
+struct g28_clock_diag {
+ uint32_t mode,valid,clock_before,sp_before,sp_off,sp_now,control_now,clock_now,writes,stable_reads;
+};
 struct g24_workspace {
  struct g24_record r;struct g24_firmware fw;struct gc_plan memory;struct g24_pas pas;
  volatile uint32_t *ring,*fence;volatile uint8_t*pixels;
  struct gp_request pixel_request;
  uint8_t guard[64];uint32_t expected_ring[256];
+ struct g28_clock_diag clock;
 };
 struct g24_io {
  void*ctx;int(*qualified)(void*,uint64_t,unsigned);
@@ -40,3 +47,16 @@ uint64_t g24_register_address(unsigned,unsigned);
 unsigned g24_profile_count(void);
 int g24_store_allowed(const struct g24_workspace*,unsigned,unsigned,uint32_t,uint32_t);
 int g24_run(struct g24_workspace*,const struct g24_io*);
+
+static inline uint32_t g28_clock_crc(const uint8_t*b,size_t n){uint32_t c=~0u;for(size_t i=0;i<n;i++){c^=b[i];for(unsigned j=0;j<8;j++)c=(c>>1)^(0xedb88320u&(0u-(c&1u)));}return ~c;}
+static inline int g28_clock_pack(const struct g24_workspace*w,uint8_t*b,size_t n){
+ if(!w||!b||n!=G28_CLOCK_BYTES||w->clock.mode>3||w->clock.valid>63||w->clock.writes>52||w->clock.stable_reads>174)return 0;
+ const struct g28_clock_diag*d=&w->clock;
+ uint32_t a[20]={0x314b4347u,1,G28_CLOCK_BYTES,0,d->mode,d->valid,d->clock_before,d->sp_before,d->sp_off,d->sp_now,d->control_now,d->clock_now,d->writes,d->stable_reads,w->r.error,w->r.profile_cursor,(uint32_t)w->r.epoch,(uint32_t)(w->r.epoch>>32),0,0};
+ for(unsigned i=0;i<20;i++)for(unsigned j=0;j<4;j++)b[4*i+j]=(uint8_t)(a[i]>>(8*j));
+ uint32_t crc=g28_clock_crc(b+16,64);for(unsigned j=0;j<4;j++)b[12+j]=(uint8_t)(crc>>(8*j));return 1;
+}
+static inline int g28_clock_unpack(const uint8_t*b,size_t n,uint32_t*a){
+ if(!b||!a||n!=G28_CLOCK_BYTES)return 0;for(unsigned i=0;i<20;i++){a[i]=0;for(unsigned j=0;j<4;j++)a[i]|=(uint32_t)b[4*i+j]<<(8*j);}
+ return a[0]==0x314b4347u&&a[1]==1&&a[2]==G28_CLOCK_BYTES&&a[3]==g28_clock_crc(b+16,64)&&a[4]<=3&&a[5]<=63&&a[12]<=52&&a[13]<=174&&!a[18]&&!a[19];
+}

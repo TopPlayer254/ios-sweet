@@ -10,7 +10,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "6f8d335360f831896d8b6ee765ead43a43c57884191a882825ccfb22953032c8",
-      "after": "c521d5db2614879e936b02d71fd97d407357f0fb45aa1e0a39d91be3cc25facf"
+      "after": "7def6afd69e4aa41ecb944c20c84c53920209110be13aa426c003e078fe699bb"
     }
   ],
   "patch": "xnu/patches/0107-ziyi-g25-defer-optional-counter-and-readable-record.patch",
@@ -26,7 +26,7 @@
     },
     {
       "path": "tools/ziyi-g25/audit_ci.py",
-      "sha256": "ea80447d3b8ad0c0638bf4eb25c31c67bef565c5f473b1e66c959ac8fee7b41f",
+      "sha256": "fed47a34ed01fa1c4546cd17884e46a88136e929110c437a5bb4eeef5871d499",
       "bytes": 2809
     },
     {
@@ -46,13 +46,13 @@
     },
     {
       "path": "tools/ziyi-g25/run_delta_tests.py",
-      "sha256": "73d4101bb7a89d147a80c9d0ea7c503d39e9b7bd8ae225a79d6820ad4793addb",
+      "sha256": "a85f362cb17e9e56ad5bcf1a71008ffd70d42edd14e2b509985d3a1651c7ee8f",
       "bytes": 3618
     },
     {
       "path": "tools/ziyi-g25/test_delta.c",
-      "sha256": "6154d05fdc9d9bb4343729014d471700d2b74a14a93fe5ffbd0708f7953818a3",
-      "bytes": 15657
+      "sha256": "9780f731a72a211711e8b96accf0e17a62128bb35735f30b140ce8c1ea344f51",
+      "bytes": 15701
     }
   ],
   "native": false,
@@ -75,5 +75,15 @@
     "allAddressesMasksUnchanged": true,
     "engineSHA256": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b",
     "GMUHfiContextUnchanged": true
+  },
+  "g28ClockSelector": {
+    "patch": "xnu/patches/0110-ziyi-g28-qualify-already-off-clock-noop.patch",
+    "sha256": "338c2e17ca4ad4656052ef6e4e4a27d096bd48c02b984ec3f75dbd480a16523a",
+    "engineSHA256": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798",
+    "profileUnchanged": true,
+    "recordUnchanged": true,
+    "alreadyOffReadOnlySelector": true,
+    "strictSPReadback": true,
+    "auxiliaryBytes": 80
   }
 }

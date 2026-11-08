@@ -5,12 +5,12 @@
     {
       "path": "bsd/dev/ziyi_g24_engine.c",
       "before": null,
-      "after": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b"
+      "after": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798"
     },
     {
       "path": "bsd/dev/ziyi_g24_engine.h",
       "before": null,
-      "after": "57df390dd108decc82d16e1c7f2289a9367876d5843a220d5eb23635ee408e4e"
+      "after": "01ada7cbf03688fabf48846bec00a007db0b7a01f9b39da0c371893a543fb29c"
     },
     {
       "path": "bsd/dev/ziyi_g24_firmware.c",
@@ -35,7 +35,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": null,
-      "after": "c521d5db2614879e936b02d71fd97d407357f0fb45aa1e0a39d91be3cc25facf"
+      "after": "7def6afd69e4aa41ecb944c20c84c53920209110be13aa426c003e078fe699bb"
     },
     {
       "path": "bsd/dev/ziyi_g24_pas.c",
@@ -114,13 +114,13 @@
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_engine.c",
-      "sha256": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b",
-      "bytes": 14126
+      "sha256": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798",
+      "bytes": 17374
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_engine.h",
-      "sha256": "57df390dd108decc82d16e1c7f2289a9367876d5843a220d5eb23635ee408e4e",
-      "bytes": 2673
+      "sha256": "01ada7cbf03688fabf48846bec00a007db0b7a01f9b39da0c371893a543fb29c",
+      "bytes": 4234
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_firmware.c",
@@ -144,8 +144,8 @@
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_native.inc",
-      "sha256": "c521d5db2614879e936b02d71fd97d407357f0fb45aa1e0a39d91be3cc25facf",
-      "bytes": 17422
+      "sha256": "7def6afd69e4aa41ecb944c20c84c53920209110be13aa426c003e078fe699bb",
+      "bytes": 17886
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_pas.c",
@@ -204,8 +204,8 @@
     },
     {
       "path": "tools/ziyi-g24/test_engine.c",
-      "sha256": "4de676f6c463fdfdd4fabd64f57266bdf154524a8df8cffc056ab96b4b65c3dd",
-      "bytes": 6811
+      "sha256": "2fb6991d12cfba814073f49a91d8e83f49c428d219bee1a9b91272200d498265",
+      "bytes": 6836
     },
     {
       "path": "tools/ziyi-g24/test_firmware_pas.c",
@@ -214,8 +214,8 @@
     },
     {
       "path": "tools/ziyi-g24/test_native.c",
-      "sha256": "3c6484369d958c64b27697c17b194c82abf51da8ef3374d735866a887d4372cb",
-      "bytes": 12481
+      "sha256": "b8eddfa16f0b206d3fb0813faa2be641f2dfd9451b03df2f0413b0a76fe66982",
+      "bytes": 12525
     },
     {
       "path": "tools/ziyi-g24/test_record.c",
@@ -256,5 +256,15 @@
     "allAddressesMasksUnchanged": true,
     "engineSHA256": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b",
     "GMUHfiContextUnchanged": true
+  },
+  "g28ClockSelector": {
+    "patch": "xnu/patches/0110-ziyi-g28-qualify-already-off-clock-noop.patch",
+    "sha256": "338c2e17ca4ad4656052ef6e4e4a27d096bd48c02b984ec3f75dbd480a16523a",
+    "engineSHA256": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798",
+    "profileUnchanged": true,
+    "recordUnchanged": true,
+    "alreadyOffReadOnlySelector": true,
+    "strictSPReadback": true,
+    "auxiliaryBytes": 80
   }
 }

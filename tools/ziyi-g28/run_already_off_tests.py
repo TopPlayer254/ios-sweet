@@ -1,0 +1,18 @@
+"""Actual native adapter, clock-dependent register views; no hardware claim."""
+from pathlib import Path
+import argparse,hashlib,json,os,subprocess
+P=Path(__file__).resolve().parent;ap=argparse.ArgumentParser();ap.add_argument('--out',type=Path,required=True);ap.add_argument('--repo',type=Path,default=Path.cwd());ap.add_argument('--cc',default='cc');ap.add_argument('--fixture',type=Path,required=True);a=ap.parse_args();O=a.out.resolve();O.mkdir(parents=True,exist_ok=False);repo=a.repo.resolve();K=P/'files' if (P/'files').is_dir() else repo/'tools/ziyi-g24/files';cc=Path(a.cc);env=dict(os.environ);env['PATH']=(str(cc.resolve().parent)+os.pathsep if cc.is_file() else '')+env['PATH'];env.update(ASAN_OPTIONS='abort_on_error=1',UBSAN_OPTIONS='halt_on_error=1')
+inc=[K,repo/'tools/ziyi-hw/files',repo/'tools/ziyi-g19/files',repo/'tools/ziyi-g23/files',P,O/'include'];dst=O/'include/pexpert/arm64/ziyi_log_strip.h';dst.parent.mkdir(parents=True);dst.write_bytes((repo/'tools/ziyi-ufs/u11_log_strip.h').read_bytes())
+def source(n):return next(d/n for d in inc if (d/n).is_file())
+common=['ziyi_g24_engine.c','ziyi_g24_pas.c','ziyi_g24_firmware.c','ziyi_g24_record.c','ziyi_g24_pixel.c','ziyi_g24_memory.c','ziyi_g8_translation.c','ziyi_g23_startup.c','ziyi_g23_resources.c','ziyi_g8_contract.c','ziyi_g7_sha256.c'];flags=[a.cc,'-std=c11','-O1','-g','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-DG24_PUBLIC_FIXTURE=1']+['-I'+str(d) for d in inc]
+def run(args,label):
+ q=subprocess.run(list(map(str,args)),env=env,capture_output=True,text=True);(O/(label+'.log')).write_text(q.stdout+q.stderr,encoding='utf-8');assert q.returncode==0,q.stdout+q.stderr;return q.stdout
+old=O/'old';old.mkdir();(old/'ziyi_g24_engine.c').write_bytes((P/'g27-engine-before.c').read_bytes());(old/'ziyi_g24_profile.inc').write_bytes((P/'g27-profile-before.inc').read_bytes());outputs=[]
+for name,extra,engine in [('old',['-DG28_OLD_CONTROL=1'],old/'ziyi_g24_engine.c'),('new',[],source(common[0]))]:
+ exe=O/(name+'.exe');run(flags+extra+[engine]+[source(n) for n in common[1:]]+[P/'test_already_off.c','-o',exe],name+'-compile');outputs.append(run([exe,a.fixture.resolve(),O/(name+'-clock.bin')],name+'-run'))
+printed=outputs[1].split('G28_PRINTER_BEGIN\n')[1].split('G28_PRINTER_END')[0]
+import re,struct,zlib
+rows=re.findall(r'^K(\d\d) ((?:[0-9a-f]{8} ){3}[0-9a-f]{8})$',printed,re.M);assert [int(n) for n,_ in rows]==list(range(5));raw=struct.pack('<20I',*[int(v,16) for _,line in rows for v in line.split()]);assert raw==(O/'new-clock.bin').read_bytes();assert int.from_bytes(raw[12:16],'little')==zlib.crc32(raw[16:])
+assert len(re.findall(r'^C\d\d ',printed,re.M))==20 and len(re.findall(r'^GCP1 page\d/5 ',printed,re.M))==5 and 'GCK1 clock mode2 valid3b ' in printed
+
+sources=[P/'test_already_off.c',P/'hwcg-block.inc',P/'g27-engine-before.c',P/'g27-profile-before.inc',K/'ziyi_g24_engine.c',K/'ziyi_g24_engine.h',K/'ziyi_g24_native.inc',P/'run_already_off_tests.py'];report=dict(result='G28_ACTUAL_ALREADY_OFF_HOST_PASS',oldReads=515,oldStores=81,oldCursor=62,clockEntries=52,skipClockStores=0,stablePostClockReads=174,strictSPReadback=True,ROQZeroReadRefused=True,unstableClockRefused=True,unsafePowerRefused=True,unstableViewRefused=True,badReceiptRefused=True,auxiliaryBytes=80,auxiliaryCorruptBitsRefused=640,actualPrinterGCPRows=20,actualPrinterAuxRows=5,sourceHashes={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources},outputs=outputs,syntheticOnly=True,native=False,phoneOperated=False);(O/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print('G28_ACTUAL_ALREADY_OFF_HOST_PASS old515/81 program52 skip0 stable174 aux80 bitRefusals640 native0')

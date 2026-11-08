@@ -18,6 +18,20 @@ static int g24e_read(struct g24_workspace*w,const struct g24_io*o,unsigned sp,un
  w->r.last_space=sp;w->r.last_index=id;w->r.last_valid=0;
  if(!g24_register_address(sp,id)||!g24e_owner(w,o)||!o->read(o->ctx,sp,id,v))return g24e_fail(w,G24_E_IO);w->r.last_value=*v;w->r.last_valid=1;w->r.reads++;return 1;
 }
+#if defined(G24_POST_CLOCK_SNAPSHOT)
+/* Read-only diagnostics use the same owner-qualified native callback. Preserve
+ * last_* so a refused exact store still identifies its own register receipt. */
+static int g28_clock_read(struct g24_workspace*w,const struct g24_io*o,unsigned sp,unsigned id,uint32_t*v){
+ if(!g24_register_address(sp,id)||!g24e_owner(w,o)||!o->read(o->ctx,sp,id,v))return g24e_fail(w,G24_E_IO);w->r.reads++;return 1;
+}
+static int g28_clock_sample(struct g24_workspace*w,const struct g24_io*o,unsigned id){
+ struct g28_clock_diag*d=&w->clock;
+ if(!g28_clock_read(w,o,G24_CTL,G24_SPTPRAC,&d->sp_now))return 0;d->valid|=8;
+ if(id==G24_PROFILE_CLOCK_START){d->sp_off=d->sp_now;d->valid|=4;}
+ if(!g28_clock_read(w,o,G24_PROFILE,G24_PROFILE_CLOCK_START,&d->control_now))return 0;d->valid|=16;
+ if(!g28_clock_read(w,o,G24_PROFILE,G24_PROFILE_CLOCK_END-1,&d->clock_now))return 0;d->valid|=32;return 1;
+}
+#endif
 static int g24e_tick(struct g24_workspace*w,const struct g24_io*o,uint64_t*v){if(!o->now(o->ctx,v)||*v<w->r.end||*v-w->r.start>19200000ULL*15)return g24e_fail(w,G24_E_TIMEOUT);w->r.end=*v;return 1;}
 static int g24e_target(const struct g24_workspace*w,unsigned id,uint32_t*out){
  switch(id){case G24_REQUEST:*out=0x40000000;break;case G24_ACK:*out=0x80000000;break;
@@ -45,6 +59,12 @@ static int g24e_write(struct g24_workspace*w,const struct g24_io*o,unsigned sp,u
  w->r.pending_space=sp;w->r.pending_index=id;w->r.pending_value=value;
  if(!o->write(o->ctx,sp,id,value))return g24e_fail(w,G24_E_IO);w->r.writes++;w->r.hardware_attempted=1;
  if(!o->order(o->ctx))return g24e_fail(w,G24_E_IO);
+#if defined(G24_POST_CLOCK_SNAPSHOT)
+ if(sp==G24_PROFILE&&id>=G24_PROFILE_CLOCK_START&&id<G24_PROFILE_CLOCK_END){
+  w->clock.writes++;
+  if((id==G24_PROFILE_CLOCK_START||id==G24_PROFILE_CLOCK_END-2)&&!g28_clock_sample(w,o,id))return 0;
+ }
+#endif
  if(readback){uint32_t got;if(!g24e_read(w,o,sp,id,&got)||got!=value)return g24e_fail(w,G24_E_CONFIG);}
  if(sp==G24_PROFILE)for(unsigned i=0;i<G24_PROFILE_COUNT;i++)if(g24_profile[i].address==g24_profile[id].address)w->r.profile_current[i]=value;
  return 1;
@@ -72,17 +92,44 @@ static uint32_t g24e_pkt(uint32_t op,uint32_t n){return 0x70000000|n|(g24e_parit
 #if defined(G24_POST_CLOCK_SNAPSHOT)
 _Static_assert(G24_GX_HWCG_OFF==1,"qualified GX clock-gating-off mode");
 _Static_assert(G24_PROFILE_CLOCK_START==12 && G24_PROFILE_CLOCK_END==64 && G24_PROFILE_CLOCK_END<G24_PROFILE_COUNT,"qualified HWCG prefix");
-/* Original pre-clock values stay in profile_old. Reacquire only the current
- * live view after all52 ordered HWCG stores and their exact readbacks. */
+/* Linux/KGSL set_hwcg(false) is a no-op when CLOCK_CNTL is already0.
+ * Require two fresh equal observations and independent live SP/GX status.
+ * Bits2/4 are SP off;6/7 GX off;0/1 power transition. No control RAZ claim. */
+__attribute__((noinline)) static int g28_clock_select(struct g24_workspace*w,const struct g24_io*o){
+ struct g28_clock_diag*d=&w->clock;
+ if(w->r.phase!=G24_CONFIG||w->r.profile_cursor!=G24_PROFILE_CLOCK_START||!w->r.profile_saved||!w->r.route_live||d->mode||d->writes||g24_profile[63].address!=0x03d002b8ULL)return g24e_fail(w,G24_E_OWNER);
+ d->mode=G28_CLOCK_REFUSED;
+ if(!g28_clock_read(w,o,G24_PROFILE,63,&d->clock_before))return 0;d->valid|=1;
+ if(!g28_clock_read(w,o,G24_CTL,G24_SPTPRAC,&d->sp_before))return 0;d->valid|=2;
+ if(!g28_clock_read(w,o,G24_PROFILE,63,&d->clock_now))return 0;d->valid|=32;
+ if(!g28_clock_read(w,o,G24_CTL,G24_SPTPRAC,&d->sp_now))return 0;d->valid|=8;
+ if(!g28_clock_read(w,o,G24_PROFILE,12,&d->control_now))return 0;d->valid|=16;
+ if(d->clock_before!=d->clock_now||d->clock_before!=w->r.profile_current[63]||d->sp_before!=d->sp_now)return g24e_fail(w,G24_E_CONFIG);
+ if(d->sp_now&0xd7u)return g24e_fail(w,G24_E_ACTIVE);
+ d->mode=d->clock_now?G28_CLOCK_PROGRAM:G28_CLOCK_SKIP;return 1;
+}
+static int g28_clock_live(struct g24_workspace*w,const struct g24_io*o){
+ struct g28_clock_diag*d=&w->clock;
+ if(!g28_clock_sample(w,o,63))return 0;
+ if(d->clock_now||d->sp_now&0xd7u)return g24e_fail(w,G24_E_ACTIVE);return 1;
+}
+/* Original pre-clock values stay in profile_old. After an exact final0 store
+ * OR a proven already-off no-op, reacquire only the stable current view. */
 __attribute__((noinline)) static int g24_clock_view(struct g24_workspace*w,const struct g24_io*o){
- const unsigned first=G24_PROFILE_CLOCK_END,last=first-1;
- if(w->r.phase!=G24_CONFIG||w->r.profile_cursor!=first||!w->r.profile_saved||!w->r.route_live||!w->r.hardware_attempted||w->r.pending_space!=G24_PROFILE||w->r.pending_index!=last||!w->r.last_valid||w->r.last_space!=G24_PROFILE||w->r.last_index!=last||w->r.pending_value!=0u||w->r.last_value!=0u||w->r.profile_current[last]!=0u||g24_profile[last].address!=0x03d002b8ULL)return g24e_fail(w,G24_E_OWNER);
+ const unsigned first=G24_PROFILE_CLOCK_END,last=first-1;struct g28_clock_diag*d=&w->clock;
+ if(w->r.phase!=G24_CONFIG||w->r.profile_cursor!=first||!w->r.profile_saved||!w->r.route_live||!w->r.hardware_attempted||w->r.pending_space!=G24_PROFILE||!w->r.last_valid||w->r.last_space!=G24_PROFILE)return g24e_fail(w,G24_E_OWNER);
+ if(d->mode==G28_CLOCK_PROGRAM){
+  if(d->writes!=52||w->r.pending_index!=last||w->r.last_index!=last||w->r.pending_value!=0u||w->r.last_value!=0u||w->r.profile_current[last]!=0u)return g24e_fail(w,G24_E_OWNER);
+ }else if(d->mode==G28_CLOCK_SKIP){
+  if(d->writes||d->clock_before||d->clock_now||d->valid!=59||w->r.writes!=30||w->r.pending_index!=11||w->r.last_index!=11||w->r.pending_value!=1||w->r.last_value!=1||w->r.profile_current[last]!=0)return g24e_fail(w,G24_E_OWNER);
+ }else return g24e_fail(w,G24_E_OWNER);
+ if(!g28_clock_live(w,o))return 0;
  for(unsigned pass=0;pass<2;pass++)for(unsigned j=first;j<G24_PROFILE_COUNT;j++){
-  uint32_t value;if(!g24e_read(w,o,G24_PROFILE,j,&value))return 0;
+  uint32_t value;if(!g24e_read(w,o,G24_PROFILE,j,&value))return 0;d->stable_reads++;
   if(pass&&value!=w->r.profile_current[j])return g24e_fail(w,G24_E_CONFIG);
   w->r.profile_current[j]=value;
  }
- return 1;
+ return g28_clock_live(w,o);
 }
 #endif
 __attribute__((noinline)) int g24_run(struct g24_workspace*w,const struct g24_io*o){
@@ -106,6 +153,7 @@ __attribute__((noinline)) int g24_run(struct g24_workspace*w,const struct g24_io
  w->r.phase=G24_CONFIG;
  for(unsigned i=0;i<G24_PROFILE_COUNT;i++){w->r.profile_cursor=i;
 #if defined(G24_POST_CLOCK_SNAPSHOT)
+  if(i==G24_PROFILE_CLOCK_START){if(!g28_clock_select(w,o))return 0;if(w->clock.mode==G28_CLOCK_SKIP){i=G24_PROFILE_CLOCK_END;w->r.profile_cursor=i;}}
   if(i==G24_PROFILE_CLOCK_END&&!g24_clock_view(w,o))return 0;
 #endif
   const struct g24_reg*d=&g24_profile[i];v=(w->r.profile_current[i]&~d->mask)|d->value;if(!g24e_write(w,o,G24_PROFILE,i,v,1))return 0;}

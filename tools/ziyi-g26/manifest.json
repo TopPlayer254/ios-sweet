@@ -10,7 +10,7 @@
     {
       "path": "bsd/dev/ziyi_g24_engine.c",
       "before": "edd9f486e3c89414709d4d162c09d7eb28e43b444c922b1f3aa98699ad1361e0",
-      "after": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b"
+      "after": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798"
     }
   ],
   "patch": "xnu/patches/0108-ziyi-g26-initialize-hwcg-before-core-config.patch",
@@ -51,8 +51,8 @@
     },
     {
       "path": "tools/ziyi-g26/test_clock.c",
-      "sha256": "fe74810f65e33f931cd261911478ab7a88416b7e359eb6258b65d8c1d3c0b642",
-      "bytes": 15390
+      "sha256": "fe0ded3e711fd88e230fe1cbd980d36d943eeccc9f559177852a3086467c69f3",
+      "bytes": 15434
     }
   ],
   "native": false,
@@ -67,5 +67,15 @@
     "allAddressesMasksUnchanged": true,
     "engineSHA256": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b",
     "GMUHfiContextUnchanged": true
+  },
+  "g28ClockSelector": {
+    "patch": "xnu/patches/0110-ziyi-g28-qualify-already-off-clock-noop.patch",
+    "sha256": "338c2e17ca4ad4656052ef6e4e4a27d096bd48c02b984ec3f75dbd480a16523a",
+    "engineSHA256": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798",
+    "profileUnchanged": true,
+    "recordUnchanged": true,
+    "alreadyOffReadOnlySelector": true,
+    "strictSPReadback": true,
+    "auxiliaryBytes": 80
   }
 }

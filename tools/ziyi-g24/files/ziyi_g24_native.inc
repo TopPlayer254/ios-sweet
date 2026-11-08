@@ -197,7 +197,12 @@ __attribute__((noinline)) void ziyi_gpu_cp_print(void*ctx){
  static unsigned page;uint8_t bytes[G24_RECORD_BYTES];
  const struct g24_native_facts facts={g24n.zap_crc,g24n.zap_backed,g24n.zap_copied,g24n.guard_error};
  if(!g24_record_pack(&g24n.w,&facts,bytes,sizeof(bytes))){printf("G24 record refused encoding\n");return;}
- unsigned p=page++%5;printf("GCP1 page%u/5 phase%u failedAt%u err%u CRC%08x\n",p,g24n.w.r.phase,g24n.w.r.failure_phase,g24n.w.r.error,g24n_record_word(bytes,3));
+ unsigned p=page++%6;
+ if(p==5){uint8_t clock[G28_CLOCK_BYTES];if(!g28_clock_pack(&g24n.w,clock,sizeof(clock))){printf("GCK1 encoding refused\n");return;}
+  printf("GCK1 clock mode%u valid%02x CRC%08x\n",g24n.w.clock.mode,g24n.w.clock.valid,g24n_record_word(clock,3));
+  for(unsigned row=0;row<5;row++){unsigned n=row*4;printf("K%02u %08x %08x %08x %08x\n",row,g24n_record_word(clock,n),g24n_record_word(clock,n+1),g24n_record_word(clock,n+2),g24n_record_word(clock,n+3));}return;
+ }
+ printf("GCP1 page%u/5 phase%u failedAt%u err%u CRC%08x\n",p,g24n.w.r.phase,g24n.w.r.failure_phase,g24n.w.r.error,g24n_record_word(bytes,3));
  for(unsigned row=0;row<4;row++){unsigned n=p*16+row*4;printf("C%02u %08x %08x %08x %08x\n",n/4,g24n_record_word(bytes,n),g24n_record_word(bytes,n+1),g24n_record_word(bytes,n+2),g24n_record_word(bytes,n+3));}
 }
 __attribute__((noinline)) int ziyi_gpu_cp_continue(void*ctx){
