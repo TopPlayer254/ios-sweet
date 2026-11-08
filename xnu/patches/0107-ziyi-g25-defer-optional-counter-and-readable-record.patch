@@ -1,0 +1,38 @@
+--- a/bsd/dev/ziyi_g24_profile.inc
++++ b/bsd/dev/ziyi_g24_profile.inc
+@@ -16,7 +16,6 @@
+  {0x03d0f010ULL,0x00071620u,0xffffffffu}, /* 15364 */
+  {0x03d0f014ULL,0x00071620u,0xffffffffu}, /* 15365 */
+  {0x03d0f018ULL,0x00071620u,0xffffffffu}, /* 15366 */
+- {0x03d0142cULL,0xffffffffu,0xffffffffu}, /* A6XX_RBBM_PERFCTR_GPU_BUSY_MASKED */
+  {0x03d03814ULL,0xffffffc0u,0xffffffffu}, /* A6XX_UCHE_WRITE_RANGE_MAX_LO */
+  {0x03d03818ULL,0x0001ffffu,0xffffffffu}, /* A6XX_UCHE_WRITE_RANGE_MAX_HI */
+  {0x03d03824ULL,0xfffff000u,0xffffffffu}, /* A6XX_UCHE_TRAP_BASE_LO */
+@@ -153,4 +152,4 @@
+  {0x03d6a200ULL,0x00000001u,0x00000001u}, /* A6XX_GPU_GMU_GX_SPTPRAC_CLOCK_CONTROL */
+  {0x03d002b8ULL,0x8aa8aa82u,0xffffffffu}, /* A6XX_RBBM_CLOCK_CNTL */
+ };
+-#define G24_PROFILE_COUNT 152u
++#define G24_PROFILE_COUNT 151u
+--- a/bsd/dev/ziyi_g24_native.inc
++++ b/bsd/dev/ziyi_g24_native.inc
+@@ -197,8 +197,8 @@
+  static unsigned page;uint8_t bytes[G24_RECORD_BYTES];
+  const struct g24_native_facts facts={g24n.zap_crc,g24n.zap_backed,g24n.zap_copied,g24n.guard_error};
+  if(!g24_record_pack(&g24n.w,&facts,bytes,sizeof(bytes))){printf("G24 record refused encoding\n");return;}
+- unsigned p=page++%2;printf("GCP1 page%u/2 phase%u failedAt%u err%u CRC%08x\n",p,g24n.w.r.phase,g24n.w.r.failure_phase,g24n.w.r.error,g24n_record_word(bytes,3));
+- for(unsigned row=0;row<10;row++){unsigned n=p*40+row*4;printf("C%02u %08x %08x %08x %08x\n",n/4,g24n_record_word(bytes,n),g24n_record_word(bytes,n+1),g24n_record_word(bytes,n+2),g24n_record_word(bytes,n+3));}
++ unsigned p=page++%5;printf("GCP1 page%u/5 phase%u failedAt%u err%u CRC%08x\n",p,g24n.w.r.phase,g24n.w.r.failure_phase,g24n.w.r.error,g24n_record_word(bytes,3));
++ for(unsigned row=0;row<4;row++){unsigned n=p*16+row*4;printf("C%02u %08x %08x %08x %08x\n",n/4,g24n_record_word(bytes,n),g24n_record_word(bytes,n+1),g24n_record_word(bytes,n+2),g24n_record_word(bytes,n+3));}
+ }
+ __attribute__((noinline)) int ziyi_gpu_cp_continue(void*ctx){
+  if(g24n.mode!=1)return 0;if(ctx!=g24n.s||!g24n.prepared||g24n.w.r.phase!=G24_READY)return 0;
+@@ -206,7 +206,7 @@
+  int ok=g24_run(&g24n.w,&io);ziyi_gpu_cp_print(ctx);
+  if(g24n.w.r.hardware_attempted||g24n.w.pas.metadata_retained){
+   printf("ZIYI G24 diagnostic parked with all borrowers retained; no return into GMU reset\n");
+-  for(;;){zg_sleep(12000);ziyi_gpu_cp_print(ctx);}
++  for(;;){zg_sleep(2000);ziyi_gpu_cp_print(ctx);}
+  }
+  return ok;
+ }

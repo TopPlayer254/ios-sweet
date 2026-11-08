@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "parentCommit": "a908326187b7006f120c5996c70579c93224f49d",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_profile.inc",
+      "before": "adbff15421b2c3bee0c558648ce038dccf35455d00a7b2752f51821be3002710",
+      "after": "4c5e1d1cbe926b59da6d848e0a0fc065e18c0f226bcc16b253fa4c8d8fd09222"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": "6f8d335360f831896d8b6ee765ead43a43c57884191a882825ccfb22953032c8",
+      "after": "c521d5db2614879e936b02d71fd97d407357f0fb45aa1e0a39d91be3cc25facf"
+    }
+  ],
+  "patch": "xnu/patches/0107-ziyi-g25-defer-optional-counter-and-readable-record.patch",
+  "patchSHA256": "03ebdb3f99933bdb669730544872d3e63fbcf35a142336af708c575ec06f8408",
+  "linkedFunctions": [
+    "_ziyi_gpu_cp_print"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g25/README.md",
+      "sha256": "4bfb4430f56aacd3c7d16d8d4e6f2c06f7235daba469bc0441823a0f50a54ad2",
+      "bytes": 1373
+    },
+    {
+      "path": "tools/ziyi-g25/audit_ci.py",
+      "sha256": "e31066bb6af82b6ff6e11bd183f1ac1bb2483966cad709e411f7356d11aa2ad9",
+      "bytes": 2809
+    },
+    {
+      "path": "tools/ziyi-g25/g24-profile-before.inc",
+      "sha256": "adbff15421b2c3bee0c558648ce038dccf35455d00a7b2752f51821be3002710",
+      "bytes": 9549
+    },
+    {
+      "path": "tools/ziyi-g25/record-fields.json",
+      "sha256": "c68eaeced94d1994a35fe96516deb73188689a1e71a3a244b44b8a494f16e947",
+      "bytes": 1357
+    },
+    {
+      "path": "tools/ziyi-g25/record.py",
+      "sha256": "80735980fad50082994f64838054ac4e8a1c6dfde2079eeec337e3e865380041",
+      "bytes": 763
+    },
+    {
+      "path": "tools/ziyi-g25/run_delta_tests.py",
+      "sha256": "73d4101bb7a89d147a80c9d0ea7c503d39e9b7bd8ae225a79d6820ad4793addb",
+      "bytes": 3618
+    },
+    {
+      "path": "tools/ziyi-g25/test_delta.c",
+      "sha256": "6154d05fdc9d9bb4343729014d471700d2b74a14a93fe5ffbd0708f7953818a3",
+      "bytes": 15657
+    }
+  ],
+  "native": false,
+  "gpuPixels": false
+}

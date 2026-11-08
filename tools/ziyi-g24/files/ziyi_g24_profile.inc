@@ -16,7 +16,6 @@ static const struct g24_reg g24_profile[]={
  {0x03d0f010ULL,0x00071620u,0xffffffffu}, /* 15364 */
  {0x03d0f014ULL,0x00071620u,0xffffffffu}, /* 15365 */
  {0x03d0f018ULL,0x00071620u,0xffffffffu}, /* 15366 */
- {0x03d0142cULL,0xffffffffu,0xffffffffu}, /* A6XX_RBBM_PERFCTR_GPU_BUSY_MASKED */
  {0x03d03814ULL,0xffffffc0u,0xffffffffu}, /* A6XX_UCHE_WRITE_RANGE_MAX_LO */
  {0x03d03818ULL,0x0001ffffu,0xffffffffu}, /* A6XX_UCHE_WRITE_RANGE_MAX_HI */
  {0x03d03824ULL,0xfffff000u,0xffffffffu}, /* A6XX_UCHE_TRAP_BASE_LO */
@@ -153,4 +152,4 @@ static const struct g24_reg g24_profile[]={
  {0x03d6a200ULL,0x00000001u,0x00000001u}, /* A6XX_GPU_GMU_GX_SPTPRAC_CLOCK_CONTROL */
  {0x03d002b8ULL,0x8aa8aa82u,0xffffffffu}, /* A6XX_RBBM_CLOCK_CNTL */
 };
-#define G24_PROFILE_COUNT 152u
+#define G24_PROFILE_COUNT 151u

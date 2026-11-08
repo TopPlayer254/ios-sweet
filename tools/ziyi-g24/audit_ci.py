@@ -29,7 +29,7 @@ calls={label:one(caller,callee,tail) for label,caller,callee,tail in [
  ('capsule','_ziyi_gpu_cp_prepare','_g24_slot_view',False),
  ('codec','_ziyi_gpu_cp_print','_g24_record_pack',False) ]}
 smc_start,code=body('_g24n_smc');smc=[smc_start+i for i in range(0,len(code)-3,4) if struct.unpack_from('<I',code,i)[0]==0xd4000003];assert len(smc)==1
-assert b'GCP1 page%u/2' in raw and b'no return into GMU reset' in raw
+assert b'GCP1 page%u/5' in raw and b'no return into GMU reset' in raw
 assert json.loads((R/'u1-evidence/g23/audit.json').read_text())['kernelSha256']==sha(raw)
 host=json.loads((R/'u1-evidence/g24-host/audit.json').read_text());assert host['result']=='G24_PUBLIC_EXACT_HOST_PASS' and len(host['tests'])==4
 # The public data placeholder remains invalid until the private-only derivative.

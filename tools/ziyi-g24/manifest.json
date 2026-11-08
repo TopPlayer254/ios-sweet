@@ -35,7 +35,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": null,
-      "after": "6f8d335360f831896d8b6ee765ead43a43c57884191a882825ccfb22953032c8"
+      "after": "c521d5db2614879e936b02d71fd97d407357f0fb45aa1e0a39d91be3cc25facf"
     },
     {
       "path": "bsd/dev/ziyi_g24_pas.c",
@@ -65,7 +65,7 @@
     {
       "path": "bsd/dev/ziyi_g24_profile.inc",
       "before": null,
-      "after": "adbff15421b2c3bee0c558648ce038dccf35455d00a7b2752f51821be3002710"
+      "after": "4c5e1d1cbe926b59da6d848e0a0fc065e18c0f226bcc16b253fa4c8d8fd09222"
     },
     {
       "path": "bsd/dev/ziyi_g24_record.c",
@@ -109,7 +109,7 @@
     },
     {
       "path": "tools/ziyi-g24/audit_ci.py",
-      "sha256": "62218b7494ad95b61ad61ca543d5468f6bce2bad9beff16d12caf42591c69381",
+      "sha256": "92193e94c55d1db66851e4ac0ffe98b61959c2dec05314f00777352b64050a8e",
       "bytes": 3062
     },
     {
@@ -144,8 +144,8 @@
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_native.inc",
-      "sha256": "6f8d335360f831896d8b6ee765ead43a43c57884191a882825ccfb22953032c8",
-      "bytes": 17424
+      "sha256": "c521d5db2614879e936b02d71fd97d407357f0fb45aa1e0a39d91be3cc25facf",
+      "bytes": 17422
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_pas.c",
@@ -174,8 +174,8 @@
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_profile.inc",
-      "sha256": "adbff15421b2c3bee0c558648ce038dccf35455d00a7b2752f51821be3002710",
-      "bytes": 9549
+      "sha256": "4c5e1d1cbe926b59da6d848e0a0fc065e18c0f226bcc16b253fa4c8d8fd09222",
+      "bytes": 9466
     },
     {
       "path": "tools/ziyi-g24/files/ziyi_g24_record.c",
@@ -229,5 +229,13 @@
     }
   ],
   "native": false,
-  "gpuPixels": false
+  "gpuPixels": false,
+  "g25CounterContinuation": {
+    "patch": "xnu/patches/0107-ziyi-g25-defer-optional-counter-and-readable-record.patch",
+    "sha256": "03ebdb3f99933bdb669730544872d3e63fbcf35a142336af708c575ec06f8408",
+    "optionalCounterDeferred": "03d0142c",
+    "profileRows": 151,
+    "nativePrinter": "5x4/2s",
+    "wireABIUnchanged": true
+  }
 }

@@ -43,3 +43,6 @@
 /xnu/patches/0106-ziyi-g24-bounded-core-first-picture.patch -text whitespace=cr-at-eol
 
 /tools/ziyi-g24/** -text
+
+/xnu/patches/0107-ziyi-g25-defer-optional-counter-and-readable-record.patch -text whitespace=cr-at-eol
+/tools/ziyi-g25/** -text
