@@ -49,3 +49,6 @@
 
 /xnu/patches/0108-ziyi-g26-initialize-hwcg-before-core-config.patch -text whitespace=cr-at-eol
 /tools/ziyi-g26/** -text
+
+/xnu/patches/0109-ziyi-g27-select-defined-gx-hwcg-off-mode.patch -text whitespace=cr-at-eol
+/tools/ziyi-g27/** -text

@@ -70,12 +70,13 @@ static int g24e_submit(struct g24_workspace*w,const struct g24_io*o,const uint32
 static uint32_t g24e_parity(uint32_t x){unsigned p=1;while(x){p^=x&1;x>>=1;}return p;}
 static uint32_t g24e_pkt(uint32_t op,uint32_t n){return 0x70000000|n|(g24e_parity(n)<<15)|(op<<16)|(g24e_parity(op)<<23);}
 #if defined(G24_POST_CLOCK_SNAPSHOT)
+_Static_assert(G24_GX_HWCG_OFF==1,"qualified GX clock-gating-off mode");
 _Static_assert(G24_PROFILE_CLOCK_START==12 && G24_PROFILE_CLOCK_END==64 && G24_PROFILE_CLOCK_END<G24_PROFILE_COUNT,"qualified HWCG prefix");
 /* Original pre-clock values stay in profile_old. Reacquire only the current
  * live view after all52 ordered HWCG stores and their exact readbacks. */
 __attribute__((noinline)) static int g24_clock_view(struct g24_workspace*w,const struct g24_io*o){
  const unsigned first=G24_PROFILE_CLOCK_END,last=first-1;
- if(w->r.phase!=G24_CONFIG||w->r.profile_cursor!=first||!w->r.profile_saved||!w->r.route_live||!w->r.hardware_attempted||w->r.pending_space!=G24_PROFILE||w->r.pending_index!=last||!w->r.last_valid||w->r.last_space!=G24_PROFILE||w->r.last_index!=last||w->r.pending_value!=0x8aa8aa82||w->r.last_value!=0x8aa8aa82||w->r.profile_current[last]!=0x8aa8aa82||g24_profile[last].address!=0x03d002b8ULL)return g24e_fail(w,G24_E_OWNER);
+ if(w->r.phase!=G24_CONFIG||w->r.profile_cursor!=first||!w->r.profile_saved||!w->r.route_live||!w->r.hardware_attempted||w->r.pending_space!=G24_PROFILE||w->r.pending_index!=last||!w->r.last_valid||w->r.last_space!=G24_PROFILE||w->r.last_index!=last||w->r.pending_value!=0u||w->r.last_value!=0u||w->r.profile_current[last]!=0u||g24_profile[last].address!=0x03d002b8ULL)return g24e_fail(w,G24_E_OWNER);
  for(unsigned pass=0;pass<2;pass++)for(unsigned j=first;j<G24_PROFILE_COUNT;j++){
   uint32_t value;if(!g24e_read(w,o,G24_PROFILE,j,&value))return 0;
   if(pass&&value!=w->r.profile_current[j])return g24e_fail(w,G24_E_CONFIG);

@@ -5,12 +5,12 @@
     {
       "path": "bsd/dev/ziyi_g24_profile.inc",
       "before": "4c5e1d1cbe926b59da6d848e0a0fc065e18c0f226bcc16b253fa4c8d8fd09222",
-      "after": "e655dbc9d86907e6c83ef0e568af081a7924ded9698603bd8051c5599b8e083b"
+      "after": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea"
     },
     {
       "path": "bsd/dev/ziyi_g24_engine.c",
       "before": "edd9f486e3c89414709d4d162c09d7eb28e43b444c922b1f3aa98699ad1361e0",
-      "after": "319a6eb3fee2a78af13e360e4b33f8e43ef5688d790fb4bc2e7e794fbc8c2c35"
+      "after": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b"
     }
   ],
   "patch": "xnu/patches/0108-ziyi-g26-initialize-hwcg-before-core-config.patch",
@@ -26,8 +26,8 @@
     },
     {
       "path": "tools/ziyi-g26/audit_ci.py",
-      "sha256": "4426cfb5bbef10434b2e938c2d22b6164d60ed559332bf4b238953f3eeeb23e5",
-      "bytes": 3293
+      "sha256": "53b4241b820031f93b2c62730166c47e904fd0cfa44ef0c2fc0e1769cd96efd0",
+      "bytes": 3492
     },
     {
       "path": "tools/ziyi-g26/g25-engine-before.c",
@@ -41,7 +41,7 @@
     },
     {
       "path": "tools/ziyi-g26/hwcg-block.inc",
-      "sha256": "acf8a231164e6fbbeaac37728bbaf02d0634dc1e135b10f3bf8834ea820e9762",
+      "sha256": "dc03473b6a3dfdb62e79f3ecdeecf43aef398de6a18f08db02cca592d5ec3d4e",
       "bytes": 2261
     },
     {
@@ -56,5 +56,16 @@
     }
   ],
   "native": false,
-  "gpuPixels": false
+  "gpuPixels": false,
+  "g27GXClockMode": {
+    "patch": "xnu/patches/0109-ziyi-g27-select-defined-gx-hwcg-off-mode.patch",
+    "sha256": "0cea9541f89a4f5257f4d47912cf19b48108eb2a295cf0b727fbbbf3fb9ab1fc",
+    "mode": "gx-off",
+    "clockTableZeros": 49,
+    "finalClockValue": 0,
+    "changedValues": 43,
+    "allAddressesMasksUnchanged": true,
+    "engineSHA256": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b",
+    "GMUHfiContextUnchanged": true
+  }
 }

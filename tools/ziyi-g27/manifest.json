@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "parentCommit": "7787040caf42984354b93731dff714df6fb9ddaf",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_profile.inc",
+      "before": "e655dbc9d86907e6c83ef0e568af081a7924ded9698603bd8051c5599b8e083b",
+      "after": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_engine.c",
+      "before": "319a6eb3fee2a78af13e360e4b33f8e43ef5688d790fb4bc2e7e794fbc8c2c35",
+      "after": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b"
+    }
+  ],
+  "patch": "xnu/patches/0109-ziyi-g27-select-defined-gx-hwcg-off-mode.patch",
+  "patchSHA256": "0cea9541f89a4f5257f4d47912cf19b48108eb2a295cf0b727fbbbf3fb9ab1fc",
+  "linkedFunctions": [
+    "_g24_clock_view"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g27/README.md",
+      "sha256": "3e74bef93232bcbd93a9a768cc78d67da1a5f2c54437b23b07879ac7a0040390",
+      "bytes": 469
+    },
+    {
+      "path": "tools/ziyi-g27/audit_ci.py",
+      "sha256": "9605d7f0460b31073f5016c848c7a41b3bcbdeca71dda74a26d118a8a41abcf4",
+      "bytes": 3043
+    },
+    {
+      "path": "tools/ziyi-g27/g26-engine-before.c",
+      "sha256": "319a6eb3fee2a78af13e360e4b33f8e43ef5688d790fb4bc2e7e794fbc8c2c35",
+      "bytes": 14077
+    },
+    {
+      "path": "tools/ziyi-g27/g26-profile-before.inc",
+      "sha256": "e655dbc9d86907e6c83ef0e568af081a7924ded9698603bd8051c5599b8e083b",
+      "bytes": 9416
+    },
+    {
+      "path": "tools/ziyi-g27/hwcg-block.inc",
+      "sha256": "dc03473b6a3dfdb62e79f3ecdeecf43aef398de6a18f08db02cca592d5ec3d4e",
+      "bytes": 2261
+    },
+    {
+      "path": "tools/ziyi-g27/run_gx_off_tests.py",
+      "sha256": "254ef35199b0cf0bc38517134445f627e3826d4d5dc7c68f32a2f7cdf7181893",
+      "bytes": 2949
+    },
+    {
+      "path": "tools/ziyi-g27/test_gx_off.c",
+      "sha256": "e8d2d809f1f86ea6613b1a208f067ec0e3cc6f1627eec3cb094c9f7aa7086655",
+      "bytes": 16182
+    }
+  ],
+  "native": false,
+  "gpuPixels": false
+}
