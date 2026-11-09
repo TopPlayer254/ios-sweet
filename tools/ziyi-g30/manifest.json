@@ -51,8 +51,8 @@
     },
     {
       "path": "tools/ziyi-g30/test_witness.c",
-      "sha256": "b8911d6235072aba7a68407ec136f7b4f43dd5a853e816f485dbccce0ce1930a",
-      "bytes": 29311
+      "sha256": "0754c1bfb8c798c87678f52f901bec87f67789d1ead80885d1adc919e4fc6e4c",
+      "bytes": 29338
     }
   ],
   "native": false,

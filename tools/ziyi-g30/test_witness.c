@@ -230,7 +230,10 @@ int legacy_g29_main(int argc,char**argv){assert(argc==3);FILE*f=fopen(argv[1],"r
 #if !defined(G30_OLD_NATIVE)
 static uint8_t g30_records[2048][64];static unsigned g30_count,g30_ms;
 static void g30_test_witness(const uint8_t*b,size_t n,unsigned ms){uint32_t p[12];assert(n==64&&g30_witness_unpack(b,n,p)&&g30_count<2048);assert(p[0]==g30_count+1);assert(ms==g30_pace(p[1],p[2],p[3],p[0]));memcpy(g30_records[g30_count++],b,64);g30_ms+=ms;}
-__attribute__((dllexport)) int g30_wire_roundtrip(const uint8_t*b,size_t n,uint8_t*out){uint32_t p[12];return g30_witness_unpack(b,n,p)&&g30_witness_pack(p,out);}
+#if defined(_WIN32)
+__attribute__((dllexport))
+#endif
+int g30_wire_roundtrip(const uint8_t*b,size_t n,uint8_t*out){uint32_t p[12];return g30_witness_unpack(b,n,p)&&g30_witness_pack(p,out);}
 #endif
 int main(int argc,char**argv){assert(argc==3);FILE*f=fopen(argv[1],"rb");assert(f&&fread(capsule,sizeof(capsule),1,f)==1&&!fclose(f));for(unsigned i=0;i<3;i++){unsigned at=i==0?256:i==1?43328:46896,n=i==0?43068:i==1?3564:1976;g7_sha256(capsule+at,n,g24_own_sha[i]);}
  g29_reset();struct g24_io o=io();o.read=g29_read;assert(g24_run(&g24n.w,&o));assert(g29_cp_verified(&g24n.w)&&g24n.w.r.verified_pixels==4096&&g24n.w.r.presented&&g24n.w.r.proofs==127&&g29_group_stores==4);
