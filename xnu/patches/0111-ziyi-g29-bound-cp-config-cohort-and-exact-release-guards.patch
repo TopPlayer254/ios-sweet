@@ -1,0 +1,156 @@
+--- a/bsd/dev/ziyi_g24_engine.c
++++ b/bsd/dev/ziyi_g24_engine.c
+@@ -7,10 +7,11 @@
+  0x3da0804,0x3da0c04,0x3da1000,0x3da1800,0x3db0000,0x3db0004,0x3db0010,0x3db0030,0x3db0020,0x3db0024,0x3db0028,0x3db002c,0x3db0038,0x3db003c,0x3db0058,0x3db0068,0x3db0060,0x3db0064,0x3db0610,0x3db07f0,0x3db07f4,0x3da0048,0x3da0800,0x3da0c00,0x3db2000,0x3d7e070,0x3d7e600,0x3d7e000,0x3d0f114
+ };
+ #include "ziyi_g24_profile.inc"
++static const uint64_t g29_cp_aux[8]={0x03d0010cULL,0x03d00114ULL,0x03d00118ULL,0x03d02020ULL,0x03d02108ULL,0x03d02634ULL,0x03d02100ULL,0x03d0208cULL};
+ static const unsigned g24_smmu_order[]={G24_SCTLR,G24_CBA2R,G24_CBAR,G24_TCR2,G24_TCR,G24_TTBR1LO,G24_TTBR1HI,G24_TTBRLO,G24_TTBRHI,G24_MAIR0,G24_MAIR1,G24_SCTLR,G24_TLBI,G24_TLBSYNC,G24_S2CR,G24_SMR};
+ static const unsigned g24_cp_order[]={G24_RPTRLO,G24_RPTRHI,G24_RBCNTL,G24_RBLO,G24_RBHI,G24_SQELO,G24_SQEHI,G24_SQE_CONTROL};
+ _Static_assert(G24_PROFILE_COUNT<=G24_MAX_PROFILE,"profile capacity");
+-uint64_t g24_register_address(unsigned space,unsigned id){return space==G24_CTL?(id<G24_CTL_COUNT?g24_ctl[id]:0):space==G24_PROFILE&&id<G24_PROFILE_COUNT?g24_profile[id].address:0;}
++uint64_t g24_register_address(unsigned space,unsigned id){return space==G24_CTL?(id<G24_CTL_COUNT?g24_ctl[id]:0):space==G24_PROFILE&&id<G24_PROFILE_COUNT?g24_profile[id].address:space==G29_CPAUX&&id<8?g29_cp_aux[id]:0;}
+ unsigned g24_profile_count(void){return G24_PROFILE_COUNT;}
+ static int g24e_fail(struct g24_workspace*w,unsigned e){if(!w->r.error){w->r.error=e;w->r.failure_phase=w->r.phase;}w->r.phase=G24_REFUSED;w->r.retained=1;return 0;}
+ static int g24e_owner(struct g24_workspace*w,const struct g24_io*o){return o->qualified(o->ctx,w->r.epoch,w->r.phase);}
+@@ -46,6 +47,9 @@
+ int g24_store_allowed(const struct g24_workspace*w,unsigned sp,unsigned id,uint32_t value,uint32_t current){
+  if(!w||!w->r.epoch||w->r.error||!w->memory.valid||w->memory.epoch!=w->r.epoch)return 0;
+  if(sp==G24_PROFILE){if(w->r.phase!=G24_CONFIG||!w->r.profile_saved||id!=w->r.profile_cursor||id>=G24_PROFILE_COUNT||current!=w->r.profile_current[id])return 0;const struct g24_reg*d=&g24_profile[id];return value==((current&~d->mask)|d->value);}
++#if defined(G24_POST_CLOCK_SNAPSHOT)
++ if(w->r.phase>=G24_ME_INIT&&w->r.phase<=G24_PRESENT&&!g29_cp_verified(w))return 0;
++#endif
+  if(sp!=G24_CTL)return 0;uint32_t want=0;if(!g24e_target(w,id,&want)||value!=want)return 0;
+  if(id==G24_REQUEST)return w->r.phase==G24_POWER&&!w->r.hardware_attempted;
+  if(id==G24_ACK)return w->r.phase==G24_POWER&&w->r.power_grant==0x80000000;
+@@ -131,6 +135,42 @@
+  }
+  return g28_clock_live(w,o);
+ }
++static int g29_cp_aux_snapshot(struct g24_workspace*w,const struct g24_io*o,unsigned pass){
++ struct g29_cp_diag*d=&w->cp_config;
++ for(unsigned j=0;j<8;j++){if(!g28_clock_read(w,o,G29_CPAUX,j,&d->aux[pass*8+j]))return 0;d->valid|=1u<<(8+pass*8+j);}return 1;
++}
++/* ROQ2,ROQ1,LPAC FIFO,MEM_POOL are pure sizing configuration, in vendor order.
++ * This finite cohort has NO SQE enable, WPTR, reset or PAS store. Exact full
++ * receipts of all4 are required at its boundary, before any command release.
++ * A mismatch gathers read-only facts, then refuses; no ignored readback. */
++__attribute__((noinline)) static int g29_cp_configure(struct g24_workspace*w,const struct g24_io*o){
++ struct g29_cp_diag*d=&w->cp_config;uint32_t value;
++ if(w->r.phase!=G24_CONFIG||w->r.profile_cursor!=76||!w->r.profile_saved||!w->r.route_live||w->r.cp_started||w->r.ring_words||d->stage||g24_profile[76].address!=0x03d02308ULL||g24_profile[77].address!=0x03d02304ULL||g24_profile[78].address!=0x03d02cd0ULL||g24_profile[79].address!=0x03d0230cULL)return g24e_fail(w,G24_E_OWNER);
++ d->stage=1;d->first_bad=0xffffffffu;
++ if(!g29_cp_aux_snapshot(w,o,0))goto io_refusal;
++ if((d->aux[3]!=0&&d->aux[3]!=3)||d->aux[3]!=w->r.initial[G24_SQE_CONTROL]||d->aux[4]!=1||d->aux[7]){d->stage=4;return g24e_fail(w,G24_E_ACTIVE);}
++ if(!g24e_read(w,o,G24_CTL,G24_RPTR,&value))goto io_refusal;if(value){d->stage=4;return g24e_fail(w,G24_E_ACTIVE);}
++ if(!g24e_read(w,o,G24_CTL,G24_WPTR,&value))goto io_refusal;if(value){d->stage=4;return g24e_fail(w,G24_E_ACTIVE);}
++ if(!g24e_faults(w,o))goto io_refusal;
++ for(unsigned j=0;j<4;j++){if(!g24e_read(w,o,G24_PROFILE,76+j,&d->before[j]))goto io_refusal;d->valid|=1u<<j;if(d->before[j]!=w->r.profile_current[76+j]){d->stage=4;return g24e_fail(w,G24_E_CONFIG);}}
++ d->stage=2;
++ for(unsigned j=0;j<4;j++){
++  unsigned i=76+j;const struct g24_reg*r=&g24_profile[i];w->r.profile_cursor=i;
++  if(r->mask!=0xffffffffu||!g24e_write(w,o,G24_PROFILE,i,r->value,0))goto io_refusal;d->staged|=1u<<j;
++ }
++ for(unsigned j=0;j<4;j++){
++  if(!g24e_read(w,o,G24_PROFILE,76+j,&d->after[j]))goto io_refusal;d->valid|=1u<<(4+j);
++  if(d->after[j]==g24_profile[76+j].value)d->exact|=1u<<j;else{d->mismatch|=1u<<j;if(d->first_bad==0xffffffffu)d->first_bad=j;}
++ }
++ if(!g29_cp_aux_snapshot(w,o,1))goto io_refusal;
++ if(d->mismatch){unsigned j=d->first_bad,i=76+j;w->r.profile_cursor=i;w->r.pending_space=G24_PROFILE;w->r.pending_index=i;w->r.pending_value=g24_profile[i].value;w->r.last_space=G24_PROFILE;w->r.last_index=i;w->r.last_value=d->after[j];w->r.last_valid=1;d->stage=4;return g24e_fail(w,G24_E_CONFIG);}
++ for(unsigned j=0;j<8;j++)if(d->aux[j]!=d->aux[8+j]){d->stage=4;return g24e_fail(w,G24_E_ACTIVE);}
++ if(!g24e_faults(w,o))goto io_refusal;
++ if(d->valid!=0xffffffu||d->staged!=15||d->exact!=15||d->first_bad!=0xffffffffu){d->stage=4;return g24e_fail(w,G24_E_GUARD);}
++ d->stage=3;return 1;
++io_refusal:d->stage=4;return 0;
++}
++
+ #endif
+ __attribute__((noinline)) int g24_run(struct g24_workspace*w,const struct g24_io*o){
+  if(!w||!o||!o->qualified||!o->read||!o->write||!o->order||!o->delay||!o->now||!o->zap_copy||!o->present||w->r.phase!=G24_READY||!w->ring||!w->pixels||!w->fence||!w->memory.valid||w->memory.epoch!=w->r.epoch)return 0;
+@@ -155,8 +195,12 @@
+ #if defined(G24_POST_CLOCK_SNAPSHOT)
+   if(i==G24_PROFILE_CLOCK_START){if(!g28_clock_select(w,o))return 0;if(w->clock.mode==G28_CLOCK_SKIP){i=G24_PROFILE_CLOCK_END;w->r.profile_cursor=i;}}
+   if(i==G24_PROFILE_CLOCK_END&&!g24_clock_view(w,o))return 0;
++  if(i==76){if(!g29_cp_configure(w,o))return 0;i=79;continue;}
+ #endif
+   const struct g24_reg*d=&g24_profile[i];v=(w->r.profile_current[i]&~d->mask)|d->value;if(!g24e_write(w,o,G24_PROFILE,i,v,1))return 0;}
++#if defined(G24_POST_CLOCK_SNAPSHOT)
++ if(!g29_cp_verified(w))return g24e_fail(w,G24_E_GUARD);
++#endif
+  w->r.phase=G24_ME_INIT;
+  for(unsigned i=0;i<8;i++){w->r.cp_cursor=i;if(!g24e_put(w,o,g24_cp_order[i]))return 0;}w->r.cp_started=1;
+  uint32_t init[9]={0,0x2f,3,0x20000000,0,0,0,0,0};init[0]=g24e_pkt(0x48,8);if(!g24e_submit(w,o,init,9))return 0;w->r.proofs|=GP_NATIVE_SQE;
+--- a/bsd/dev/ziyi_g24_engine.h
++++ b/bsd/dev/ziyi_g24_engine.h
+@@ -6,7 +6,7 @@
+ #include "ziyi_g24_pas.h"
+ enum {G24_NEW,G24_READY,G24_POWER,G24_SNAPSHOT,G24_SMMU,G24_CONFIG,G24_ME_INIT,G24_ZAP,G24_UNSECURE,G24_FENCE,G24_BLIT,G24_VERIFY,G24_PRESENT,G24_DONE,G24_REFUSED};
+ enum {G24_E_ARGUMENT=400,G24_E_OWNER,G24_E_IO,G24_E_TIMEOUT,G24_E_ACTIVE,G24_E_SMMU,G24_E_CONFIG,G24_E_CP,G24_E_PAS,G24_E_PIXELS,G24_E_GUARD,G24_E_DISPLAY};
+-enum {G24_CTL=0,G24_PROFILE=1};
++enum {G24_CTL=0,G24_PROFILE=1,G29_CPAUX=2};
+ enum {
+  G24_INFO,G24_ACK,G24_REQUEST,G24_SPTPRAC,G24_GDSC,G24_STATUS,G24_INT,G24_CPFAULT,G24_CPPROTECT,G24_RPTR,G24_WPTR,G24_SQE_CONTROL,G24_RBLO,G24_RBHI,G24_SQELO,G24_SQEHI,G24_RBCNTL,G24_RPTRLO,G24_RPTRHI,
+  G24_SMR,G24_S2CR,G24_CBAR,G24_CBA2R,G24_SCTLR,G24_ACTLR,G24_TCR2,G24_TCR,G24_TTBRLO,G24_TTBRHI,G24_TTBR1LO,G24_TTBR1HI,G24_MAIR0,G24_MAIR1,G24_FSR,G24_FSYNR,G24_FARLO,G24_FARHI,G24_TLBI,G24_TLBSYNC,G24_TLBSTATUS,G24_GLOBAL_FSR,G24_GMU_SMR,G24_GMU_S2CR,G24_GMU_SCTLR,G24_FW,G24_HFI,G24_RESET,G24_HALT,G24_CTL_COUNT
+@@ -29,13 +29,24 @@
+ struct g28_clock_diag {
+  uint32_t mode,valid,clock_before,sp_before,sp_off,sp_now,control_now,clock_now,writes,stable_reads;
+ };
++#define G29_CP_BYTES 160u
++/* Auxiliary pre/post facts: reset,block reset1/2,SQE,ADDR_MODE,AHB,MISC,CP IRQ.
++ * No write is ever authorized in G29_CPAUX. */
++struct g29_cp_diag {uint32_t stage,valid,staged,exact,mismatch,first_bad;uint32_t before[4],after[4],aux[16];};
+ struct g24_workspace {
+  struct g24_record r;struct g24_firmware fw;struct gc_plan memory;struct g24_pas pas;
+  volatile uint32_t *ring,*fence;volatile uint8_t*pixels;
+  struct gp_request pixel_request;
+  uint8_t guard[64];uint32_t expected_ring[256];
+- struct g28_clock_diag clock;
++ struct g28_clock_diag clock;struct g29_cp_diag cp_config;
+ };
++static inline int g29_cp_verified(const struct g24_workspace*w){
++ const struct g29_cp_diag*d=&w->cp_config;const uint32_t target[4]={0x02000140,0x8040362c,0x20,0x80};
++ if(d->stage!=3||d->valid!=0xffffffu||d->staged!=15||d->exact!=15||d->mismatch||d->first_bad!=0xffffffffu)return 0;
++ for(unsigned i=0;i<4;i++)if(d->after[i]!=target[i])return 0;
++ for(unsigned i=0;i<8;i++)if(d->aux[i]!=d->aux[8+i])return 0;
++ return (d->aux[3]==0||d->aux[3]==3)&&d->aux[4]==1&&!d->aux[7];
++}
+ struct g24_io {
+  void*ctx;int(*qualified)(void*,uint64_t,unsigned);
+  int(*read)(void*,unsigned,unsigned,uint32_t*);
+@@ -60,3 +71,14 @@
+  if(!b||!a||n!=G28_CLOCK_BYTES)return 0;for(unsigned i=0;i<20;i++){a[i]=0;for(unsigned j=0;j<4;j++)a[i]|=(uint32_t)b[4*i+j]<<(8*j);}
+  return a[0]==0x314b4347u&&a[1]==1&&a[2]==G28_CLOCK_BYTES&&a[3]==g28_clock_crc(b+16,64)&&a[4]<=3&&a[5]<=63&&a[12]<=52&&a[13]<=174&&!a[18]&&!a[19];
+ }
++
++static inline int g29_cp_pack(const struct g24_workspace*w,uint8_t*b,size_t n){
++ if(!w||!b||n!=G29_CP_BYTES||w->cp_config.stage>4||w->cp_config.valid>0xffffff||w->cp_config.staged>15||w->cp_config.exact>15||w->cp_config.mismatch>15)return 0;
++ const struct g29_cp_diag*d=&w->cp_config;uint32_t a[40]={0x31525043u,1,G29_CP_BYTES,0,d->stage,d->valid,d->staged,d->exact,d->mismatch,d->first_bad,(uint32_t)w->r.epoch,(uint32_t)(w->r.epoch>>32)};
++ for(unsigned i=0;i<4;i++){a[12+i]=d->before[i];a[16+i]=d->after[i];}for(unsigned i=0;i<16;i++)a[20+i]=d->aux[i];
++ for(unsigned i=0;i<40;i++)for(unsigned j=0;j<4;j++)b[4*i+j]=(uint8_t)(a[i]>>(8*j));uint32_t crc=g28_clock_crc(b+16,144);for(unsigned j=0;j<4;j++)b[12+j]=(uint8_t)(crc>>(8*j));return 1;
++}
++static inline int g29_cp_unpack(const uint8_t*b,size_t n,uint32_t*a){
++ if(!b||!a||n!=G29_CP_BYTES)return 0;for(unsigned i=0;i<40;i++){a[i]=0;for(unsigned j=0;j<4;j++)a[i]|=(uint32_t)b[4*i+j]<<(8*j);}
++ return a[0]==0x31525043u&&a[1]==1&&a[2]==G29_CP_BYTES&&a[3]==g28_clock_crc(b+16,144)&&a[4]<=4&&a[5]<=0xffffff&&a[6]<=15&&a[7]<=15&&a[8]<=15&&(a[9]<4||a[9]==0xffffffffu||!a[4])&&!a[36]&&!a[37]&&!a[38]&&!a[39];
++}
+--- a/bsd/dev/ziyi_g24_native.inc
++++ b/bsd/dev/ziyi_g24_native.inc
+@@ -43,6 +43,7 @@
+ static int g24n_qualified(void*ctx,uint64_t epoch,unsigned phase){
+  struct zg_state*s=ctx;uint32_t fw,hfi,reset,smr,s2cr,control;
+  if(s!=g24n.s||!g24n_lease()||epoch!=g24n.w.r.epoch||phase!=g24n.w.r.phase||g23.record.state!=GS_COMPLETE||g23.record.error||g23.record.acks!=5||g23.record.epoch!=epoch)return 0;
++ if(phase>=G24_ME_INIT&&phase<=G24_PRESENT&&!g29_cp_verified(&g24n.w))return 0;
+  g24n.guard_error=1;
+  if(g24n.checked_phase!=phase){if(!hop_xnu_validate(&g24n.pages,&g24n.owner)||!hop_xnu_validate(&s->hfi_memory,&s->hfi_owner)||!g24n_tables())return 0;g24n.checked_phase=phase;}
+  g24n.guard_error=2;
+@@ -197,7 +198,11 @@
+  static unsigned page;uint8_t bytes[G24_RECORD_BYTES];
+  const struct g24_native_facts facts={g24n.zap_crc,g24n.zap_backed,g24n.zap_copied,g24n.guard_error};
+  if(!g24_record_pack(&g24n.w,&facts,bytes,sizeof(bytes))){printf("G24 record refused encoding\n");return;}
+- unsigned p=page++%6;
++ unsigned p=page++%8;
++ if(p>=6){uint8_t cp[G29_CP_BYTES];if(!g29_cp_pack(&g24n.w,cp,sizeof(cp))){printf("CPR1 encoding refused\n");return;}
++  unsigned part=p-6;printf("CPR1 page%u/2 stage%u staged%x exact%x bad%x CRC%08x\n",part,g24n.w.cp_config.stage,g24n.w.cp_config.staged,g24n.w.cp_config.exact,g24n.w.cp_config.mismatch,g24n_record_word(cp,3));
++  for(unsigned row=0;row<5;row++){unsigned at=part*20+row*4;printf("P%02u %08x %08x %08x %08x\n",at/4,g24n_record_word(cp,at),g24n_record_word(cp,at+1),g24n_record_word(cp,at+2),g24n_record_word(cp,at+3));}return;
++ }
+  if(p==5){uint8_t clock[G28_CLOCK_BYTES];if(!g28_clock_pack(&g24n.w,clock,sizeof(clock))){printf("GCK1 encoding refused\n");return;}
+   printf("GCK1 clock mode%u valid%02x CRC%08x\n",g24n.w.clock.mode,g24n.w.clock.valid,g24n_record_word(clock,3));
+   for(unsigned row=0;row<5;row++){unsigned n=row*4;printf("K%02u %08x %08x %08x %08x\n",row,g24n_record_word(clock,n),g24n_record_word(clock,n+1),g24n_record_word(clock,n+2),g24n_record_word(clock,n+3));}return;

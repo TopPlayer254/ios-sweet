@@ -43,6 +43,7 @@ static int g24n_tables(void){
 static int g24n_qualified(void*ctx,uint64_t epoch,unsigned phase){
  struct zg_state*s=ctx;uint32_t fw,hfi,reset,smr,s2cr,control;
  if(s!=g24n.s||!g24n_lease()||epoch!=g24n.w.r.epoch||phase!=g24n.w.r.phase||g23.record.state!=GS_COMPLETE||g23.record.error||g23.record.acks!=5||g23.record.epoch!=epoch)return 0;
+ if(phase>=G24_ME_INIT&&phase<=G24_PRESENT&&!g29_cp_verified(&g24n.w))return 0;
  g24n.guard_error=1;
  if(g24n.checked_phase!=phase){if(!hop_xnu_validate(&g24n.pages,&g24n.owner)||!hop_xnu_validate(&s->hfi_memory,&s->hfi_owner)||!g24n_tables())return 0;g24n.checked_phase=phase;}
  g24n.guard_error=2;
@@ -197,7 +198,11 @@ __attribute__((noinline)) void ziyi_gpu_cp_print(void*ctx){
  static unsigned page;uint8_t bytes[G24_RECORD_BYTES];
  const struct g24_native_facts facts={g24n.zap_crc,g24n.zap_backed,g24n.zap_copied,g24n.guard_error};
  if(!g24_record_pack(&g24n.w,&facts,bytes,sizeof(bytes))){printf("G24 record refused encoding\n");return;}
- unsigned p=page++%6;
+ unsigned p=page++%8;
+ if(p>=6){uint8_t cp[G29_CP_BYTES];if(!g29_cp_pack(&g24n.w,cp,sizeof(cp))){printf("CPR1 encoding refused\n");return;}
+  unsigned part=p-6;printf("CPR1 page%u/2 stage%u staged%x exact%x bad%x CRC%08x\n",part,g24n.w.cp_config.stage,g24n.w.cp_config.staged,g24n.w.cp_config.exact,g24n.w.cp_config.mismatch,g24n_record_word(cp,3));
+  for(unsigned row=0;row<5;row++){unsigned at=part*20+row*4;printf("P%02u %08x %08x %08x %08x\n",at/4,g24n_record_word(cp,at),g24n_record_word(cp,at+1),g24n_record_word(cp,at+2),g24n_record_word(cp,at+3));}return;
+ }
  if(p==5){uint8_t clock[G28_CLOCK_BYTES];if(!g28_clock_pack(&g24n.w,clock,sizeof(clock))){printf("GCK1 encoding refused\n");return;}
   printf("GCK1 clock mode%u valid%02x CRC%08x\n",g24n.w.clock.mode,g24n.w.clock.valid,g24n_record_word(clock,3));
   for(unsigned row=0;row<5;row++){unsigned n=row*4;printf("K%02u %08x %08x %08x %08x\n",row,g24n_record_word(clock,n),g24n_record_word(clock,n+1),g24n_record_word(clock,n+2),g24n_record_word(clock,n+3));}return;

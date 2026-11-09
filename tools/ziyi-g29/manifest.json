@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "parentCommit": "8d31142f16745b18e733d259791add10729ac63a",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_engine.c",
+      "before": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798",
+      "after": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_engine.h",
+      "before": "01ada7cbf03688fabf48846bec00a007db0b7a01f9b39da0c371893a543fb29c",
+      "after": "4dc3eab93c7f496340547bda6a3a3ca73eb037695a3089a7694b495536cdaddb"
+    },
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": "7def6afd69e4aa41ecb944c20c84c53920209110be13aa426c003e078fe699bb",
+      "after": "d188999307f20193cf719c95bc72317081a8574bdeda4171b9cd1b12b194b025"
+    }
+  ],
+  "patch": "xnu/patches/0111-ziyi-g29-bound-cp-config-cohort-and-exact-release-guards.patch",
+  "patchSHA256": "bdf2c5fbc126c9e976437550e034bb9e39fc13b112a79c9d86959fcce0d43f18",
+  "linkedFunctions": [
+    "_g29_cp_configure",
+    "_g24_run",
+    "_g24_store_allowed",
+    "_g24n_qualified",
+    "_ziyi_gpu_cp_print"
+  ],
+  "profileSHA256": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+  "recordSHA256": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f",
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g29/README.md",
+      "sha256": "e99dec0dbcd29688725b23b71545f686122c46d67e394ccf101da5e12fbbda43",
+      "bytes": 664
+    },
+    {
+      "path": "tools/ziyi-g29/audit_ci.py",
+      "sha256": "ca01bab952b91c76366a5e924c8c500acaed4ae2ac9acbc7c829cba77c27d665",
+      "bytes": 3856
+    },
+    {
+      "path": "tools/ziyi-g29/g28-engine-before.c",
+      "sha256": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798",
+      "bytes": 17374
+    },
+    {
+      "path": "tools/ziyi-g29/g28-profile-before.inc",
+      "sha256": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+      "bytes": 9444
+    },
+    {
+      "path": "tools/ziyi-g29/hwcg-block.inc",
+      "sha256": "dc03473b6a3dfdb62e79f3ecdeecf43aef398de6a18f08db02cca592d5ec3d4e",
+      "bytes": 2261
+    },
+    {
+      "path": "tools/ziyi-g29/run_cp_cohort_tests.py",
+      "sha256": "323e5c20de1bba463513322f1a3b62b5920ebdf5464aa75cc4bf4e453b72afdd",
+      "bytes": 3651
+    },
+    {
+      "path": "tools/ziyi-g29/test_cp_cohort.c",
+      "sha256": "295b3aba2d62d68dd56968c5f2f5fc661e7247a224966a180825f93d745df752",
+      "bytes": 25924
+    }
+  ],
+  "native": false,
+  "gpuPixels": false
+}

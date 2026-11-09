@@ -89,6 +89,6 @@ int main(int argc,char**argv){assert(argc==2);FILE*f=fopen(argv[1],"rb");assert(
  /* Reject a mutually corrupted RAM table and its BSS mirror. */
  for(unsigned leaf=0;leaf<24;leaf++){reset();assert(ziyi_gpu_cp_prepare(&zg));live();unsigned at=((GC_IOVA>>12)&511)+leaf;uint64_t mask=leaf&1?0x40:0x1000;g24n.w.memory.tables[2][at]^=mask;((uint64_t*)allocation)[1024+at]^=mask;assert(!g24n_tables());struct g24_io o=io();assert(!g24_run(&g24n.w,&o)&&!g24n.w.r.writes);}
  /* Continuation tokens do not authorize changed original arguments. */
- reset();assert(ziyi_gpu_cp_prepare(&zg));live();g24n.w.r.phase=G24_ZAP;g24n.w.r.cp_started=1;g24n.w.pas.state=G24P_PROBED;g24n.w.pas.last[0]=1;g24n.w.pas.last[6]=0x1234;
+ reset();assert(ziyi_gpu_cp_prepare(&zg));live();g24n.w.cp_config=(struct g29_cp_diag){.stage=3,.valid=0xffffff,.staged=15,.exact=15,.first_bad=0xffffffff,.after={0x02000140,0x8040362c,0x20,0x80},.aux={[4]=1,[12]=1}};g24n.w.r.phase=G24_ZAP;g24n.w.r.cp_started=1;g24n.w.pas.state=G24P_PROBED;g24n.w.pas.last[0]=1;g24n.w.pas.last[6]=0x1234;
  for(unsigned bad=0;bad<7;bad++){uint64_t r[8]={1,130,13,g24n.pages.page[7].pa,0,0,0x1234,0};r[bad+1]^=1;unsigned before=smc_calls;assert(!g24n_smc(&zg,r)&&smc_calls==before);}
  printf("G24_ACTUAL_NATIVE_ADAPTER_HOST_PASS fullPass2 interruptedMetadata1 refusalCases42 framebufferGuardPixels%d native0\n",1080*2400);free(raw_allocation);return 0;}

@@ -9,7 +9,7 @@ struct model {uint32_t ctl[G24_CTL_COUNT],profile[G24_MAX_PROFILE];unsigned call
 static struct model m;
 static int step(struct model*x){return ++x->calls!=x->fail;}
 static int qualified(void*c,uint64_t epoch,unsigned phase){struct model*x=c;return step(x)&&epoch==w.r.epoch&&phase!=x->phase_fail;}
-static int rd(void*c,unsigned space,unsigned id,uint32_t*out){struct model*x=c;if(!step(x))return 0;assert(g24_register_address(space,id));*out=space==G24_CTL?x->ctl[id]:x->profile[id];return 1;}
+static int rd(void*c,unsigned space,unsigned id,uint32_t*out){struct model*x=c;if(!step(x))return 0;assert(g24_register_address(space,id));*out=space==G24_CTL?x->ctl[id]:space==G29_CPAUX?(id==3?x->ctl[G24_SQE_CONTROL]:id==4?x->profile[0]:0):x->profile[id];return 1;}
 static unsigned odd(uint32_t n){unsigned p=1;while(n){p^=n&1;n>>=1;}return p;}
 static void consume(struct model*x,uint32_t end){
  uint32_t reg[0xc000]={0};uint32_t at=x->ctl[G24_RPTR];

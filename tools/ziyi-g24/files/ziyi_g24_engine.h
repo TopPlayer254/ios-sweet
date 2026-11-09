@@ -6,7 +6,7 @@
 #include "ziyi_g24_pas.h"
 enum {G24_NEW,G24_READY,G24_POWER,G24_SNAPSHOT,G24_SMMU,G24_CONFIG,G24_ME_INIT,G24_ZAP,G24_UNSECURE,G24_FENCE,G24_BLIT,G24_VERIFY,G24_PRESENT,G24_DONE,G24_REFUSED};
 enum {G24_E_ARGUMENT=400,G24_E_OWNER,G24_E_IO,G24_E_TIMEOUT,G24_E_ACTIVE,G24_E_SMMU,G24_E_CONFIG,G24_E_CP,G24_E_PAS,G24_E_PIXELS,G24_E_GUARD,G24_E_DISPLAY};
-enum {G24_CTL=0,G24_PROFILE=1};
+enum {G24_CTL=0,G24_PROFILE=1,G29_CPAUX=2};
 enum {
  G24_INFO,G24_ACK,G24_REQUEST,G24_SPTPRAC,G24_GDSC,G24_STATUS,G24_INT,G24_CPFAULT,G24_CPPROTECT,G24_RPTR,G24_WPTR,G24_SQE_CONTROL,G24_RBLO,G24_RBHI,G24_SQELO,G24_SQEHI,G24_RBCNTL,G24_RPTRLO,G24_RPTRHI,
  G24_SMR,G24_S2CR,G24_CBAR,G24_CBA2R,G24_SCTLR,G24_ACTLR,G24_TCR2,G24_TCR,G24_TTBRLO,G24_TTBRHI,G24_TTBR1LO,G24_TTBR1HI,G24_MAIR0,G24_MAIR1,G24_FSR,G24_FSYNR,G24_FARLO,G24_FARHI,G24_TLBI,G24_TLBSYNC,G24_TLBSTATUS,G24_GLOBAL_FSR,G24_GMU_SMR,G24_GMU_S2CR,G24_GMU_SCTLR,G24_FW,G24_HFI,G24_RESET,G24_HALT,G24_CTL_COUNT
@@ -29,13 +29,24 @@ enum {G28_CLOCK_NONE,G28_CLOCK_PROGRAM,G28_CLOCK_SKIP,G28_CLOCK_REFUSED};
 struct g28_clock_diag {
  uint32_t mode,valid,clock_before,sp_before,sp_off,sp_now,control_now,clock_now,writes,stable_reads;
 };
+#define G29_CP_BYTES 160u
+/* Auxiliary pre/post facts: reset,block reset1/2,SQE,ADDR_MODE,AHB,MISC,CP IRQ.
+ * No write is ever authorized in G29_CPAUX. */
+struct g29_cp_diag {uint32_t stage,valid,staged,exact,mismatch,first_bad;uint32_t before[4],after[4],aux[16];};
 struct g24_workspace {
  struct g24_record r;struct g24_firmware fw;struct gc_plan memory;struct g24_pas pas;
  volatile uint32_t *ring,*fence;volatile uint8_t*pixels;
  struct gp_request pixel_request;
  uint8_t guard[64];uint32_t expected_ring[256];
- struct g28_clock_diag clock;
+ struct g28_clock_diag clock;struct g29_cp_diag cp_config;
 };
+static inline int g29_cp_verified(const struct g24_workspace*w){
+ const struct g29_cp_diag*d=&w->cp_config;const uint32_t target[4]={0x02000140,0x8040362c,0x20,0x80};
+ if(d->stage!=3||d->valid!=0xffffffu||d->staged!=15||d->exact!=15||d->mismatch||d->first_bad!=0xffffffffu)return 0;
+ for(unsigned i=0;i<4;i++)if(d->after[i]!=target[i])return 0;
+ for(unsigned i=0;i<8;i++)if(d->aux[i]!=d->aux[8+i])return 0;
+ return (d->aux[3]==0||d->aux[3]==3)&&d->aux[4]==1&&!d->aux[7];
+}
 struct g24_io {
  void*ctx;int(*qualified)(void*,uint64_t,unsigned);
  int(*read)(void*,unsigned,unsigned,uint32_t*);
@@ -59,4 +70,15 @@ static inline int g28_clock_pack(const struct g24_workspace*w,uint8_t*b,size_t n
 static inline int g28_clock_unpack(const uint8_t*b,size_t n,uint32_t*a){
  if(!b||!a||n!=G28_CLOCK_BYTES)return 0;for(unsigned i=0;i<20;i++){a[i]=0;for(unsigned j=0;j<4;j++)a[i]|=(uint32_t)b[4*i+j]<<(8*j);}
  return a[0]==0x314b4347u&&a[1]==1&&a[2]==G28_CLOCK_BYTES&&a[3]==g28_clock_crc(b+16,64)&&a[4]<=3&&a[5]<=63&&a[12]<=52&&a[13]<=174&&!a[18]&&!a[19];
+}
+
+static inline int g29_cp_pack(const struct g24_workspace*w,uint8_t*b,size_t n){
+ if(!w||!b||n!=G29_CP_BYTES||w->cp_config.stage>4||w->cp_config.valid>0xffffff||w->cp_config.staged>15||w->cp_config.exact>15||w->cp_config.mismatch>15)return 0;
+ const struct g29_cp_diag*d=&w->cp_config;uint32_t a[40]={0x31525043u,1,G29_CP_BYTES,0,d->stage,d->valid,d->staged,d->exact,d->mismatch,d->first_bad,(uint32_t)w->r.epoch,(uint32_t)(w->r.epoch>>32)};
+ for(unsigned i=0;i<4;i++){a[12+i]=d->before[i];a[16+i]=d->after[i];}for(unsigned i=0;i<16;i++)a[20+i]=d->aux[i];
+ for(unsigned i=0;i<40;i++)for(unsigned j=0;j<4;j++)b[4*i+j]=(uint8_t)(a[i]>>(8*j));uint32_t crc=g28_clock_crc(b+16,144);for(unsigned j=0;j<4;j++)b[12+j]=(uint8_t)(crc>>(8*j));return 1;
+}
+static inline int g29_cp_unpack(const uint8_t*b,size_t n,uint32_t*a){
+ if(!b||!a||n!=G29_CP_BYTES)return 0;for(unsigned i=0;i<40;i++){a[i]=0;for(unsigned j=0;j<4;j++)a[i]|=(uint32_t)b[4*i+j]<<(8*j);}
+ return a[0]==0x31525043u&&a[1]==1&&a[2]==G29_CP_BYTES&&a[3]==g28_clock_crc(b+16,144)&&a[4]<=4&&a[5]<=0xffffff&&a[6]<=15&&a[7]<=15&&a[8]<=15&&(a[9]<4||a[9]==0xffffffffu||!a[4])&&!a[36]&&!a[37]&&!a[38]&&!a[39];
 }

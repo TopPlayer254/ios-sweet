@@ -10,7 +10,7 @@
     {
       "path": "bsd/dev/ziyi_g24_engine.c",
       "before": "319a6eb3fee2a78af13e360e4b33f8e43ef5688d790fb4bc2e7e794fbc8c2c35",
-      "after": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798"
+      "after": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1"
     }
   ],
   "patch": "xnu/patches/0109-ziyi-g27-select-defined-gx-hwcg-off-mode.patch",
@@ -51,8 +51,8 @@
     },
     {
       "path": "tools/ziyi-g27/test_gx_off.c",
-      "sha256": "6d42078c5ab0c46ae81d66aaf3a95e790f86bffc2b5a61c5e894a213ea621970",
-      "bytes": 16226
+      "sha256": "200098ec21defd8b1bbc1d4b153279ec31c466c8db126b13d01d07723402fdc5",
+      "bytes": 16394
     }
   ],
   "native": false,
@@ -66,5 +66,19 @@
     "alreadyOffReadOnlySelector": true,
     "strictSPReadback": true,
     "auxiliaryBytes": 80
+  },
+  "g29CPConfigCohort": {
+    "patch": "xnu/patches/0111-ziyi-g29-bound-cp-config-cohort-and-exact-release-guards.patch",
+    "sha256": "bdf2c5fbc126c9e976437550e034bb9e39fc13b112a79c9d86959fcce0d43f18",
+    "engineSHA256": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1",
+    "profileUnchanged": true,
+    "recordUnchanged": true,
+    "GCKWireUnchanged": true,
+    "configStores": 4,
+    "strictFinalExactReadbacks": 4,
+    "readOnlyAuxRegisters": 8,
+    "resetStores": 0,
+    "auxiliaryBytes": 160,
+    "actualReceiptReleaseGuards": true
   }
 }

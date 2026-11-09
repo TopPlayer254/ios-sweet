@@ -55,3 +55,6 @@
 
 /xnu/patches/0110-ziyi-g28-qualify-already-off-clock-noop.patch -text whitespace=cr-at-eol
 /tools/ziyi-g28/** -text
+
+/xnu/patches/0111-ziyi-g29-bound-cp-config-cohort-and-exact-release-guards.patch -text whitespace=cr-at-eol
+/tools/ziyi-g29/** -text

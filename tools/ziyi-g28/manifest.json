@@ -5,17 +5,17 @@
     {
       "path": "bsd/dev/ziyi_g24_engine.c",
       "before": "0ad3d771557b4835e783c9bee25a2d03d97339b267d4fbbb9030284b1036f71b",
-      "after": "2716ad0c24ab22842188ebde5b0de1d554435cf1710b264f9077b0c118e6a798"
+      "after": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1"
     },
     {
       "path": "bsd/dev/ziyi_g24_engine.h",
       "before": "57df390dd108decc82d16e1c7f2289a9367876d5843a220d5eb23635ee408e4e",
-      "after": "01ada7cbf03688fabf48846bec00a007db0b7a01f9b39da0c371893a543fb29c"
+      "after": "4dc3eab93c7f496340547bda6a3a3ca73eb037695a3089a7694b495536cdaddb"
     },
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "c521d5db2614879e936b02d71fd97d407357f0fb45aa1e0a39d91be3cc25facf",
-      "after": "7def6afd69e4aa41ecb944c20c84c53920209110be13aa426c003e078fe699bb"
+      "after": "d188999307f20193cf719c95bc72317081a8574bdeda4171b9cd1b12b194b025"
     }
   ],
   "patch": "xnu/patches/0110-ziyi-g28-qualify-already-off-clock-noop.patch",
@@ -35,7 +35,7 @@
     },
     {
       "path": "tools/ziyi-g28/audit_ci.py",
-      "sha256": "004b128a11f57dcb409f6e43bea20bd5c54e5254f9878610de0830a204f4970a",
+      "sha256": "4b2bace32fac814ec6bdf2fa2cb4a8042f9a661c50ec6932b3fc6bbfe3943a9c",
       "bytes": 3796
     },
     {
@@ -60,10 +60,24 @@
     },
     {
       "path": "tools/ziyi-g28/test_already_off.c",
-      "sha256": "3de4d164810053c66904cb4e9e8a58f50a35e2e098a59ce7d884d15392a6abcf",
-      "bytes": 21401
+      "sha256": "d61a371e5131bb68760da67632305d2b17de0f888150515befd77665dc4c025c",
+      "bytes": 21569
     }
   ],
   "native": false,
-  "gpuPixels": false
+  "gpuPixels": false,
+  "g29CPConfigCohort": {
+    "patch": "xnu/patches/0111-ziyi-g29-bound-cp-config-cohort-and-exact-release-guards.patch",
+    "sha256": "bdf2c5fbc126c9e976437550e034bb9e39fc13b112a79c9d86959fcce0d43f18",
+    "engineSHA256": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1",
+    "profileUnchanged": true,
+    "recordUnchanged": true,
+    "GCKWireUnchanged": true,
+    "configStores": 4,
+    "strictFinalExactReadbacks": 4,
+    "readOnlyAuxRegisters": 8,
+    "resetStores": 0,
+    "auxiliaryBytes": 160,
+    "actualReceiptReleaseGuards": true
+  }
 }
