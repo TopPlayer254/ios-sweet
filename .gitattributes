@@ -58,3 +58,6 @@
 
 /xnu/patches/0111-ziyi-g29-bound-cp-config-cohort-and-exact-release-guards.patch -text whitespace=cr-at-eol
 /tools/ziyi-g29/** -text
+
+/xnu/patches/0112-ziyi-g30-native-preaccess-crc-witnesses.patch -text whitespace=cr-at-eol
+/tools/ziyi-g30/** -text

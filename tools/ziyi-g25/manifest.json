@@ -10,7 +10,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "6f8d335360f831896d8b6ee765ead43a43c57884191a882825ccfb22953032c8",
-      "after": "d188999307f20193cf719c95bc72317081a8574bdeda4171b9cd1b12b194b025"
+      "after": "1c96232a23e412f7d928a508c97030d0c5d7ed96b359bb6d0390274dda857426"
     }
   ],
   "patch": "xnu/patches/0107-ziyi-g25-defer-optional-counter-and-readable-record.patch",
@@ -99,5 +99,15 @@
     "resetStores": 0,
     "auxiliaryBytes": 160,
     "actualReceiptReleaseGuards": true
+  },
+  "g30NativeWitness": {
+    "patch": "xnu/patches/0112-ziyi-g30-native-preaccess-crc-witnesses.patch",
+    "sha256": "6543f58a2f62198c8ed30853bc3a8f40d2def192cac8ddc09eb73ee83ee4a352",
+    "nativeSHA256": "1c96232a23e412f7d928a508c97030d0c5d7ed96b359bb6d0390274dda857426",
+    "engineHeaderProfileUnchanged": true,
+    "targetMMIOUnchanged": true,
+    "originalFreshPredicatesRepeated": true,
+    "witnessBytes": 64,
+    "deadlineSeconds": 15
   }
 }

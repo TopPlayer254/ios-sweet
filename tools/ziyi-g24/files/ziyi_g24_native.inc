@@ -9,6 +9,7 @@ static struct {
  unsigned mode,prepared,checked_phase,metadata_verified,zap_backed,zap_copied,smc_inflight;
  uint32_t zap_crc,guard_error;
  uint8_t zap_backup[2][4096];
+ uint32_t witness_sequence;uint8_t witness_bytes[64];
 } g24n;
 static int g24n_stop(unsigned error){g24n.w.r.failure_phase=g24n.w.r.phase;g24n.w.r.phase=G24_REFUSED;g24n.w.r.error=error;g24n.w.r.retained=1;return 0;}
 static void*g24n_pointer(uint64_t at){
@@ -62,12 +63,66 @@ static int g24n_qualified(void*ctx,uint64_t epoch,unsigned phase){
  for(unsigned i=0;i<8;i++)if(kvtophys((vm_offset_t)(g24n.pages.va+16384*i))!=g24n.pages.page[i].pa)return 0;
  g24n.guard_error=0;return 1;
 }
+/* GWT1 fields: seq,kind,space,index,addressLo/Hi,value,valueKind,phase,
+ * cursor,epochLo/Hi. ENTRY is before owner validation; MMIO_INTENT follows the first original guards; after pacing
+ * the original live owner/current predicates are repeated before access. ISSUED is not an exact readback. No new MMIO here. */
+static int g30_target(unsigned kind,unsigned space,unsigned id,unsigned phase,unsigned cursor){
+ if(space==3)return (kind==7||kind==8)&&phase==G24_ZAP&&id>=G24P_INFO&&id<=G24P_START;
+ if(kind<1||kind>6)return 0;
+ if(phase==G24_CONFIG&&cursor>=76&&cursor<151)return (space==G29_CPAUX&&id<8&&cursor<=79)||(space==G24_PROFILE&&id>=76&&id<151);
+ return space==G24_CTL&&phase>=G24_ME_INIT&&phase<=G24_BLIT&&id<G24_CTL_COUNT&&(kind>=4||id==G24_SQE_CONTROL);
+}
+__attribute__((noinline)) static int g30_witness_pack(const uint32_t*p,uint8_t*b){
+ if(!p||!b||!p[0]||p[0]>4096||!g30_target(p[1],p[2],p[3],p[8],p[9])||!(p[10]||p[11]))return 0;
+ uint64_t address=(uint64_t)p[4]|(uint64_t)p[5]<<32;
+ if(p[2]!=3&&address!=g24_register_address(p[2],p[3]))return 0;
+ unsigned value_kind=(p[1]==3||p[1]==8)?1:p[1]>=4?2:0;
+ if(p[7]!=value_kind||(!value_kind&&p[6]))return 0;
+ uint32_t a[16]={0x31545747u,1,64,0};for(unsigned i=0;i<12;i++)a[4+i]=p[i];
+ for(unsigned i=0;i<16;i++)for(unsigned j=0;j<4;j++)b[4*i+j]=(uint8_t)(a[i]>>(8*j));
+ uint32_t crc=g28_clock_crc(b+16,48);for(unsigned j=0;j<4;j++)b[12+j]=(uint8_t)(crc>>(8*j));return 1;
+}
+static uint32_t g30_word(const uint8_t*b,unsigned n){uint32_t v=0;for(unsigned j=0;j<4;j++)v|=(uint32_t)b[4*n+j]<<(8*j);return v;}
+static inline int g30_witness_unpack(const uint8_t*b,size_t n,uint32_t*p){
+ if(!b||!p||n!=64||g30_word(b,0)!=0x31545747u||g30_word(b,1)!=1||g30_word(b,2)!=64||g30_word(b,3)!=g28_clock_crc(b+16,48))return 0;
+ for(unsigned i=0;i<12;i++)p[i]=g30_word(b,4+i);uint8_t again[64];return g30_witness_pack(p,again)&&!memcmp(b,again,64);
+}
+static unsigned g30_pace(unsigned kind,unsigned space,unsigned id,unsigned seq){
+ if(seq==1)return 160;
+ if(kind==7)return 80;
+ if(kind!=2&&kind!=5)return 0;
+ if(space==G24_PROFILE&&id>=80)return kind==2?20:40;
+ return 80;
+}
+__attribute__((noinline)) static int g30_cp_witness(void*ctx,unsigned kind,unsigned space,unsigned id,uint64_t address,uint32_t value){
+ struct g24_workspace*w=&g24n.w;
+ if(!g30_target(kind,space,id,w->r.phase,w->r.profile_cursor))return 1;
+ /* Memory-only validation. Original native owner checks still follow. */
+ if(ctx!=g24n.s||g24n.s!=&zg||!g24n.mode||!g24n.prepared||!w->r.epoch||w->r.epoch!=g24n.s->lease_epoch||__atomic_load_n(&g24n.s->lease,__ATOMIC_ACQUIRE)!=1||g24n.witness_sequence>=4096)return 0;
+ unsigned seq=++g24n.witness_sequence,vk=(kind==3||kind==8)?1:kind>=4?2:0;
+ uint32_t p[12]={seq,kind,space,id,(uint32_t)address,(uint32_t)(address>>32),value,vk,w->r.phase,w->r.profile_cursor,(uint32_t)w->r.epoch,(uint32_t)(w->r.epoch>>32)};
+ if(!g30_witness_pack(p,g24n.witness_bytes))return 0;
+#if defined(G30_WITNESS_HOST)
+ g30_test_witness(g24n.witness_bytes,64,g30_pace(kind,space,id,seq));
+#elif !defined(G24_HOST_TEST)
+ printf("GWT1 seq%u kind%u sp%u id%u CRC%08x\n",seq,kind,space,id,g30_word(g24n.witness_bytes,3));
+ for(unsigned row=0;row<4;row++){unsigned at=row*4;printf("W%02u %08x %08x %08x %08x\n",row,g30_word(g24n.witness_bytes,at),g30_word(g24n.witness_bytes,at+1),g30_word(g24n.witness_bytes,at+2),g30_word(g24n.witness_bytes,at+3));}
+ zg_barrier(ctx);unsigned ms=g30_pace(kind,space,id,seq);if(ms)zg_sleep(ms);
+#else
+ (void)g30_pace;
+#endif
+ return 1;
+}
 static int g24n_read(void*ctx,unsigned space,unsigned id,uint32_t*out){
+ if(!g30_cp_witness(ctx,1,space,id,g24_register_address(space,id),0))return 0;
  if(ctx!=g24n.s||!out||!g24n_qualified(ctx,g24n.w.r.epoch,g24n.w.r.phase))return 0;
  uint64_t at=g24_register_address(space,id);if(!at)return 0;
  /* No GX register load before grant/power proof. A map alone is not access. */
  if(at<0x3d40000&&at>=0x3d00000&&(!g24n.w.r.power_grant||(g24n.w.r.sptprac&0xc0)))return 0;
- return g24n_raw(at,out);
+ if(!g30_cp_witness(ctx,2,space,id,at,0))return 0;
+ if(g30_target(2,space,id,g24n.w.r.phase,g24n.w.r.profile_cursor)&&!g24n_qualified(ctx,g24n.w.r.epoch,g24n.w.r.phase))return 0;
+ if(!g24n_raw(at,out))return 0;
+ return g30_cp_witness(ctx,3,space,id,at,*out);
 }
 static int g24n_packet(void){
  struct g24_workspace*w=&g24n.w;uint32_t expected[GP_WORDS];unsigned from=0,count=0;
@@ -81,6 +136,7 @@ static int g24n_packet(void){
  return 1;
 }
 static int g24n_write(void*ctx,unsigned space,unsigned id,uint32_t value){
+ if(!g30_cp_witness(ctx,4,space,id,g24_register_address(space,id),value))return 0;
  struct g24_workspace*w=&g24n.w;if(ctx!=g24n.s||!g24n_qualified(ctx,w->r.epoch,w->r.phase)||w->r.pending_space!=space||w->r.pending_index!=id||w->r.pending_value!=value)return 0;
  uint64_t at=g24_register_address(space,id);uint32_t current=0;
  if(!at||((space!=G24_CTL||id!=G24_REQUEST)&&!(space==G24_CTL&&id==G24_ACK)&&!g24n_raw(at,&current))||!g24_store_allowed(w,space,id,value,current))return 0;
@@ -92,11 +148,25 @@ static int g24n_write(void*ctx,unsigned space,unsigned id,uint32_t value){
  }
  void*p=g24n_pointer(at);if(!p)return 0;
  /* Retain before a store whose completion can be uncertain. */
+ if(!g30_cp_witness(ctx,5,space,id,at,value))return 0;
+ /* Pacing yields; repeat the original full owner/current/store guards. */
+ if(g30_target(5,space,id,w->r.phase,w->r.profile_cursor)){
+ struct g24_workspace*w=&g24n.w;if(ctx!=g24n.s||!g24n_qualified(ctx,w->r.epoch,w->r.phase)||w->r.pending_space!=space||w->r.pending_index!=id||w->r.pending_value!=value)return 0;
+ uint64_t at=g24_register_address(space,id);uint32_t current=0;
+ if(!at||((space!=G24_CTL||id!=G24_REQUEST)&&!(space==G24_CTL&&id==G24_ACK)&&!g24n_raw(at,&current))||!g24_store_allowed(w,space,id,value,current))return 0;
+ if(space==G24_CTL){
+  if(id==G24_REQUEST){uint32_t fresh;if(!g24n_raw(0x3d7e648,&fresh)||(fresh&0x80000000))return 0;}
+  if(id==G24_ACK){uint32_t fresh;if(!g24n_raw(0x3d7e648,&fresh)||!(fresh&0x80000000))return 0;}
+  if(id>=G24_SMR&&id<=G24_MAIR1){uint32_t smr,ctl;if(!g24n_raw(0x3da0804,&smr)||smr||!g24n_raw(0x3db0000,&ctl))return 0;if(id!=G24_SCTLR&&id!=G24_S2CR&&id!=G24_SMR&&(ctl&1))return 0;}
+  if(id==G24_WPTR&&!g24n_packet())return 0;
+ }
+ }
+ p=g24n_pointer(at);if(!p)return 0;
  w->r.hardware_attempted=1;*(volatile uint32_t*)p=value;zg_barrier(ctx);
 #if defined(G24_HOST_TEST)
  g24_test_after_store(at,value);
 #endif
- return 1;
+ return g30_cp_witness(ctx,6,space,id,at,value);
 }
 static int g24n_order(void*ctx){if(ctx!=g24n.s)return 0;zg_barrier(ctx);return 1;}
 static int g24n_delay(void*ctx,uint32_t us){if(ctx!=g24n.s||us>100)return 0;zg_delay(ctx,us);return 1;}
@@ -121,6 +191,20 @@ static int g24n_smc(void*ctx,uint64_t r[8]){
  else if(op==G24P_METADATA){if((r[0]!=1&&r[0]!=0x42000201)||r[1]!=130||r[2]!=13||r[3]!=g24n.pages.page[7].pa||r[4])return 0;}
  else if(op==G24P_RANGE){if((r[0]!=1&&r[0]!=0x42000202)||r[1]!=3||r[2]!=13||r[3]!=G24_ZAP_PA||r[4]!=4096)return 0;}
  else if((r[0]!=1&&r[0]!=0x42000205)||r[1]!=1||r[2]!=13||r[3]||r[4])return 0;
+ uint64_t witness_fn=r[0],witness_args[8];memcpy(witness_args,r,sizeof(witness_args));if(!g30_cp_witness(ctx,7,3,op,witness_fn,(uint32_t)r[1])||memcmp(witness_args,r,sizeof(witness_args)))return 0;
+ {
+ struct g24_workspace*w=&g24n.w;unsigned op=w->pas.state==G24P_NEW?G24P_INFO:w->pas.state==G24P_PROBED?G24P_METADATA:w->pas.state==G24P_INIT?G24P_RANGE:w->pas.state==G24P_MEMORY?G24P_START:0;
+ if(!op||!g24n_pas_qualified(ctx,w->r.epoch,op))return 0;
+ /* Revalidate the original typed arguments even for interrupted calls.
+  * A continuation may carry only the token returned by this PAS session. */
+ if(!r||r[5]||r[7])return 0;
+ if(r[0]==1){if(w->pas.last[0]!=1||r[6]!=w->pas.last[6])return 0;}
+ else if(r[6])return 0;
+ if(op==G24P_INFO){if((r[0]!=1&&r[0]!=0xc2000601ULL&&r[0]!=0x42000601ULL)||r[1]!=1||(r[2]!=0x02000601&&r[2]!=0x02000201&&r[2]!=0x02000202&&r[2]!=0x02000205)||r[3]||r[4])return 0;}
+ else if(op==G24P_METADATA){if((r[0]!=1&&r[0]!=0x42000201)||r[1]!=130||r[2]!=13||r[3]!=g24n.pages.page[7].pa||r[4])return 0;}
+ else if(op==G24P_RANGE){if((r[0]!=1&&r[0]!=0x42000202)||r[1]!=3||r[2]!=13||r[3]!=G24_ZAP_PA||r[4]!=4096)return 0;}
+ else if((r[0]!=1&&r[0]!=0x42000205)||r[1]!=1||r[2]!=13||r[3]||r[4])return 0;
+ }
  g24n.smc_inflight=1;
 #if defined(G24_HOST_TEST)
  g24_test_smc(r);
@@ -130,7 +214,7 @@ static int g24n_smc(void*ctx,uint64_t r[8]){
  __asm__ volatile("smc #0":"+r"(x0),"+r"(x1),"+r"(x2),"+r"(x3),"+r"(x4),"+r"(x5),"+r"(x6),"+r"(x7)::"x8","x9","x10","x11","x12","x13","x14","x15","x16","x17","memory");
  r[0]=x0;r[1]=x1;r[2]=x2;r[3]=x3;r[4]=x4;r[5]=x5;r[6]=x6;r[7]=x7;
 #endif
- g24n.smc_inflight=0;return 1;
+ g24n.smc_inflight=0;return g30_cp_witness(ctx,8,3,op,witness_fn,(uint32_t)r[0]);
 }
 static int g24n_zap_copy(void*ctx){
  struct g24_workspace*w=&g24n.w;if(ctx!=g24n.s||!g24n_qualified(ctx,w->r.epoch,G24_ZAP)||w->pas.state!=G24P_MEMORY||!w->pas.image_retained||g24n.zap_copied||w->fw.code_bytes!=1976||w->fw.load_bytes!=4096)return 0;

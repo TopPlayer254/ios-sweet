@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "parentCommit": "6a405b49a972226c57bfe9f89c4a22958a363b77",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": "d188999307f20193cf719c95bc72317081a8574bdeda4171b9cd1b12b194b025",
+      "after": "1c96232a23e412f7d928a508c97030d0c5d7ed96b359bb6d0390274dda857426"
+    }
+  ],
+  "patch": "xnu/patches/0112-ziyi-g30-native-preaccess-crc-witnesses.patch",
+  "patchSHA256": "6543f58a2f62198c8ed30853bc3a8f40d2def192cac8ddc09eb73ee83ee4a352",
+  "unchanged": {
+    "ziyi_g24_engine.c": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1",
+    "ziyi_g24_engine.h": "4dc3eab93c7f496340547bda6a3a3ca73eb037695a3089a7694b495536cdaddb",
+    "ziyi_g24_profile.inc": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+    "ziyi_g24_record.c": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f"
+  },
+  "linkedFunctions": [
+    "_g30_witness_pack",
+    "_g30_cp_witness",
+    "_g24n_read",
+    "_g24n_write",
+    "_g24n_smc"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g30/README.md",
+      "sha256": "e9f217502ac44da0fbeda27aa51f2d10c863eaefee18575fa507fe40f077789d",
+      "bytes": 608
+    },
+    {
+      "path": "tools/ziyi-g30/audit_ci.py",
+      "sha256": "bdf58e318f2ef95a31165569b10c8219fa088b610375559b47c3b265dfaa08ce",
+      "bytes": 3913
+    },
+    {
+      "path": "tools/ziyi-g30/g29-native-before.inc",
+      "sha256": "d188999307f20193cf719c95bc72317081a8574bdeda4171b9cd1b12b194b025",
+      "bytes": 18511
+    },
+    {
+      "path": "tools/ziyi-g30/hwcg-block.inc",
+      "sha256": "dc03473b6a3dfdb62e79f3ecdeecf43aef398de6a18f08db02cca592d5ec3d4e",
+      "bytes": 2261
+    },
+    {
+      "path": "tools/ziyi-g30/run_witness_tests.py",
+      "sha256": "966dc38dfd03500536f64f24f995a30a96ae77f5258c3b7f626a8e3a1ac3becc",
+      "bytes": 2922
+    },
+    {
+      "path": "tools/ziyi-g30/test_witness.c",
+      "sha256": "b8911d6235072aba7a68407ec136f7b4f43dd5a853e816f485dbccce0ce1930a",
+      "bytes": 29311
+    }
+  ],
+  "native": false,
+  "gpuPixels": false
+}
