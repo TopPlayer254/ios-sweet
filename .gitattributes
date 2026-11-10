@@ -61,3 +61,6 @@
 
 /xnu/patches/0112-ziyi-g30-native-preaccess-crc-witnesses.patch -text whitespace=cr-at-eol
 /tools/ziyi-g30/** -text
+
+/xnu/patches/0113-ziyi-g31-cpu-observer-sqe-store-barrier.patch -text whitespace=cr-at-eol
+/tools/ziyi-g31/** -text

@@ -15,7 +15,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "c521d5db2614879e936b02d71fd97d407357f0fb45aa1e0a39d91be3cc25facf",
-      "after": "1c96232a23e412f7d928a508c97030d0c5d7ed96b359bb6d0390274dda857426"
+      "after": "ac283a1499397a130043f086e68c2cf3ae2842a2440de4afd78cc67226f416f6"
     }
   ],
   "patch": "xnu/patches/0110-ziyi-g28-qualify-already-off-clock-noop.patch",
@@ -89,5 +89,17 @@
     "originalFreshPredicatesRepeated": true,
     "witnessBytes": 64,
     "deadlineSeconds": 15
+  },
+  "g31CPUObserver": {
+    "patch": "xnu/patches/0113-ziyi-g31-cpu-observer-sqe-store-barrier.patch",
+    "sha256": "8120ee09e2fda7b3124d250a30667729255d44f2d10c2fa4d6e5f9b8fc2e4265",
+    "nativeSHA256": "ac283a1499397a130043f086e68c2cf3ae2842a2440de4afd78cc67226f416f6",
+    "engineHeaderProfileUnchanged": true,
+    "targetMMIOUnchanged": true,
+    "originalFreshPredicatesRepeated": true,
+    "witnessBytes": 128,
+    "deadlineSeconds": 15,
+    "observerBudgetSeconds": 60,
+    "oneOriginalSQEStoreAndDSB": true
   }
 }

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "parentCommit": "22652ef120f2d315205340379cb721ad29b8f81b",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": "1c96232a23e412f7d928a508c97030d0c5d7ed96b359bb6d0390274dda857426",
+      "after": "ac283a1499397a130043f086e68c2cf3ae2842a2440de4afd78cc67226f416f6"
+    }
+  ],
+  "patch": "xnu/patches/0113-ziyi-g31-cpu-observer-sqe-store-barrier.patch",
+  "patchSHA256": "8120ee09e2fda7b3124d250a30667729255d44f2d10c2fa4d6e5f9b8fc2e4265",
+  "unchanged": {
+    "ziyi_g24_engine.c": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1",
+    "ziyi_g24_engine.h": "4dc3eab93c7f496340547bda6a3a3ca73eb037695a3089a7694b495536cdaddb",
+    "ziyi_g24_profile.inc": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+    "ziyi_g24_record.c": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f"
+  },
+  "linkedFunctions": [
+    "_g31_record_pack",
+    "_g31_snapshot",
+    "_g31_observer",
+    "_g31_observer_start",
+    "_g31_arm",
+    "_g31_sqe_store",
+    "_ziyi_gpu_cp_continue",
+    "_g24n_write"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g31/README.md",
+      "sha256": "bc4ddc4fc8f53f58c5b5ef74068bab5dbe62e850d052c4bf0a545219097e6599",
+      "bytes": 1140
+    },
+    {
+      "path": "tools/ziyi-g31/audit_ci.py",
+      "sha256": "71867a99beb96bc7d5c6fcf82e7122e750ddbfd017612156b2909304a6892b73",
+      "bytes": 5656
+    },
+    {
+      "path": "tools/ziyi-g31/g31-observer.inc",
+      "sha256": "8826b0f06957dcbce8337818e09d60cd664ae26b343140f778b6a02ca8d16f01",
+      "bytes": 6578
+    },
+    {
+      "path": "tools/ziyi-g31/hwcg-block.inc",
+      "sha256": "dc03473b6a3dfdb62e79f3ecdeecf43aef398de6a18f08db02cca592d5ec3d4e",
+      "bytes": 2261
+    },
+    {
+      "path": "tools/ziyi-g31/run_observer_tests.py",
+      "sha256": "5d906402c6f640e30ace08585aa2ba1aea8a5d5116be5424a12c996ba081e074",
+      "bytes": 2434
+    },
+    {
+      "path": "tools/ziyi-g31/test_observer.c",
+      "sha256": "2a013004145b47377ffc445990d886e368e208ca164f0d5c29a9df0e65042257",
+      "bytes": 31320
+    }
+  ],
+  "native": false,
+  "gpuPixels": false
+}

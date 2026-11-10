@@ -20,8 +20,9 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27, codex/ziyi-gpu-already-off-g28, codex/ziyi-gpu-cp-cohort-g29, codex/ziyi-gpu-witness-g30]
+    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27, codex/ziyi-gpu-already-off-g28, codex/ziyi-gpu-cp-cohort-g29, codex/ziyi-gpu-witness-g30, codex/ziyi-gpu-sqe-observer-g31]
     paths:
+      - "tools/ziyi-g31/**"
       - "tools/ziyi-g30/**"
       - "tools/ziyi-g29/**"
       - "tools/ziyi-g28/**"
@@ -291,6 +292,9 @@ jobs:
       - name: G30 native CPU witness and identical complete CP packet controls
         run: python3 tools/ziyi-g30/run_witness_tests.py --fixture u1-evidence/g24-host/synthetic-not-signed-capsule.bin --out u1-evidence/g30-host
 
+      - name: G31 CPU observer three instruction windows and unchanged packet
+        run: python3 tools/ziyi-g31/run_observer_tests.py --fixture u1-evidence/g24-host/synthetic-not-signed-capsule.bin --control u1-evidence/g30-host/new-record.bin --out u1-evidence/g31-host
+
       - name: Build
         working-directory: dxb
         env:
@@ -355,6 +359,9 @@ jobs:
 
       - name: Exact G30 preaccess witness and fresh guard linked callbacks
         run: python3 tools/ziyi-g30/audit_ci.py
+
+      - name: Exact G31 CPU observer and SQE instruction sequence
+        run: python3 tools/ziyi-g31/audit_ci.py
 
       - uses: actions/upload-artifact@v4
         if: always()
