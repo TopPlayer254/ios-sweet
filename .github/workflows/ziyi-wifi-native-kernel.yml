@@ -20,7 +20,7 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27, codex/ziyi-gpu-already-off-g28, codex/ziyi-gpu-cp-cohort-g29, codex/ziyi-gpu-witness-g30, codex/ziyi-gpu-sqe-observer-g31]
+    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27, codex/ziyi-gpu-already-off-g28, codex/ziyi-gpu-cp-cohort-g29, codex/ziyi-gpu-witness-g30, codex/ziyi-gpu-sqe-observer-g31, codex/ziyi-xnu-headless-pstore]
     paths:
       - "tools/ziyi-g31/**"
       - "tools/ziyi-g30/**"
@@ -319,6 +319,7 @@ jobs:
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U25 SMP' > u1-evidence/u25-kernel-markers.txt
           nm dxb/fakeroot/System/Library/Kernels/kernel.development.sweet > u1-evidence/kernel-symbols.txt
           grep '_ziyi_ufs_probe' u1-evidence/kernel-symbols.txt
+          if [ "$GITHUB_REF_NAME" = 'codex/ziyi-xnu-headless-pstore' ]; then python3 tools/ziyi-log/audit_ci.py; fi
           strings dxb/fakeroot/System/Library/Kernels/kernel.development.sweet | grep 'ZIYI U1 ' > u1-evidence/kernel-markers.txt
 
       - name: Audit exact combined sources and nonempty linked adapters

@@ -64,3 +64,6 @@
 
 /xnu/patches/0113-ziyi-g31-cpu-observer-sqe-store-barrier.patch -text whitespace=cr-at-eol
 /tools/ziyi-g31/** -text
+
+/xnu/patches/0114-ziyi-pstore-checkpoint.patch -text whitespace=cr-at-eol
+/tools/ziyi-log/** -text
