@@ -49,7 +49,9 @@ def main():
  text=(xnu/'bsd/kern/bsd_init.c').read_text();hook=manifest['startupHook'];assert text.count(hook)==1
  gate=(ROOT/'tools/ziyi-g22/preuser_gate.inc').read_text()
  assert text.count(gate)==1 and text.index(gate)<text.index('\tbsd_autoconf();')<text.index('vfs_mountroot()')
- assert sha(text.replace(hook+'\n','',1).replace(gate,'',1).encode())==baseline['bsd/kern/bsd_init.c']['after']
+ log_probe='#if SWEET\n\textern void ziyi_log_probe(void);\n\tziyi_log_probe();\n#endif\n'
+ assert text.count(log_probe)==1 and text.index(log_probe)<text.index(gate)
+ assert sha(text.replace(log_probe,'',1).replace(hook+'\n','',1).replace(gate,'',1).encode())==baseline['bsd/kern/bsd_init.c']['after']
  # The original G8 adapter sources and the real API implementation remain
  # byte-identical; new Wi-Fi sources do not replace the working UI/input/SMP.
  hw=json.loads((ROOT/'tools/ziyi-hw/manifest.json').read_text())

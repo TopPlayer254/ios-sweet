@@ -4,7 +4,7 @@
     {
       "path": "bsd/kern/bsd_init.c",
       "before": "784e25e8a2e9bf7701117c13121284c078c6a3ff144e69b28d9e432c8db0975a",
-      "after": "b59e08c09bed6030f8d9468ae777c09a7532162a3b5c0fb9ac77848833c83bd3",
+      "after": "9cab4a679041a425f047b13649042bc22af728c428ac23f3102f2eccdb3dbb0e",
       "new": false
     },
     {
@@ -164,7 +164,7 @@
     {
       "path": "bsd/dev/sweet_ufs.c",
       "before": "27dc0c04317285c084dbfbf6ec7096e2ba0cc4946e9d3d60e1f5c51f166301cc",
-      "after": "935e1cff1fb9243f81b7410d714b3dbef4088f95f3c198f5428d22bf832f4b31",
+      "after": "643953b561aee25f9b527781556b0cb28c5703d8b22aecfb0518eb745a740b55",
       "new": false
     },
     {
@@ -230,5 +230,17 @@
     "bootArgument": "ziyi_gpu_cp=1",
     "kernelOnly": true,
     "threePrivateSlots": true
+  },
+  "pstoreCheckpoint": {
+    "patch": "xnu/patches/0114-ziyi-pstore-checkpoint-v2.patch",
+    "sha256": "c1536657760400bd51bc82da9be2eb51a281eec0014ca503c6a1fd7b7cd4aab2",
+    "before": {
+      "bsd/dev/sweet_ufs.c": "935e1cff1fb9243f81b7410d714b3dbef4088f95f3c198f5428d22bf832f4b31",
+      "bsd/kern/bsd_init.c": "b59e08c09bed6030f8d9468ae777c09a7532162a3b5c0fb9ac77848833c83bd3"
+    },
+    "after": {
+      "bsd/dev/sweet_ufs.c": "643953b561aee25f9b527781556b0cb28c5703d8b22aecfb0518eb745a740b55",
+      "bsd/kern/bsd_init.c": "9cab4a679041a425f047b13649042bc22af728c428ac23f3102f2eccdb3dbb0e"
+    }
   }
 }
