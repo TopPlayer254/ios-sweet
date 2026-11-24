@@ -1,0 +1,31 @@
+name: ziyi-g32-audit-recovery
+on:
+  push:
+    branches: [codex/ziyi-gpu-g32-audit-recovery]
+    paths:
+      - .github/workflows/ziyi-g32-audit-recovery.yml
+      - tools/ziyi-g32/recover_ci.py
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Requalify unchanged full kernel and both optical pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/ziyi-g32/recover_ci.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g32-audit-recovery
+          path: |
+            g32-recovery/recovery.json
+            g32-recovery/g32
+            g32-recovery/original-audit.py
+            g32-recovery/corrected-audit.py
+          if-no-files-found: error
