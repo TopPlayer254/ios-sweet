@@ -1,0 +1,34 @@
+name: ziyi-g33-audit-recovery
+on:
+  push:
+    branches: [codex/ziyi-gpu-g33-audit-recovery]
+    paths:
+      - .github/workflows/ziyi-g33-audit-recovery.yml
+      - tools/ziyi-g33/recover_ci.py
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Requalify unchanged G33 kernel and exact witness boundary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/ziyi-g33/recover_ci.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g33-audit-recovery
+          path: |
+            g33-recovery/recovery.json
+            g33-recovery/g30
+            g33-recovery/g31
+            g33-recovery/g32
+            g33-recovery/g33
+            g33-recovery/original-audit.py
+            g33-recovery/corrected-audit.py
+          if-no-files-found: error
