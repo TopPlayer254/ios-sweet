@@ -102,5 +102,17 @@
     "deadlineSeconds": 15,
     "observerBudgetSeconds": 60,
     "oneOriginalSQEStoreAndDSB": true
+  },
+  "g32OpticalObserver": {
+    "patch": "xnu/patches/0114-ziyi-g32-independent-cpu-optical-observer.patch",
+    "sha256": "59b02f4a7c157df0a7cba6cbcecf4e43be186d3ad22c8f39fe992390ffac5d7c",
+    "nativeSHA256": "b24b0c188244fb799b617c799f8190039836d8053a054482442153a23be850f3",
+    "observerNoGPURegisterAccess": true,
+    "observerNoConsole": true,
+    "originalSQEStoreAndDSBUnchanged": true,
+    "allOriginalGuardsUnchanged": true,
+    "wireBytes": 160,
+    "observerBudgetSeconds": 60,
+    "initialPairBeforeReady": true
   }
 }

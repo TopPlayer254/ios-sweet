@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "parentCommit": "9672ec2552d3878c8a45e83512e2f3868d4a810d",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": "ac283a1499397a130043f086e68c2cf3ae2842a2440de4afd78cc67226f416f6",
+      "after": "b24b0c188244fb799b617c799f8190039836d8053a054482442153a23be850f3"
+    }
+  ],
+  "patch": "xnu/patches/0114-ziyi-g32-independent-cpu-optical-observer.patch",
+  "patchSHA256": "59b02f4a7c157df0a7cba6cbcecf4e43be186d3ad22c8f39fe992390ffac5d7c",
+  "unchanged": {
+    "ziyi_g24_engine.c": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1",
+    "ziyi_g24_engine.h": "4dc3eab93c7f496340547bda6a3a3ca73eb037695a3089a7694b495536cdaddb",
+    "ziyi_g24_profile.inc": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+    "ziyi_g24_record.c": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f"
+  },
+  "linkedFunctions": [
+    "_g32_fb_prepare",
+    "_g32_emit_record",
+    "_g32_crc",
+    "_g32_validate_record",
+    "_g32_validate_packet",
+    "_g32_record",
+    "_g32_packet",
+    "_g32_draw"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g32/README.md",
+      "sha256": "b0511edff50a72f5c4aa622140172ab27c35847c6130f991263cfac11ade6d4c",
+      "bytes": 872
+    },
+    {
+      "path": "tools/ziyi-g32/audit_ci.py",
+      "sha256": "844e6d0417bebb55893252661789da44ef086f486ba07416a3f22949ad39ce83",
+      "bytes": 4425
+    },
+    {
+      "path": "tools/ziyi-g32/files/ziyi_g32_optical.c",
+      "sha256": "235aac4c5571af24a5f410403e41644b298b4c0905f9133456daf1e55118092e",
+      "bytes": 4995
+    },
+    {
+      "path": "tools/ziyi-g32/files/ziyi_g32_optical.h",
+      "sha256": "58a182444f1513add97e207c2f136a4ce103dc94a1cfc7d09c4203f319d2a16c",
+      "bytes": 829
+    },
+    {
+      "path": "tools/ziyi-g32/run_optical_tests.py",
+      "sha256": "9244c0d7e5477302512093d02223ad29cd083569ec07d6ef49e95a55d678e16d",
+      "bytes": 1754
+    },
+    {
+      "path": "tools/ziyi-g32/test_optical.c",
+      "sha256": "2db89a679a0d43c4ad3d0e2ded7e18dc6f43d179426ac01d1fb4ba089b5a4c81",
+      "bytes": 5278
+    }
+  ],
+  "native": false,
+  "gpuPixels": false
+}
