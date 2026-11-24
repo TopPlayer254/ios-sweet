@@ -1,0 +1,324 @@
+--- a/bsd/dev/ziyi_g24_native.inc
++++ b/bsd/dev/ziyi_g24_native.inc
+@@ -11,6 +11,119 @@
+  uint8_t zap_backup[2][4096];
+  uint32_t witness_sequence;uint8_t witness_bytes[64];
+ } g24n;
++
++/* G33 adds only the stock LPAC stream, to already owned core context 0. */
++/* PC-qualified candidate. No native adapter is connected to this module yet. */
++
++enum g33_register { G33_GMU_MATCH, G33_GMU_CONTROL, G33_CORE_MATCH,
++ G33_CORE_CONTROL, G33_LPAC_MATCH, G33_LPAC_CONTROL, G33_REGISTERS };
++enum g33_stage { G33_NEW, G33_SNAPSHOT, G33_CONTROL_ISSUED,
++ G33_CONTROL_VERIFIED, G33_MATCH_ISSUED, G33_COMPLETE, G33_REFUSED };
++enum g33_error { G33_OK, G33_ARGUMENT, G33_OWNER, G33_IO, G33_OCCUPIED, G33_READBACK };
++struct g33_record {
++ uint64_t epoch, table_pa;
++ uint32_t stage, failed_stage, error, retained, reads, writes;
++ uint32_t before[G33_REGISTERS], after[G33_REGISTERS];
++ uint32_t before_valid, after_valid;
++};
++struct g33_io {
++ void *ctx;
++ /* Must freshly qualify the original lease, epoch, live GMU/GX/core tables,
++  * NC backing and CP cohort. The two owned LPAC words are checked here. */
++ int (*guard)(void *, uint64_t epoch, uint64_t core_table_pa);
++ int (*read)(void *, enum g33_register, uint32_t *);
++ int (*write)(void *, enum g33_register, uint32_t);
++ int (*order)(void *);
++};
++uint64_t g33_address(enum g33_register);
++int g33_install(struct g33_record *, const struct g33_io *, uint64_t epoch,
++ uint64_t core_table_pa);
++
++uint64_t g33_address(enum g33_register id) {
++ static const uint64_t addresses[G33_REGISTERS] = {
++  0x03da0800,0x03da0c00,0x03da0804,0x03da0c04,0x03da0808,0x03da0c08
++ };
++ return (unsigned)id<G33_REGISTERS?addresses[id]:0;
++}
++static int g33_lpac_refuse(struct g33_record *r, unsigned error) {
++ r->failed_stage=r->stage; __atomic_store_n(&r->error,error,__ATOMIC_RELEASE); __atomic_store_n(&r->stage,G33_REFUSED,__ATOMIC_RELEASE); return 0;
++}
++static int g33_lpac_guard(struct g33_record *r,const struct g33_io *io) {
++ return io->guard(io->ctx,r->epoch,r->table_pa) || g33_lpac_refuse(r,G33_OWNER);
++}
++static int g33_lpac_read_word(struct g33_record *r,const struct g33_io *io,
++ enum g33_register id,uint32_t *value) {
++ if(!g33_lpac_guard(r,io))return 0;
++ if(!io->read(io->ctx,id,value))return g33_lpac_refuse(r,G33_IO);
++ r->reads++;
++ return g33_lpac_guard(r,io);
++}
++static int g33_lpac_exact(struct g33_record *r,const struct g33_io *io,
++ enum g33_register id,uint32_t expected) {
++ uint32_t value=0;
++ if(!g33_lpac_read_word(r,io,id,&value))return 0;
++ r->after[id]=value;r->after_valid|=1u<<id;
++ return value==expected || g33_lpac_refuse(r,G33_READBACK);
++}
++static int g33_lpac_issue(struct g33_record *r,const struct g33_io *io,
++ enum g33_register id,uint32_t value,unsigned stage) {
++ if(!((id==G33_LPAC_CONTROL&&value==0x300&&stage==G33_CONTROL_ISSUED)||
++      (id==G33_LPAC_MATCH&&value==0x84000001&&stage==G33_MATCH_ISSUED)))
++  return g33_lpac_refuse(r,G33_ARGUMENT);
++ if(!g33_lpac_guard(r,io))return 0;
++ /* No rollback after an issued transaction: a match may already admit DMA. */
++ __atomic_store_n(&r->stage,stage,__ATOMIC_RELEASE);r->retained=1;r->writes++;
++ if(!io->write(io->ctx,id,value)||!io->order(io->ctx))return g33_lpac_refuse(r,G33_IO);
++ return g33_lpac_exact(r,io,id,value);
++}
++int g33_install(struct g33_record *r,const struct g33_io *io,uint64_t epoch,
++ uint64_t core_table_pa) {
++ static const uint32_t empty[G33_REGISTERS]={0x84000005,0x302,0x84000000,0x300,0,0x20000};
++ static const uint32_t live[G33_REGISTERS]={0x84000005,0x302,0x84000000,0x300,0x84000001,0x300};
++ if(!r||!io||!io->guard||!io->read||!io->write||!io->order||
++    !epoch||!core_table_pa||(core_table_pa&16383)||core_table_pa>=(1ull<<36))return 0;
++ if(r->stage!=G33_NEW||r->epoch||r->table_pa||r->before_valid||r->after_valid||r->retained||r->reads||r->writes)return 0;
++ r->epoch=epoch;r->table_pa=core_table_pa;__atomic_store_n(&r->stage,G33_SNAPSHOT,__ATOMIC_RELEASE);
++ for(unsigned pass=0;pass<2;pass++)for(unsigned i=0;i<G33_REGISTERS;i++) {
++  uint32_t value=0;if(!g33_lpac_read_word(r,io,(enum g33_register)i,&value))return 0;
++  if(!pass){r->before[i]=value;r->before_valid|=1u<<i;}
++  if(value!=empty[i])return g33_lpac_refuse(r,G33_OCCUPIED);
++ }
++ /* Bind only SID 1 / 0x401 to the already owned core context. SID 2 and 5
++  * remain outside this match. No combined mask or context-bank write. */
++ if(!g33_lpac_issue(r,io,G33_LPAC_CONTROL,0x300,G33_CONTROL_ISSUED))return 0;
++ __atomic_store_n(&r->stage,G33_CONTROL_VERIFIED,__ATOMIC_RELEASE);
++ for(unsigned i=0;i<G33_LPAC_CONTROL;i++)
++  if(!g33_lpac_exact(r,io,(enum g33_register)i,empty[i]))return 0;
++ if(!g33_lpac_exact(r,io,G33_LPAC_CONTROL,0x300))return 0;
++ if(!g33_lpac_issue(r,io,G33_LPAC_MATCH,0x84000001,G33_MATCH_ISSUED))return 0;
++ for(unsigned pass=0;pass<2;pass++)for(unsigned i=0;i<G33_REGISTERS;i++)
++  if(!g33_lpac_exact(r,io,(enum g33_register)i,live[i]))return 0;
++ if(!g33_lpac_guard(r,io))return 0;
++ __atomic_store_n(&r->stage,G33_COMPLETE,__ATOMIC_RELEASE);return 1;
++}
++
++static struct {struct g33_record route;uint64_t table_pa;uint32_t worker_cpu,worker_stage,armed_ack;} g33n;
++static void g33_worker_stage(uint32_t stage){__atomic_store_n(&g33n.worker_stage,stage,__ATOMIC_RELEASE);}
++static inline int g33_initial(void*ctx,unsigned cpu){
++ if(ctx!=g24n.s||cpu>7||g33n.table_pa||!g24n.pages.page[0].pa||g33n.route.stage)return 0;
++ g33n.table_pa=g24n.pages.page[0].pa;g33n.worker_cpu=cpu;g33_worker_stage(1);return 1;
++}
++static int g33_slot_permitted(uint32_t match,uint32_t control){
++ unsigned stage=__atomic_load_n(&g33n.route.stage,__ATOMIC_ACQUIRE);
++ if(stage==G33_NEW||stage==G33_SNAPSHOT)return !match&&control==0x20000;
++ if(stage==G33_CONTROL_ISSUED)return !match&&(control==0x20000||control==0x300);
++ if(stage==G33_CONTROL_VERIFIED)return !match&&control==0x300;
++ if(stage==G33_MATCH_ISSUED)return (match==0||match==0x84000001)&&control==0x300;
++ return stage==G33_COMPLETE&&match==0x84000001&&control==0x300;
++}
++#if !defined(G24_HOST_TEST) || defined(G33_NATIVE_HOST)
++static int g33_prepare_lpac(void*);
++static int g33_wait_publication(void*,unsigned,unsigned);
++#else
++static int g33_wait_publication(void*c,unsigned sp,unsigned id){(void)c;(void)sp;(void)id;return 1;}
++#endif
++
+ static int g24n_stop(unsigned error){g24n.w.r.failure_phase=g24n.w.r.phase;g24n.w.r.phase=G24_REFUSED;g24n.w.r.error=error;g24n.w.r.retained=1;return 0;}
+ static void*g24n_pointer(uint64_t at){
+  if(at&3)return NULL;
+@@ -58,7 +171,7 @@
+   for(unsigned i=0;i<9;i++){uint32_t got;if(!g24n_raw(at[i],&got)||got!=want[i])return 0;}
+  }
+  g24n.guard_error=5;
+- for(unsigned i=2;i<6;i++)if(!g24n_raw(0x3da0800+4*i,&smr)||!g24n_raw(0x3da0c00+4*i,&s2cr)||smr||s2cr!=0x20000)return 0;
++ for(unsigned i=2;i<6;i++){if(!g24n_raw(0x3da0800+4*i,&smr)||!g24n_raw(0x3da0c00+4*i,&s2cr))return 0;if(i==2){if(!g33_slot_permitted(smr,s2cr))return 0;}else if(smr||s2cr!=0x20000)return 0;}
+  g24n.guard_error=6;
+  for(unsigned i=0;i<8;i++)if(kvtophys((vm_offset_t)(g24n.pages.va+16384*i))!=g24n.pages.page[i].pa)return 0;
+  g24n.guard_error=0;return 1;
+@@ -105,7 +218,7 @@
+  uint32_t binding[27];
+ } g31;
+ __attribute__((noinline)) static int g31_record_pack(const uint32_t*p,uint8_t*b){
+- if(!p||!b||p[0]>3||p[1]>7||p[2]>7||p[1]==p[2]||!(p[3]||p[4])||p[5]!=0x3d02020||p[6]||p[7]!=1||p[8]!=G24_ME_INIT||p[9]!=7||p[10]!=150||!p[11]||p[11]>4096||p[12]!=GC_IOVA||p[13]!=GC_IOVA+49152||p[14]!=GC_IOVA+32768||p[15]!=43064||!p[16]||(p[16]&16383)||p[17]>15||p[18]!=3||p[19]!=15||p[20]!=0xffffff||p[21]||p[22]!=1||p[23]||p[24]||p[25]||p[26]||p[27])return 0;
++ if(!p||!b||p[0]>3||p[1]>7||p[2]>7||p[1]==p[2]||!(p[3]||p[4])||p[5]!=0x3d02020||p[6]||p[7]!=1||p[8]!=G24_ME_INIT||p[9]!=7||p[10]!=150||!p[11]||p[11]>4096||p[12]!=GC_IOVA||p[13]!=GC_IOVA+49152||p[14]!=GC_IOVA+32768||p[15]!=43064||!(p[16]||p[17])||(p[16]&16383)||p[17]>15||p[18]!=3||p[19]!=15||p[20]!=0xffffff||p[21]||p[22]!=1||p[23]||p[24]||p[25]||p[26]||p[27])return 0;
+  uint32_t a[32]={0x31525347u,1,G31_BYTES,0};for(unsigned i=0;i<28;i++)a[4+i]=p[i];
+  for(unsigned i=0;i<32;i++)for(unsigned j=0;j<4;j++)b[4*i+j]=(uint8_t)(a[i]>>(8*j));
+  uint32_t crc=g28_clock_crc(b+16,112);for(unsigned j=0;j<4;j++)b[12+j]=(uint8_t)(crc>>(8*j));return 1;
+@@ -136,6 +249,8 @@
+ int g32_packet(const uint8_t *record,size_t bytes,uint32_t tag,unsigned page,uint8_t *out,size_t capacity);
+ int g32_draw(volatile uint32_t *frame,size_t words,unsigned width,unsigned height,
+  unsigned stride,const uint8_t *packet,size_t bytes);
++
++int g33_stamp(uint8_t*,size_t,uint32_t,uint32_t,uint32_t,uint32_t,uint64_t);
+ /* CPU optical diagnostics, not GPU rendering. ZMP1RAW1 transport follows the
+  * measured u24-s2 implementation. No GPU register/command API is present. */
+ 
+@@ -159,26 +274,35 @@
+  if(p[0]>7 || p[1]>7 || p[0]==p[1] || !(p[2]|p[3]) ||
+     p[4]!=0x03d02020u || p[5] || p[6]!=1 || p[7]!=6 || p[8]!=7 || p[9]!=150 ||
+     !p[10] || p[10]>4096 || p[11]!=0x61000000u || p[12]!=0x6100c000u ||
+-    p[13]!=0x61008000u || p[14]!=43064 || !p[15] || (p[15]&16383) || p[16]>15 ||
++    p[13]!=0x61008000u || p[14]!=43064 || !(p[15]|p[16]) || (p[15]&16383) || p[16]>15 ||
+     p[17]!=3 || p[18]!=15 || p[19]!=0x00ffffffu || p[20] || p[21]!=1) return 0;
+  for(unsigned i=22;i<27;i++) if(p[i]) return 0;
++ return 1;
++}
++static int g33_diag_valid(const uint32_t*a) {
++ if(!(a[36]|a[37]|a[38]|a[39]))return 1; /* internal base record, before stamp */
++ if(!((a[36]>=1&&a[36]<=8)||(a[36]>=32&&a[36]<=36))||a[37]>>24||
++    (a[37]&255)>7||((a[37]>>8)&255)>6||((a[37]>>16)&255)>6||
++    !(a[38]|a[39])||(a[38]&16383)||a[39]>15)return 0;
++ if(a[5]==3&&(a[24]!=a[38]||a[25]!=a[39]))return 0;
+  return 1;
+ }
+ __attribute__((noinline)) int g32_validate_record(const uint8_t *r,size_t n) {
+  if(!r || n!=G32_BYTES) return 0;
+  uint32_t a[40]; for(unsigned i=0;i<40;i++) a[i]=g32_word(r,i);
+- if(a[0]!=0x32424f47u || a[1]!=1 || a[2]!=G32_BYTES || a[3]!=g32_crc(r+16,144) ||
++ if(a[0]!=0x32424f47u || a[1]!=2 || a[2]!=G32_BYTES || a[3]!=g32_crc(r+16,144) ||
+     !a[4] || !(a[7]|a[8]) || a[9]>7 || a[10]>7 || a[9]==a[10] || !(a[11]|a[12])) return 0;
+- if(a[5]==1) { if(a[6]) return 0; for(unsigned i=13;i<40;i++) if(a[i]) return 0; return 1; }
++ if(!g33_diag_valid(a)) return 0;
++ if(a[5]==1) { if(a[6]) return 0; for(unsigned i=13;i<36;i++) if(a[i]) return 0; return 1; }
+  if(a[5]!=3 || a[6]>3 || !g32_binding(a+9)) return 0;
+- for(unsigned i=36;i<40;i++) if(a[i]) return 0;
++ if(!g33_diag_valid(a)) return 0;
+  return 1;
+ }
+ __attribute__((noinline)) int g32_record(uint32_t sample,unsigned worker,unsigned observer,uint64_t epoch,
+  uint64_t counter,const uint8_t *gsr,uint8_t *out,size_t n) {
+  if(!out || n!=G32_BYTES || !sample || worker>7 || observer>7 || worker==observer || !epoch || !counter ||
+     (gsr && g32_overlap(gsr,128,out,n))) return 0;
+- uint32_t a[40]={0x32424f47u,1,G32_BYTES,0,sample,1,0,(uint32_t)counter,(uint32_t)(counter>>32),worker,observer,(uint32_t)epoch,(uint32_t)(epoch>>32)};
++ uint32_t a[40]={0x32424f47u,2,G32_BYTES,0,sample,1,0,(uint32_t)counter,(uint32_t)(counter>>32),worker,observer,(uint32_t)epoch,(uint32_t)(epoch>>32)};
+  if(gsr) {
+   if(g32_word(gsr,0)!=0x31525347u || g32_word(gsr,1)!=1 || g32_word(gsr,2)!=128 ||
+      g32_word(gsr,3)!=g32_crc(gsr+16,112) || g32_word(gsr,4)>3 ||
+@@ -224,6 +348,16 @@
+   fb[(OY+y)*stride+OX+x]=c;
+  }
+  return 1;
++}
++
++__attribute__((noinline)) int g33_stamp(uint8_t*r,size_t n,uint32_t worker,uint32_t observer_error,
++ uint32_t route_stage,uint32_t route_error,uint64_t table_pa) {
++ if(!g32_validate_record(r,n)||!((worker>=1&&worker<=8)||(worker>=32&&worker<=36))||
++    observer_error>7||route_stage>6||route_error>6||!table_pa||
++    (table_pa&16383)||table_pa>=(1ull<<36))return 0;
++ g32_put32(r+144,worker);g32_put32(r+148,observer_error|(route_error<<8)|(route_stage<<16));
++ g32_put32(r+152,(uint32_t)table_pa);g32_put32(r+156,(uint32_t)(table_pa>>32));
++ g32_put32(r+12,g32_crc(r+16,144));return g32_validate_record(r,n);
+ }
+ /* G32 observer writes only the measured CPU framebuffer rectangle. It never
+  * calls printf/console or reads GPU registers. Mapping is prepared by worker
+@@ -249,6 +383,9 @@
+  static const char tag[]="ZIYI-20261113-G32X-CPU-OPTICAL";
+  if(!g32_fb.frame||(unsigned)cpu_number()!=g31.observer_cpu||
+     !g32_record(sample,g31.worker_cpu,g31.observer_cpu,g32_fb.epoch,zg_ticks(NULL),gsr,record,sizeof(record)))return 0;
++ if(!g33_stamp(record,sizeof(record),__atomic_load_n(&g33n.worker_stage,__ATOMIC_ACQUIRE),
++ __atomic_load_n(&g31.error,__ATOMIC_ACQUIRE),__atomic_load_n(&g33n.route.stage,__ATOMIC_ACQUIRE),
++ __atomic_load_n(&g33n.route.error,__ATOMIC_ACQUIRE),g33n.table_pa))return 0;
+  uint32_t run=g32_crc(tag,sizeof(tag)-1);
+  /* Freeze and validate BOTH pages of one snapshot before drawing either. */
+  if(!g32_packet(record,sizeof(record),run,0,packets[0],128)||
+@@ -274,10 +411,11 @@
+   uint8_t b[G31_BYTES];const uint8_t*snapshot=NULL;
+   if((unsigned)cpu_number()!=g31.observer_cpu){__atomic_store_n(&g31.error,5,__ATOMIC_RELEASE);break;}
+   if(__atomic_load_n(&g31.armed,__ATOMIC_ACQUIRE)){
+-   if(!g31_snapshot(b)){__atomic_store_n(&g31.error,6,__ATOMIC_RELEASE);break;}
++   if(!g31_snapshot(b)){__atomic_store_n(&g31.error,6,__ATOMIC_RELEASE);(void)g32_emit_record(i+2,NULL);break;}
+    snapshot=b;
+   }
+-  if(!g32_emit_record(i+2,snapshot)){__atomic_store_n(&g31.error,7,__ATOMIC_RELEASE);break;}
++  if(!g32_emit_record(i+2,snapshot)){__atomic_store_n(&g31.error,7,__ATOMIC_RELEASE);(void)g32_emit_record(i+2,NULL);break;}
++  if(snapshot)__atomic_store_n(&g33n.armed_ack,1,__ATOMIC_RELEASE);
+   zg_sleep(50);
+  }
+  __atomic_store_n(&g31.ready,0,__ATOMIC_RELEASE);
+@@ -287,26 +425,36 @@
+  if(ctx!=g24n.s||g31.started)return 0;unsigned cpu=(unsigned)cpu_number();if(cpu>7)return 0;
+  processor_t here=cpu_to_processor((int)cpu),other=cpu_to_processor((int)(cpu^1));if(!here||!other)return 0;
+  (void)thread_bind(here);thread_block(THREAD_CONTINUE_NULL);if((unsigned)cpu_number()!=cpu)return 0;
+- if(!g32_fb_prepare(ctx))return 0;
++ if(!g33_initial(ctx,cpu)||!g32_fb_prepare(ctx))return 0;
+  g31.worker_cpu=cpu;g31.observer_cpu=cpu^1;g31.started=1;thread_t observer=THREAD_NULL;
+  if(kernel_thread_start(g31_observer,NULL,&observer)!=KERN_SUCCESS){g31.error=3;return 0;}thread_deallocate(observer);
+  for(unsigned n=0;n<300;n++){if(__atomic_load_n(&g31.error,__ATOMIC_ACQUIRE))return 0;if(__atomic_load_n(&g31.ready,__ATOMIC_ACQUIRE)==1)return 1;zg_sleep(10);}return 0;
+ }
+ #else
+-__attribute__((noinline)) static int g31_observer_start(void*ctx){if(ctx!=g24n.s)return 0;g31.started=1;g31.worker_cpu=0;g31.observer_cpu=1;g31.ready=1;return 1;}
++__attribute__((noinline)) static int g31_observer_start(void*ctx){if(ctx!=g24n.s)return 0;g31.started=1;g31.worker_cpu=0;g31.observer_cpu=1;g31.ready=1;
++#if defined(G33_NATIVE_HOST)
++ if(!g33_initial(ctx,0))return 0;g33n.armed_ack=1; /* synthetic observer stand-in */
++#endif
++ return 1;}
+ #endif
+ __attribute__((noinline)) static int g31_arm(void*ctx,unsigned sp,unsigned id,uint64_t at,uint32_t value){
+  if(sp!=G24_CTL||id!=G24_SQE_CONTROL)return 1;
++ g33_worker_stage(3);
+  struct g24_workspace*w=&g24n.w;
+- if(ctx!=g24n.s||!g31.started||__atomic_load_n(&g31.ready,__ATOMIC_ACQUIRE)!=1||__atomic_load_n(&g31.error,__ATOMIC_ACQUIRE)||g31.armed||g31.worker_cpu>7||g31.observer_cpu!=(g31.worker_cpu^1)||w->r.phase!=G24_ME_INIT||w->r.cp_cursor!=7||!g29_cp_verified(w)||at!=0x3d02020||value!=1||w->fw.sqe_bytes!=43068)return 0;
++ if(ctx!=g24n.s||!g31.started||__atomic_load_n(&g31.ready,__ATOMIC_ACQUIRE)!=1||__atomic_load_n(&g31.error,__ATOMIC_ACQUIRE)||g31.armed||g31.worker_cpu>7||g31.observer_cpu!=(g31.worker_cpu^1)||w->r.phase!=G24_ME_INIT||w->r.cp_cursor!=7||!g29_cp_verified(w)||at!=0x3d02020||value!=1||w->fw.sqe_bytes!=43068){g33_worker_stage(32);return 0;}
+ #if !defined(G24_HOST_TEST)
+- if((unsigned)cpu_number()!=g31.worker_cpu)return 0;
++ if((unsigned)cpu_number()!=g31.worker_cpu){g33_worker_stage(33);return 0;}
+ #endif
+  const volatile uint8_t*sqe=(const volatile uint8_t*)(uintptr_t)(g24n.pages.va+4*16384);
+- for(unsigned i=4;i<w->fw.sqe_bytes;i++)if(sqe[i-4]!=w->fw.sqe[i])return 0;
++ for(unsigned i=4;i<w->fw.sqe_bytes;i++)if(sqe[i-4]!=w->fw.sqe[i]){g33_worker_stage(34);return 0;}
++ g33_worker_stage(4);
++#if !defined(G24_HOST_TEST) || defined(G33_NATIVE_HOST)
++ if(!g33_prepare_lpac(ctx)){g33_worker_stage(35);return 0;}
++#endif
++ g33_worker_stage(5);
+  uint32_t p[28]={0,g31.worker_cpu,g31.observer_cpu,(uint32_t)w->r.epoch,(uint32_t)(w->r.epoch>>32),(uint32_t)at,(uint32_t)(at>>32),value,w->r.phase,w->r.cp_cursor,w->r.profile_cursor,g24n.witness_sequence,w->memory.ring_iova,w->memory.sqe_iova,w->memory.fence_iova,w->fw.sqe_bytes-4,(uint32_t)g24n.pages.page[0].pa,(uint32_t)(g24n.pages.page[0].pa>>32),w->cp_config.stage,w->cp_config.exact,w->cp_config.valid,w->cp_config.aux[15],1,0,0,0,0,0};
+- uint8_t test[G31_BYTES];if(!g31_record_pack(p,test))return 0;
+- for(unsigned i=0;i<27;i++)g31.binding[i]=p[i+1];__atomic_store_n(&g31.progress,0,__ATOMIC_RELAXED);__atomic_store_n(&g31.armed,1,__ATOMIC_RELEASE);return 1;
++ uint8_t test[G31_BYTES];if(!g31_record_pack(p,test)){g33_worker_stage(36);return 0;}
++ for(unsigned i=0;i<27;i++)g31.binding[i]=p[i+1];__atomic_store_n(&g31.progress,0,__ATOMIC_RELAXED);__atomic_store_n(&g31.armed,1,__ATOMIC_RELEASE);g33_worker_stage(6);return 1;
+ }
+ __attribute__((noinline)) static void g31_sqe_store(void*p,uint32_t value){
+ #if !defined(G24_HOST_TEST)
+@@ -346,6 +494,40 @@
+ #endif
+  return 1;
+ }
++
++#if !defined(G24_HOST_TEST) || defined(G33_NATIVE_HOST)
++static int g33_live(void*ctx,uint64_t epoch,uint64_t pa){
++ return ctx==g24n.s&&pa==g33n.table_pa&&pa==g24n.pages.page[0].pa&&
++  (unsigned)cpu_number()==g33n.worker_cpu&&g24n.w.r.phase==G24_ME_INIT&&
++  g24n.w.r.cp_cursor==7&&epoch==g24n.w.r.epoch&&g24n_qualified(ctx,epoch,G24_ME_INIT);
++}
++static int g33_read_native(void*ctx,enum g33_register id,uint32_t*out){
++ return g33_live(ctx,g24n.w.r.epoch,g33n.table_pa)&&g24n_raw(g33_address(id),out);
++}
++static int g33_write_native(void*ctx,enum g33_register id,uint32_t value){
++ if(!g33_live(ctx,g24n.w.r.epoch,g33n.table_pa)||
++  !((id==G33_LPAC_CONTROL&&value==0x300&&g33n.route.stage==G33_CONTROL_ISSUED)||
++    (id==G33_LPAC_MATCH&&value==0x84000001&&g33n.route.stage==G33_MATCH_ISSUED)))return 0;
++ void*p=g24n_pointer(g33_address(id));if(!p)return 0;*(volatile uint32_t*)p=value;return 1;
++}
++static int g33_order_native(void*ctx){if(ctx!=g24n.s)return 0;zg_barrier(ctx);return 1;}
++__attribute__((noinline)) static int g33_prepare_lpac(void*ctx){
++ const struct g33_io io={ctx,g33_live,g33_read_native,g33_write_native,g33_order_native};
++ return g33_install(&g33n.route,&io,g24n.w.r.epoch,g33n.table_pa);
++}
++__attribute__((noinline)) static int g33_wait_publication(void*ctx,unsigned sp,unsigned id){
++ if(sp!=G24_CTL||id!=G24_SQE_CONTROL)return 1;
++ if(ctx!=g24n.s||!g31.armed||g33n.route.stage!=G33_COMPLETE)return 0;
++ g33_worker_stage(7);
++ for(unsigned n=0;n<300;n++){
++  if(__atomic_load_n(&g31.error,__ATOMIC_ACQUIRE)||!__atomic_load_n(&g31.ready,__ATOMIC_ACQUIRE))return 0;
++  if(__atomic_load_n(&g33n.armed_ack,__ATOMIC_ACQUIRE)){g33_worker_stage(8);return 1;}
++  zg_sleep(10);
++ }
++ return 0;
++}
++#endif
++
+ static int g24n_read(void*ctx,unsigned space,unsigned id,uint32_t*out){
+  if(!g30_cp_witness(ctx,1,space,id,g24_register_address(space,id),0))return 0;
+  if(ctx!=g24n.s||!out||!g24n_qualified(ctx,g24n.w.r.epoch,g24n.w.r.phase))return 0;
+@@ -383,6 +565,7 @@
+  /* Retain before a store whose completion can be uncertain. */
+  if(!g30_cp_witness(ctx,5,space,id,at,value))return 0;
+  if(!g31_arm(ctx,space,id,at,value))return 0;
++ if(!g33_wait_publication(ctx,space,id))return 0;
+  /* Pacing yields; repeat the original full owner/current/store guards. */
+  if(g30_target(5,space,id,w->r.phase,w->r.profile_cursor)){
+  struct g24_workspace*w=&g24n.w;if(ctx!=g24n.s||!g24n_qualified(ctx,w->r.epoch,w->r.phase)||w->r.pending_space!=space||w->r.pending_index!=id||w->r.pending_value!=value)return 0;

@@ -34,8 +34,8 @@ def calls(caller,callee,count):
   ins=struct.unpack_from('<I',b,i)[0];imm=ins&0x3ffffff
   if ins&0xfc000000 in [0x94000000,0x14000000] and start+i+4*((imm^0x2000000)-0x2000000)==target:out.append(start+i)
  assert len(out)==count,(caller,callee,out,count);return out
-actual={key:calls(c,n,count) for key,c,n,count in [('map','_g31_observer_start','_g32_fb_prepare',1),('emit','_g31_observer','_g32_emit_record',2),('record','_g32_emit_record','_g32_record',1),('packet','_g32_emit_record','_g32_packet',2),('draw','_g32_emit_record','_g32_draw',1),('tag','_g32_emit_record','_g32_crc',1),('console','_g32_fb_prepare','_PE_current_console',1),('mapping','_g32_fb_prepare','_io_map',1)]}
+actual={key:calls(c,n,count) for key,c,n,count in [('map','_g31_observer_start','_g32_fb_prepare',1),('emit','_g31_observer','_g32_emit_record',3),('record','_g32_emit_record','_g32_record',1),('packet','_g32_emit_record','_g32_packet',2),('draw','_g32_emit_record','_g32_draw',2),('tag','_g32_emit_record','_g32_crc',1),('console','_g32_fb_prepare','_PE_current_console',1),('mapping','_g32_fb_prepare','_io_map',1)]}
 assert actual['map'][0]<prior['actualCalls']['thread']
-_,b=body('_g32_emit_record');words=struct.unpack('<%dI'%(len(b)//4),b);assert words.count(0xd5033e9f)==1
+_,b=body('_g32_emit_record');words=struct.unpack('<%dI'%(len(b)//4),b);assert words.count(0xd5033e9f)==2
 assert b'ZIYI-20261113-G32X-CPU-OPTICAL\0' in raw and b'GSR1 CPU step%u worker%u observer%u CRC%08x' not in raw
 (O/'audit.json').write_text(json.dumps(dict(result='G32_OPTICAL_OBSERVER_FULL_KERNEL_PASS',commit=os.environ['GITHUB_SHA'],kernelSha256=sha(raw),files=rows,linkedFunctions=linked,actualCalls=actual,observerOnlyPublicationBarrier=True,observerNoGPURegisters=True,observerNoConsole=True,initialPairBeforeWorkerGate=True,snapshotFrozenForTwoPages=True,wireBytes=160,observerBudgetSeconds=60,readyWaitMilliseconds=3000,native=False,gpuPixels=False,acceleratedUI=False,phoneOperated=False),indent=2)+'\n');print('G32_OPTICAL_OBSERVER_FULL_KERNEL_PASS')

@@ -67,3 +67,6 @@
 
 /xnu/patches/0114-ziyi-g32-independent-cpu-optical-observer.patch -text whitespace=cr-at-eol
 /tools/ziyi-g32/** -text
+
+/xnu/patches/0115-ziyi-g33-lpac-route-and-cpu-publication.patch -text whitespace=cr-at-eol
+/tools/ziyi-g33/** -text

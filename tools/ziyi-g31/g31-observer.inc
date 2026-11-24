@@ -9,7 +9,7 @@ static struct {
  uint32_t binding[27];
 } g31;
 __attribute__((noinline)) static int g31_record_pack(const uint32_t*p,uint8_t*b){
- if(!p||!b||p[0]>3||p[1]>7||p[2]>7||p[1]==p[2]||!(p[3]||p[4])||p[5]!=0x3d02020||p[6]||p[7]!=1||p[8]!=G24_ME_INIT||p[9]!=7||p[10]!=150||!p[11]||p[11]>4096||p[12]!=GC_IOVA||p[13]!=GC_IOVA+49152||p[14]!=GC_IOVA+32768||p[15]!=43064||!p[16]||(p[16]&16383)||p[17]>15||p[18]!=3||p[19]!=15||p[20]!=0xffffff||p[21]||p[22]!=1||p[23]||p[24]||p[25]||p[26]||p[27])return 0;
+ if(!p||!b||p[0]>3||p[1]>7||p[2]>7||p[1]==p[2]||!(p[3]||p[4])||p[5]!=0x3d02020||p[6]||p[7]!=1||p[8]!=G24_ME_INIT||p[9]!=7||p[10]!=150||!p[11]||p[11]>4096||p[12]!=GC_IOVA||p[13]!=GC_IOVA+49152||p[14]!=GC_IOVA+32768||p[15]!=43064||!(p[16]||p[17])||(p[16]&16383)||p[17]>15||p[18]!=3||p[19]!=15||p[20]!=0xffffff||p[21]||p[22]!=1||p[23]||p[24]||p[25]||p[26]||p[27])return 0;
  uint32_t a[32]={0x31525347u,1,G31_BYTES,0};for(unsigned i=0;i<28;i++)a[4+i]=p[i];
  for(unsigned i=0;i<32;i++)for(unsigned j=0;j<4;j++)b[4*i+j]=(uint8_t)(a[i]>>(8*j));
  uint32_t crc=g28_clock_crc(b+16,112);for(unsigned j=0;j<4;j++)b[12+j]=(uint8_t)(crc>>(8*j));return 1;
@@ -40,6 +40,8 @@ int g32_record(uint32_t sample,unsigned worker,unsigned observer,uint64_t epoch,
 int g32_packet(const uint8_t *record,size_t bytes,uint32_t tag,unsigned page,uint8_t *out,size_t capacity);
 int g32_draw(volatile uint32_t *frame,size_t words,unsigned width,unsigned height,
  unsigned stride,const uint8_t *packet,size_t bytes);
+
+int g33_stamp(uint8_t*,size_t,uint32_t,uint32_t,uint32_t,uint32_t,uint64_t);
 /* CPU optical diagnostics, not GPU rendering. ZMP1RAW1 transport follows the
  * measured u24-s2 implementation. No GPU register/command API is present. */
 
@@ -63,26 +65,35 @@ static int g32_binding(const uint32_t *p) {
  if(p[0]>7 || p[1]>7 || p[0]==p[1] || !(p[2]|p[3]) ||
     p[4]!=0x03d02020u || p[5] || p[6]!=1 || p[7]!=6 || p[8]!=7 || p[9]!=150 ||
     !p[10] || p[10]>4096 || p[11]!=0x61000000u || p[12]!=0x6100c000u ||
-    p[13]!=0x61008000u || p[14]!=43064 || !p[15] || (p[15]&16383) || p[16]>15 ||
+    p[13]!=0x61008000u || p[14]!=43064 || !(p[15]|p[16]) || (p[15]&16383) || p[16]>15 ||
     p[17]!=3 || p[18]!=15 || p[19]!=0x00ffffffu || p[20] || p[21]!=1) return 0;
  for(unsigned i=22;i<27;i++) if(p[i]) return 0;
+ return 1;
+}
+static int g33_diag_valid(const uint32_t*a) {
+ if(!(a[36]|a[37]|a[38]|a[39]))return 1; /* internal base record, before stamp */
+ if(!((a[36]>=1&&a[36]<=8)||(a[36]>=32&&a[36]<=36))||a[37]>>24||
+    (a[37]&255)>7||((a[37]>>8)&255)>6||((a[37]>>16)&255)>6||
+    !(a[38]|a[39])||(a[38]&16383)||a[39]>15)return 0;
+ if(a[5]==3&&(a[24]!=a[38]||a[25]!=a[39]))return 0;
  return 1;
 }
 __attribute__((noinline)) int g32_validate_record(const uint8_t *r,size_t n) {
  if(!r || n!=G32_BYTES) return 0;
  uint32_t a[40]; for(unsigned i=0;i<40;i++) a[i]=g32_word(r,i);
- if(a[0]!=0x32424f47u || a[1]!=1 || a[2]!=G32_BYTES || a[3]!=g32_crc(r+16,144) ||
+ if(a[0]!=0x32424f47u || a[1]!=2 || a[2]!=G32_BYTES || a[3]!=g32_crc(r+16,144) ||
     !a[4] || !(a[7]|a[8]) || a[9]>7 || a[10]>7 || a[9]==a[10] || !(a[11]|a[12])) return 0;
- if(a[5]==1) { if(a[6]) return 0; for(unsigned i=13;i<40;i++) if(a[i]) return 0; return 1; }
+ if(!g33_diag_valid(a)) return 0;
+ if(a[5]==1) { if(a[6]) return 0; for(unsigned i=13;i<36;i++) if(a[i]) return 0; return 1; }
  if(a[5]!=3 || a[6]>3 || !g32_binding(a+9)) return 0;
- for(unsigned i=36;i<40;i++) if(a[i]) return 0;
+ if(!g33_diag_valid(a)) return 0;
  return 1;
 }
 __attribute__((noinline)) int g32_record(uint32_t sample,unsigned worker,unsigned observer,uint64_t epoch,
  uint64_t counter,const uint8_t *gsr,uint8_t *out,size_t n) {
  if(!out || n!=G32_BYTES || !sample || worker>7 || observer>7 || worker==observer || !epoch || !counter ||
     (gsr && g32_overlap(gsr,128,out,n))) return 0;
- uint32_t a[40]={0x32424f47u,1,G32_BYTES,0,sample,1,0,(uint32_t)counter,(uint32_t)(counter>>32),worker,observer,(uint32_t)epoch,(uint32_t)(epoch>>32)};
+ uint32_t a[40]={0x32424f47u,2,G32_BYTES,0,sample,1,0,(uint32_t)counter,(uint32_t)(counter>>32),worker,observer,(uint32_t)epoch,(uint32_t)(epoch>>32)};
  if(gsr) {
   if(g32_word(gsr,0)!=0x31525347u || g32_word(gsr,1)!=1 || g32_word(gsr,2)!=128 ||
      g32_word(gsr,3)!=g32_crc(gsr+16,112) || g32_word(gsr,4)>3 ||
@@ -129,6 +140,16 @@ __attribute__((noinline)) int g32_draw(volatile uint32_t *fb,size_t words,unsign
  }
  return 1;
 }
+
+__attribute__((noinline)) int g33_stamp(uint8_t*r,size_t n,uint32_t worker,uint32_t observer_error,
+ uint32_t route_stage,uint32_t route_error,uint64_t table_pa) {
+ if(!g32_validate_record(r,n)||!((worker>=1&&worker<=8)||(worker>=32&&worker<=36))||
+    observer_error>7||route_stage>6||route_error>6||!table_pa||
+    (table_pa&16383)||table_pa>=(1ull<<36))return 0;
+ g32_put32(r+144,worker);g32_put32(r+148,observer_error|(route_error<<8)|(route_stage<<16));
+ g32_put32(r+152,(uint32_t)table_pa);g32_put32(r+156,(uint32_t)(table_pa>>32));
+ g32_put32(r+12,g32_crc(r+16,144));return g32_validate_record(r,n);
+}
 /* G32 observer writes only the measured CPU framebuffer rectangle. It never
  * calls printf/console or reads GPU registers. Mapping is prepared by worker
  * before thread creation and retained throughout the bounded diagnostic. */
@@ -153,6 +174,9 @@ __attribute__((noinline)) static int g32_emit_record(uint32_t sample,const uint8
  static const char tag[]="ZIYI-20261113-G32X-CPU-OPTICAL";
  if(!g32_fb.frame||(unsigned)cpu_number()!=g31.observer_cpu||
     !g32_record(sample,g31.worker_cpu,g31.observer_cpu,g32_fb.epoch,zg_ticks(NULL),gsr,record,sizeof(record)))return 0;
+ if(!g33_stamp(record,sizeof(record),__atomic_load_n(&g33n.worker_stage,__ATOMIC_ACQUIRE),
+ __atomic_load_n(&g31.error,__ATOMIC_ACQUIRE),__atomic_load_n(&g33n.route.stage,__ATOMIC_ACQUIRE),
+ __atomic_load_n(&g33n.route.error,__ATOMIC_ACQUIRE),g33n.table_pa))return 0;
  uint32_t run=g32_crc(tag,sizeof(tag)-1);
  /* Freeze and validate BOTH pages of one snapshot before drawing either. */
  if(!g32_packet(record,sizeof(record),run,0,packets[0],128)||
@@ -178,10 +202,11 @@ static void g31_observer(void*arg,wait_result_t wr){
   uint8_t b[G31_BYTES];const uint8_t*snapshot=NULL;
   if((unsigned)cpu_number()!=g31.observer_cpu){__atomic_store_n(&g31.error,5,__ATOMIC_RELEASE);break;}
   if(__atomic_load_n(&g31.armed,__ATOMIC_ACQUIRE)){
-   if(!g31_snapshot(b)){__atomic_store_n(&g31.error,6,__ATOMIC_RELEASE);break;}
+   if(!g31_snapshot(b)){__atomic_store_n(&g31.error,6,__ATOMIC_RELEASE);(void)g32_emit_record(i+2,NULL);break;}
    snapshot=b;
   }
-  if(!g32_emit_record(i+2,snapshot)){__atomic_store_n(&g31.error,7,__ATOMIC_RELEASE);break;}
+  if(!g32_emit_record(i+2,snapshot)){__atomic_store_n(&g31.error,7,__ATOMIC_RELEASE);(void)g32_emit_record(i+2,NULL);break;}
+  if(snapshot)__atomic_store_n(&g33n.armed_ack,1,__ATOMIC_RELEASE);
   zg_sleep(50);
  }
  __atomic_store_n(&g31.ready,0,__ATOMIC_RELEASE);
@@ -191,26 +216,36 @@ __attribute__((noinline)) static int g31_observer_start(void*ctx){
  if(ctx!=g24n.s||g31.started)return 0;unsigned cpu=(unsigned)cpu_number();if(cpu>7)return 0;
  processor_t here=cpu_to_processor((int)cpu),other=cpu_to_processor((int)(cpu^1));if(!here||!other)return 0;
  (void)thread_bind(here);thread_block(THREAD_CONTINUE_NULL);if((unsigned)cpu_number()!=cpu)return 0;
- if(!g32_fb_prepare(ctx))return 0;
+ if(!g33_initial(ctx,cpu)||!g32_fb_prepare(ctx))return 0;
  g31.worker_cpu=cpu;g31.observer_cpu=cpu^1;g31.started=1;thread_t observer=THREAD_NULL;
  if(kernel_thread_start(g31_observer,NULL,&observer)!=KERN_SUCCESS){g31.error=3;return 0;}thread_deallocate(observer);
  for(unsigned n=0;n<300;n++){if(__atomic_load_n(&g31.error,__ATOMIC_ACQUIRE))return 0;if(__atomic_load_n(&g31.ready,__ATOMIC_ACQUIRE)==1)return 1;zg_sleep(10);}return 0;
 }
 #else
-__attribute__((noinline)) static int g31_observer_start(void*ctx){if(ctx!=g24n.s)return 0;g31.started=1;g31.worker_cpu=0;g31.observer_cpu=1;g31.ready=1;return 1;}
+__attribute__((noinline)) static int g31_observer_start(void*ctx){if(ctx!=g24n.s)return 0;g31.started=1;g31.worker_cpu=0;g31.observer_cpu=1;g31.ready=1;
+#if defined(G33_NATIVE_HOST)
+ if(!g33_initial(ctx,0))return 0;g33n.armed_ack=1; /* synthetic observer stand-in */
+#endif
+ return 1;}
 #endif
 __attribute__((noinline)) static int g31_arm(void*ctx,unsigned sp,unsigned id,uint64_t at,uint32_t value){
  if(sp!=G24_CTL||id!=G24_SQE_CONTROL)return 1;
+ g33_worker_stage(3);
  struct g24_workspace*w=&g24n.w;
- if(ctx!=g24n.s||!g31.started||__atomic_load_n(&g31.ready,__ATOMIC_ACQUIRE)!=1||__atomic_load_n(&g31.error,__ATOMIC_ACQUIRE)||g31.armed||g31.worker_cpu>7||g31.observer_cpu!=(g31.worker_cpu^1)||w->r.phase!=G24_ME_INIT||w->r.cp_cursor!=7||!g29_cp_verified(w)||at!=0x3d02020||value!=1||w->fw.sqe_bytes!=43068)return 0;
+ if(ctx!=g24n.s||!g31.started||__atomic_load_n(&g31.ready,__ATOMIC_ACQUIRE)!=1||__atomic_load_n(&g31.error,__ATOMIC_ACQUIRE)||g31.armed||g31.worker_cpu>7||g31.observer_cpu!=(g31.worker_cpu^1)||w->r.phase!=G24_ME_INIT||w->r.cp_cursor!=7||!g29_cp_verified(w)||at!=0x3d02020||value!=1||w->fw.sqe_bytes!=43068){g33_worker_stage(32);return 0;}
 #if !defined(G24_HOST_TEST)
- if((unsigned)cpu_number()!=g31.worker_cpu)return 0;
+ if((unsigned)cpu_number()!=g31.worker_cpu){g33_worker_stage(33);return 0;}
 #endif
  const volatile uint8_t*sqe=(const volatile uint8_t*)(uintptr_t)(g24n.pages.va+4*16384);
- for(unsigned i=4;i<w->fw.sqe_bytes;i++)if(sqe[i-4]!=w->fw.sqe[i])return 0;
+ for(unsigned i=4;i<w->fw.sqe_bytes;i++)if(sqe[i-4]!=w->fw.sqe[i]){g33_worker_stage(34);return 0;}
+ g33_worker_stage(4);
+#if !defined(G24_HOST_TEST) || defined(G33_NATIVE_HOST)
+ if(!g33_prepare_lpac(ctx)){g33_worker_stage(35);return 0;}
+#endif
+ g33_worker_stage(5);
  uint32_t p[28]={0,g31.worker_cpu,g31.observer_cpu,(uint32_t)w->r.epoch,(uint32_t)(w->r.epoch>>32),(uint32_t)at,(uint32_t)(at>>32),value,w->r.phase,w->r.cp_cursor,w->r.profile_cursor,g24n.witness_sequence,w->memory.ring_iova,w->memory.sqe_iova,w->memory.fence_iova,w->fw.sqe_bytes-4,(uint32_t)g24n.pages.page[0].pa,(uint32_t)(g24n.pages.page[0].pa>>32),w->cp_config.stage,w->cp_config.exact,w->cp_config.valid,w->cp_config.aux[15],1,0,0,0,0,0};
- uint8_t test[G31_BYTES];if(!g31_record_pack(p,test))return 0;
- for(unsigned i=0;i<27;i++)g31.binding[i]=p[i+1];__atomic_store_n(&g31.progress,0,__ATOMIC_RELAXED);__atomic_store_n(&g31.armed,1,__ATOMIC_RELEASE);return 1;
+ uint8_t test[G31_BYTES];if(!g31_record_pack(p,test)){g33_worker_stage(36);return 0;}
+ for(unsigned i=0;i<27;i++)g31.binding[i]=p[i+1];__atomic_store_n(&g31.progress,0,__ATOMIC_RELAXED);__atomic_store_n(&g31.armed,1,__ATOMIC_RELEASE);g33_worker_stage(6);return 1;
 }
 __attribute__((noinline)) static void g31_sqe_store(void*p,uint32_t value){
 #if !defined(G24_HOST_TEST)

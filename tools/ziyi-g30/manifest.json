@@ -5,7 +5,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "d188999307f20193cf719c95bc72317081a8574bdeda4171b9cd1b12b194b025",
-      "after": "b24b0c188244fb799b617c799f8190039836d8053a054482442153a23be850f3"
+      "after": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8"
     }
   ],
   "patch": "xnu/patches/0112-ziyi-g30-native-preaccess-crc-witnesses.patch",
@@ -80,5 +80,16 @@
     "wireBytes": 160,
     "observerBudgetSeconds": 60,
     "initialPairBeforeReady": true
+  },
+  "g33LPACPublication": {
+    "patch": "xnu/patches/0115-ziyi-g33-lpac-route-and-cpu-publication.patch",
+    "sha256": "929d1cc80f818941bcdacfff082b8f77f9e8468b4fd6f4822d0514ad335259af",
+    "nativeSHA256": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8",
+    "LPACSID": 1,
+    "LPACMask": 1024,
+    "LPACContext": 0,
+    "LPACStores": 2,
+    "publicationWaitMilliseconds": 3000,
+    "exactSQEStoreAndDSBUnchanged": true
   }
 }

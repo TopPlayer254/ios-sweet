@@ -12,7 +12,7 @@ for name,h in M['unchanged'].items():assert sha((R/'dxb/xnu/bsd/dev'/name).read_
 observer=module.split('static void g31_observer(',1)[1].split('static int g31_observer_start(',1)[0]
 for token in ['g24n_raw(', 'io_map(', 'zg_barrier(', 'g24n_pointer(', 'g24n_qualified(', 'smc #']:assert token not in observer
 assert 'cpu_to_processor((int)g31.observer_cpu)' in observer and 'cpu_number()!=g31.observer_cpu' in observer and '19200000ULL*60' in observer
-assert 'for(unsigned i=4;i<w->fw.sqe_bytes;i++)if(sqe[i-4]!=w->fw.sqe[i])return 0;' in module
+assert 'for(unsigned i=4;i<w->fw.sqe_bytes;i++)if(sqe[i-4]!=w->fw.sqe[i]){g33_worker_stage(34);return 0;}' in module
 write=native.split('static int g24n_write(',1)[1].split('static int g24n_order(',1)[0];assert write.index('g31_arm(ctx,space,id,at,value)')<write.index('/* Pacing yields;')<write.index('g31_sqe_store(p,value)')
 raw=(R/'dxb/fakeroot/System/Library/Kernels/kernel.development.sweet').read_bytes();prior=json.loads((R/'u1-evidence/g30/audit.json').read_text());assert prior['kernelSha256']==sha(raw) and prior['originalPredicatesRepeatedAfterPacing']
 host=json.loads((R/'u1-evidence/g31-host/audit.json').read_text());assert host['result']=='G31_CPU_OBSERVER_HOST_PASS' and host['stages']==3 and host['stallWindows']==3 and host['codecBitRefusals']==3072 and host['sameGCPBytes'] and host['noAdditionalTargetMMIO'] and host['noAdditionalStoreBarrier'] and host['workerProgressNoPrintSleep'] and not host['observerMMIO']

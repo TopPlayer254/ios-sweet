@@ -5,7 +5,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "1c96232a23e412f7d928a508c97030d0c5d7ed96b359bb6d0390274dda857426",
-      "after": "b24b0c188244fb799b617c799f8190039836d8053a054482442153a23be850f3"
+      "after": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8"
     }
   ],
   "patch": "xnu/patches/0113-ziyi-g31-cpu-observer-sqe-store-barrier.patch",
@@ -34,13 +34,13 @@
     },
     {
       "path": "tools/ziyi-g31/audit_ci.py",
-      "sha256": "9ac67019b714b45e3aa6f006932c06813d718136420fc0b0b4d33a1a9240199e",
-      "bytes": 5744
+      "sha256": "59b3773b75cf57c545ae4f8248e39e0e11c29d2ab99d7db8378ba6d6bec2124e",
+      "bytes": 5767
     },
     {
       "path": "tools/ziyi-g31/g31-observer.inc",
-      "sha256": "3de25b8860bd78858fcf15f1e42602dc51baef2f9edd10413728f78a67130e6b",
-      "bytes": 14836
+      "sha256": "298329bf86a819019926707ffa8ba456362bb7503a820dab5321a720e38b91c1",
+      "bytes": 16781
     },
     {
       "path": "tools/ziyi-g31/hwcg-block.inc",
@@ -71,5 +71,16 @@
     "wireBytes": 160,
     "observerBudgetSeconds": 60,
     "initialPairBeforeReady": true
+  },
+  "g33LPACPublication": {
+    "patch": "xnu/patches/0115-ziyi-g33-lpac-route-and-cpu-publication.patch",
+    "sha256": "929d1cc80f818941bcdacfff082b8f77f9e8468b4fd6f4822d0514ad335259af",
+    "nativeSHA256": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8",
+    "LPACSID": 1,
+    "LPACMask": 1024,
+    "LPACContext": 0,
+    "LPACStores": 2,
+    "publicationWaitMilliseconds": 3000,
+    "exactSQEStoreAndDSBUnchanged": true
   }
 }

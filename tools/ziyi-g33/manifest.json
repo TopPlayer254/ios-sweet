@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "parentCommit": "887d3e3a344ae00a394147ae46a914f8a50d8e25",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": "b24b0c188244fb799b617c799f8190039836d8053a054482442153a23be850f3",
+      "after": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8"
+    }
+  ],
+  "patch": "xnu/patches/0115-ziyi-g33-lpac-route-and-cpu-publication.patch",
+  "patchSHA256": "929d1cc80f818941bcdacfff082b8f77f9e8468b4fd6f4822d0514ad335259af",
+  "unchanged": {
+    "ziyi_g24_engine.c": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1",
+    "ziyi_g24_engine.h": "4dc3eab93c7f496340547bda6a3a3ca73eb037695a3089a7694b495536cdaddb",
+    "ziyi_g24_profile.inc": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+    "ziyi_g24_record.c": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f"
+  },
+  "linkedFunctions": [
+    "_g33_address",
+    "_g33_install",
+    "_g33_prepare_lpac",
+    "_g33_wait_publication",
+    "_g33_live",
+    "_g33_read_native",
+    "_g33_write_native",
+    "_g33_order_native",
+    "_g33_stamp",
+    "_g31_arm"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g33/README.md",
+      "sha256": "a9cee28f87ef560282b753d9fe38ee579e8660c37be08d7fdf5ed4cb46fd246a",
+      "bytes": 961
+    },
+    {
+      "path": "tools/ziyi-g33/audit_ci.py",
+      "sha256": "855856285cf54564ec644edcf1f778061892562d3c3f73dadfad12f7ef577c83",
+      "bytes": 4710
+    },
+    {
+      "path": "tools/ziyi-g33/files/ziyi_g33_lpac.c",
+      "sha256": "08ac7e5c2aacaf4041ff12f7bf520453bec985a552bede73e3708f652fc982ce",
+      "bytes": 3547
+    },
+    {
+      "path": "tools/ziyi-g33/files/ziyi_g33_lpac.h",
+      "sha256": "cbe21ddb2b2d794e6f69ae72cafb37da6343d0752d052cb8eb0951ee635ed35f",
+      "bytes": 1194
+    },
+    {
+      "path": "tools/ziyi-g33/files/ziyi_g33_optical.c",
+      "sha256": "662d21637613603375b664878c49750805e4a6eb6114b5c5ee80135526b78c5c",
+      "bytes": 5980
+    },
+    {
+      "path": "tools/ziyi-g33/files/ziyi_g33_optical.h",
+      "sha256": "9b1fc159f7887af9914c76b60279504b9c906c87a35eaf1c1ef1c11c8caa7686",
+      "bytes": 907
+    },
+    {
+      "path": "tools/ziyi-g33/run_all_tests.py",
+      "sha256": "05c02c89c67c1a6bda20f021cf13af51e7d9ae733fd0c96aa9aa0bd15e7706a3",
+      "bytes": 1263
+    },
+    {
+      "path": "tools/ziyi-g33/run_lpac_tests.py",
+      "sha256": "6215ab7ee173a4f1496c1eb430501c46448a15902de255a02429229efdddd9ce",
+      "bytes": 1461
+    },
+    {
+      "path": "tools/ziyi-g33/run_native_tests.py",
+      "sha256": "899eed8450d2376be4e34ed6135feae9fd6270950adbf3386dce7d2302927e17",
+      "bytes": 2733
+    },
+    {
+      "path": "tools/ziyi-g33/run_optical_tests.py",
+      "sha256": "0d04868554c48a733f2b3cc8d314dfd6d3ab48f44532bc6099bfbb2d229ffb86",
+      "bytes": 1448
+    },
+    {
+      "path": "tools/ziyi-g33/test_lpac.c",
+      "sha256": "e2598463c5877eb500fcd8bad07ef4d34098421ba80e0fdf27643ce51bd4616f",
+      "bytes": 3616
+    },
+    {
+      "path": "tools/ziyi-g33/test_native.c",
+      "sha256": "1b7e18be611495984c289efecfd9a1bc260048d06823535b49e54aff1058eab0",
+      "bytes": 3641
+    },
+    {
+      "path": "tools/ziyi-g33/test_optical.c",
+      "sha256": "1ddd822575da3329b3f16141ae9c1fa89e7f301d65088594f45d8c2e120ff1e9",
+      "bytes": 3093
+    }
+  ],
+  "native": false,
+  "gpuPixels": false
+}

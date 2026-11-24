@@ -20,8 +20,9 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27, codex/ziyi-gpu-already-off-g28, codex/ziyi-gpu-cp-cohort-g29, codex/ziyi-gpu-witness-g30, codex/ziyi-gpu-sqe-observer-g31, codex/ziyi-gpu-optical-g32]
+    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27, codex/ziyi-gpu-already-off-g28, codex/ziyi-gpu-cp-cohort-g29, codex/ziyi-gpu-witness-g30, codex/ziyi-gpu-sqe-observer-g31, codex/ziyi-gpu-optical-g32, codex/ziyi-gpu-lpac-g33]
     paths:
+      - "tools/ziyi-g33/**"
       - "tools/ziyi-g32/**"
       - "tools/ziyi-g31/**"
       - "tools/ziyi-g30/**"
@@ -299,6 +300,9 @@ jobs:
       - name: G32 independent optical serializer and framebuffer bounds
         run: python3 tools/ziyi-g32/run_optical_tests.py --cc cc --fixture u1-evidence/g31-host/record.bin.gsr --out u1-evidence/g32-host
 
+      - name: G33 LPAC native adapter and diagnostic publication batch
+        run: python3 tools/ziyi-g33/run_all_tests.py --cc cc --repo . --fixture u1-evidence/g24-host/synthetic-not-signed-capsule.bin --gsr u1-evidence/g31-host/record.bin.gsr --out u1-evidence/g33-host
+
       - name: Build
         working-directory: dxb
         env:
@@ -369,6 +373,9 @@ jobs:
 
       - name: Exact G32 independent CPU optical channel
         run: python3 tools/ziyi-g32/audit_ci.py
+
+      - name: Exact G33 LPAC route and pre-SQE CPU publication
+        run: python3 tools/ziyi-g33/audit_ci.py
 
       - uses: actions/upload-artifact@v4
         if: always()

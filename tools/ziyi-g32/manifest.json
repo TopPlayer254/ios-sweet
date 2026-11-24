@@ -5,7 +5,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "ac283a1499397a130043f086e68c2cf3ae2842a2440de4afd78cc67226f416f6",
-      "after": "b24b0c188244fb799b617c799f8190039836d8053a054482442153a23be850f3"
+      "after": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8"
     }
   ],
   "patch": "xnu/patches/0114-ziyi-g32-independent-cpu-optical-observer.patch",
@@ -34,7 +34,7 @@
     },
     {
       "path": "tools/ziyi-g32/audit_ci.py",
-      "sha256": "844e6d0417bebb55893252661789da44ef086f486ba07416a3f22949ad39ce83",
+      "sha256": "7b83c1df2ea0688e9c3028a9707520d30764f6457d4ebe5ffe6f9f1b88b38fcc",
       "bytes": 4425
     },
     {
@@ -59,5 +59,16 @@
     }
   ],
   "native": false,
-  "gpuPixels": false
+  "gpuPixels": false,
+  "g33LPACPublication": {
+    "patch": "xnu/patches/0115-ziyi-g33-lpac-route-and-cpu-publication.patch",
+    "sha256": "929d1cc80f818941bcdacfff082b8f77f9e8468b4fd6f4822d0514ad335259af",
+    "nativeSHA256": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8",
+    "LPACSID": 1,
+    "LPACMask": 1024,
+    "LPACContext": 0,
+    "LPACStores": 2,
+    "publicationWaitMilliseconds": 3000,
+    "exactSQEStoreAndDSBUnchanged": true
+  }
 }
