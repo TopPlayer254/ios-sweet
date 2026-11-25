@@ -1,0 +1,31 @@
+name: ziyi-g34-audit-recovery
+on:
+  push:
+    branches: [codex/ziyi-gpu-g34-audit-recovery]
+    paths:
+      - .github/workflows/ziyi-g34-audit-recovery.yml
+      - tools/ziyi-g34/recover_ci.py
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Requalify unchanged G34 kernel and exact witness boundary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/ziyi-g34/recover_ci.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g34-audit-recovery
+          path: |
+            g34-recovery/recovery.json
+            g34-recovery/g34
+            g34-recovery/original-audit.py
+            g34-recovery/corrected-audit.py
+          if-no-files-found: error
