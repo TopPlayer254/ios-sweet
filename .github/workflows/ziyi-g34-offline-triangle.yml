@@ -30,6 +30,7 @@ jobs:
           python3 tools/ziyi-g34/offline/patch_mesa.py g34-source g34-evidence/source-patch
       - name: Build pinned A6xx IR3 and Turnip host command producer
         run: |
+          export PATH="$GITHUB_WORKSPACE/.g34-venv/bin:$PATH"
           .g34-venv/bin/meson setup g34-build g34-source --wrap-mode=nodownload -Dgallium-drivers= -Dvulkan-drivers=freedreno -Dfreedreno-kmds=msm -Dtools=drm-shim -Dplatforms= -Dglx=disabled -Degl=disabled -Dgbm=disabled -Dopengl=false -Dgles1=disabled -Dgles2=disabled -Dllvm=disabled -Dshared-glapi=disabled -Dxmlconfig=disabled -Dshader-cache=disabled -Dbuild-tests=false -Dvideo-codecs= -Dvulkan-layers= -Dbuildtype=release -Db_ndebug=false -Dlibunwind=disabled -Dlmsensors=disabled -Dvalgrind=disabled
           ninja -C g34-build -j3 src/freedreno/vulkan/libvulkan_freedreno.so src/freedreno/drm-shim/libfreedreno_noop_drm_shim.so
           cp g34-build/meson-info/intro-buildoptions.json g34-evidence/
