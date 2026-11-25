@@ -1,0 +1,62 @@
+name: ziyi-g34-offline-triangle
+on:
+  push:
+    branches: [codex/ziyi-g34-offline-triangle]
+    paths: [tools/ziyi-g34/offline/**, .github/workflows/ziyi-g34-offline-triangle.yml]
+permissions:
+  contents: read
+concurrency:
+  group: g34-offline-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  produce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ninja-build flex bison libdrm-dev libudev-dev libvulkan-dev glslang-tools spirv-tools libzstd-dev zlib1g-dev
+          python3 -m venv .g34-venv
+          .g34-venv/bin/pip install meson==1.9.2 mako==1.3.10 packaging==25.0 pyyaml==6.0.3
+      - name: Pinned primary Mesa source and offline producer only
+        run: |
+          mkdir g34-source g34-evidence
+          curl --fail --location --retry 3 https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa/+archive/85fda3b36405bcaea8bffc64aa4f2651dc90770d.tar.gz -o mesa.tar.gz
+          echo '6e29ff63e894f62a2965474782da6debbf18611547eec6617fe5ee7f0fcad3ef  mesa.tar.gz' | sha256sum --check
+          tar -xzf mesa.tar.gz -C g34-source
+          python3 tools/ziyi-g34/offline/patch_mesa.py g34-source g34-evidence/source-patch
+      - name: Build pinned A6xx IR3 and Turnip host command producer
+        run: |
+          .g34-venv/bin/meson setup g34-build g34-source --wrap-mode=nodownload -Dgallium-drivers= -Dvulkan-drivers=freedreno -Dfreedreno-kmds=msm -Dtools=drm-shim -Dplatforms= -Dglx=disabled -Degl=disabled -Dgbm=disabled -Dopengl=false -Dgles1=disabled -Dgles2=disabled -Dllvm=disabled -Dshared-glapi=disabled -Dxmlconfig=disabled -Dshader-cache=disabled -Dbuild-tests=false -Dvideo-codecs= -Dvulkan-layers= -Dbuildtype=release -Db_ndebug=false -Dlibunwind=disabled -Dlmsensors=disabled -Dvalgrind=disabled
+          ninja -C g34-build -j3 src/freedreno/vulkan/libvulkan_freedreno.so src/freedreno/drm-shim/libfreedreno_noop_drm_shim.so
+          cp g34-build/meson-info/intro-buildoptions.json g34-evidence/
+          cc -std=c11 -O2 -Wall -Wextra -Werror tools/ziyi-g34/offline/triangle.c -lvulkan -o g34-evidence/triangle-producer
+          glslangValidator -V --target-env vulkan1.1 tools/ziyi-g34/offline/triangle.vert -o g34-evidence/triangle.vert.spv
+          glslangValidator -V --target-env vulkan1.1 tools/ziyi-g34/offline/triangle.frag -o g34-evidence/triangle.frag.spv
+          spirv-val --target-env vulkan1.1 g34-evidence/triangle.vert.spv
+          spirv-val --target-env vulkan1.1 g34-evidence/triangle.frag.spv
+      - name: Capture real compiler output and complete command buffers without GPU execution
+        run: |
+          mkdir g34-evidence/capture
+          printf '{"file_format_version":"1.0.0","ICD":{"library_path":"%s/g34-build/src/freedreno/vulkan/libvulkan_freedreno.so","api_version":"1.3.0"}}\n' "$GITHUB_WORKSPACE" > g34-evidence/icd.json
+          export VK_DRIVER_FILES="$GITHUB_WORKSPACE/g34-evidence/icd.json"
+          export LD_PRELOAD="$GITHUB_WORKSPACE/g34-build/src/freedreno/drm-shim/libfreedreno_noop_drm_shim.so"
+          export FD_CHIP_ID=06060201
+          export TU_DEBUG=sysmem,nobin,nolrz
+          export IR3_SHADER_DEBUG=vs,fs,disasm
+          export G34_CAPTURE_DIR="$GITHUB_WORKSPACE/g34-evidence/capture"
+          timeout 90 g34-evidence/triangle-producer g34-evidence/triangle.vert.spv g34-evidence/triangle.frag.spv > g34-evidence/producer.stdout 2> g34-evidence/producer.stderr
+          test -s g34-evidence/capture/submit.json
+          unset LD_PRELOAD
+          sha256sum g34-evidence/capture/* > g34-evidence/capture-sha256.txt
+      - name: Retain original host build and refusal diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ziyi-g34-offline-triangle
+          path: |
+            g34-evidence/
+            g34-build/meson-logs/
+          if-no-files-found: error
