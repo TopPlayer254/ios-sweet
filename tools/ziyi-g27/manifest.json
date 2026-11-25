@@ -133,5 +133,14 @@
     "rootWords": 200,
     "realCompiledVSFS": true,
     "nativeExecution": false
+  },
+  "g35Primitives": {
+    "patch": "xnu/patches/0117-ziyi-g35-texture-blend-depth.patch",
+    "sha256": "a5a14fc9891040b88698706e9beb10577a3e8e228bea3368fa250ae4efae308b",
+    "nativeSHA256": "b4622ee8111332f2bc2296322aef96bb71926fc59b710834090e78249e65e068",
+    "typedPointers": 126,
+    "rootBegin": 303,
+    "rootEnd": 512,
+    "nativeExecution": false
   }
 }

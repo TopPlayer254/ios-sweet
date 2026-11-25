@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "parentCommit": "404ca1e73057f894968374bef33d6f3d28d59ed0",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": "6c21f9a083bb61e997d056f45967d36c6f16deff03c4ce0f4056a307e34bbf01",
+      "after": "b4622ee8111332f2bc2296322aef96bb71926fc59b710834090e78249e65e068"
+    }
+  ],
+  "patch": "xnu/patches/0117-ziyi-g35-texture-blend-depth.patch",
+  "patchSHA256": "a5a14fc9891040b88698706e9beb10577a3e8e228bea3368fa250ae4efae308b",
+  "unchanged": {
+    "ziyi_g24_engine.c": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1",
+    "ziyi_g24_engine.h": "4dc3eab93c7f496340547bda6a3a3ca73eb037695a3089a7694b495536cdaddb",
+    "ziyi_g24_profile.inc": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+    "ziyi_g24_record.c": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f",
+    "ziyi_g24_memory.c": "1416db6518a1ab582471e7c967060b41c12a2249e662348cd7e68df40a4fca03",
+    "ziyi_g24_pixel.c": "cd23eadab377bbcd55167a163ae34a63aa8cc24d2fd0e82150208e9db339755e"
+  },
+  "linkedFunctions": [
+    "_g35_crc",
+    "_g35_check_pixels",
+    "_g35_check_depth",
+    "_g35_result_pack",
+    "_g35_final_pack",
+    "_g35_final_packet",
+    "_g35_final_draw",
+    "_g35n_guard",
+    "_g35n_sample",
+    "_g35n_exact_pages",
+    "_g35n_publish",
+    "_g35n_present",
+    "_g35n_run",
+    "_g35n_finish_record",
+    "_g35n_emit_final"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g35/README.md",
+      "sha256": "e4f482dfa6ae38b82312e14b6504c9a21d8a0c1402b6f6c7e6a982f5bf21946e",
+      "bytes": 1666
+    },
+    {
+      "path": "tools/ziyi-g35/asset.json",
+      "sha256": "97e18d5ecc6fc39e8ab3a8219f5a3dce9f5c24e7fba5deec180805359c62443d",
+      "bytes": 43703
+    },
+    {
+      "path": "tools/ziyi-g35/audit_ci.py",
+      "sha256": "6ae07422fbcfcf219f62c8b16b0d43a8f042e43bd96bd3ca6240ce7e24177900",
+      "bytes": 5822
+    },
+    {
+      "path": "tools/ziyi-g35/build_asset.py",
+      "sha256": "ac8fce2b31c8dd9ac5e1d43e79de2f561f34cf7cad5c134cb24bec691dc570fc",
+      "bytes": 7004
+    },
+    {
+      "path": "tools/ziyi-g35/data/fence-template.bin",
+      "sha256": "d3a3594cca2ca6ad0256a62808ed04b25a75836f5de4af82b3052de9c71ce2de",
+      "bytes": 16384
+    },
+    {
+      "path": "tools/ziyi-g35/data/ring-template.bin",
+      "sha256": "0925368e6c16bba8ce1ab2ef2e012ddaad495ada8b85c01655155229e2e2feec",
+      "bytes": 16384
+    },
+    {
+      "path": "tools/ziyi-g35/files/ziyi_g35_asset.inc",
+      "sha256": "b5800e631450da37dfaa9fdc6637fb9980b95a64d4cf259ff2e828ee4776e121",
+      "bytes": 166577
+    },
+    {
+      "path": "tools/ziyi-g35/final_wire.c",
+      "sha256": "c6cc427f6dfe771e68df56e40ebe9ed475ddfdcedc7d1c89196fb77be63aa9cb",
+      "bytes": 4377
+    },
+    {
+      "path": "tools/ziyi-g35/final_wire.h",
+      "sha256": "1c394e867adcc3683311c03128d59cc1462ba08e6007306809d1edf39e539ad9",
+      "bytes": 585
+    },
+    {
+      "path": "tools/ziyi-g35/native.inc",
+      "sha256": "f689a2546c16bebdff9fbd1b516372560000f02e6bca9585ce1a126959301559",
+      "bytes": 8037
+    },
+    {
+      "path": "tools/ziyi-g35/offline/blend.frag",
+      "sha256": "ac319c81e24a9233ef697f2310d0c7ffa18d3da3f45a28a6e5f2e992eb432c3e",
+      "bytes": 106
+    },
+    {
+      "path": "tools/ziyi-g35/offline/depth.frag",
+      "sha256": "32c8682913d8d5a30b61be4a9e03c57ac0d2d598ead6f8bd88263c0085623e47",
+      "bytes": 149
+    },
+    {
+      "path": "tools/ziyi-g35/offline/inputs.json",
+      "sha256": "deb473ecf2adbc5463fdc813ad45d5bc61ed5e2b2490de3f7ec37fc8b5c4fae5",
+      "bytes": 908
+    },
+    {
+      "path": "tools/ziyi-g35/offline/primitives.c",
+      "sha256": "73026a6f1a56b74c2f53ee954d4c459d8bdac4a628ecb249671f5e70f71c1e22",
+      "bytes": 17447
+    },
+    {
+      "path": "tools/ziyi-g35/offline/primitives.vert",
+      "sha256": "8bd5dc7e820c4323b81a26a970a51508b1a2bd16dc64b8b4d24a1c06f29070ef",
+      "bytes": 216
+    },
+    {
+      "path": "tools/ziyi-g35/offline/texture.frag",
+      "sha256": "c6522989644d439084b1af08770cbee2b93306e01d2d25793564e6f93180eb64",
+      "bytes": 185
+    },
+    {
+      "path": "tools/ziyi-g35/primitives_result.c",
+      "sha256": "37e713fb7ed95167f84c720f4dab40c3b50c7b92172ae470309ee317c2088443",
+      "bytes": 3732
+    },
+    {
+      "path": "tools/ziyi-g35/primitives_result.h",
+      "sha256": "eeae1c9fa884de36788ad4fe64288309a01df14ba7112a4947ed5a98ab286406",
+      "bytes": 1646
+    },
+    {
+      "path": "tools/ziyi-g35/run_host_tests.py",
+      "sha256": "40a615158ab2bea160242411bfaf89469602988336fd96b9c2429d671ceb517c",
+      "bytes": 1829
+    },
+    {
+      "path": "tools/ziyi-g35/run_native_tests.py",
+      "sha256": "fbf790a67e56a7cbbd965f66926fad479c635b1a3632a0dcfc4daa0a61e4a9c5",
+      "bytes": 2869
+    },
+    {
+      "path": "tools/ziyi-g35/test_final_wire.c",
+      "sha256": "89b638d77a37dc2bf7e1165e42e5b6f7789f85f11147b3ee38fd26a859e602fc",
+      "bytes": 1530
+    },
+    {
+      "path": "tools/ziyi-g35/test_native.c",
+      "sha256": "0ab551f2d5ec601fa8947e06d2737b89ca5c2d2b7940e12da7751a8e2e7410bf",
+      "bytes": 5041
+    },
+    {
+      "path": "tools/ziyi-g35/typed_capture.py",
+      "sha256": "5294fde28bdafe380355a401f81cd89c8fd3d8d6f5a16f51f779587b623a298f",
+      "bytes": 5295
+    }
+  ],
+  "native": false,
+  "metalReady": false
+}

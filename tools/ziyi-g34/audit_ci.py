@@ -50,7 +50,7 @@ for key,caller,callee,allowed in[
  ('emit','_ziyi_gpu_cp_continue','_g34n_emit_final',[1]),('publish','_g34n_run','_g34n_publish',[1]),
  ('pixels','_g34n_run','_g34_check_pixels',[1]),('present','_g34n_run','_g34n_present',[1]),
  ('triRecord','_g34n_finish_record','_g34_result_pack',[1]),('fullRecord','_g34n_finish_record','_g34_final_pack',[1]),
- ('packet','_g34n_emit_final','_g34_final_packet',[1,10]),('draw','_g34n_emit_final','_g34_final_draw',[1,10]),
+ ('packet','_g34n_emit_final','_g34_final_packet',[1,10]),('draw','_g34n_emit_final','_g34_final_draw',[2]),
  ('freshOwner','_g34n_publish','_g34n_guard',[2]),('exactBytes','_g34n_publish','_g34n_exact_pages',[2])]:
  actual[key]=calls(caller,callee,allowed)
 assert actual['run'][0]<actual['freeze'][0]

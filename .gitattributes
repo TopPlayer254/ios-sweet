@@ -73,3 +73,6 @@
 
 /xnu/patches/0116-ziyi-g34-vs-fs-triangle-and-final-receipts.patch -text whitespace=cr-at-eol
 /tools/ziyi-g34/** -text
+
+/xnu/patches/0117-ziyi-g35-texture-blend-depth.patch -text whitespace=cr-at-eol
+/tools/ziyi-g35/** -text

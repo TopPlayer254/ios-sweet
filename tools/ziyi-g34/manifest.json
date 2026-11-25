@@ -5,7 +5,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8",
-      "after": "6c21f9a083bb61e997d056f45967d36c6f16deff03c4ce0f4056a307e34bbf01"
+      "after": "b4622ee8111332f2bc2296322aef96bb71926fc59b710834090e78249e65e068"
     }
   ],
   "patch": "xnu/patches/0116-ziyi-g34-vs-fs-triangle-and-final-receipts.patch",
@@ -47,8 +47,8 @@
     },
     {
       "path": "tools/ziyi-g34/audit_ci.py",
-      "sha256": "4f46000f69f7bc27b854867c8acd5d49ff9e985a211e1b17541cde629082ed3e",
-      "bytes": 5173
+      "sha256": "8b6055a9cf1f3ea72f2a27e1c9aa0f152f9fde7d9500ae2106da0e84f44295b3",
+      "bytes": 5170
     },
     {
       "path": "tools/ziyi-g34/data/fence-template.bin",
@@ -117,5 +117,14 @@
     }
   ],
   "native": false,
-  "gpuTriangle": false
+  "gpuTriangle": false,
+  "g35Primitives": {
+    "patch": "xnu/patches/0117-ziyi-g35-texture-blend-depth.patch",
+    "sha256": "a5a14fc9891040b88698706e9beb10577a3e8e228bea3368fa250ae4efae308b",
+    "nativeSHA256": "b4622ee8111332f2bc2296322aef96bb71926fc59b710834090e78249e65e068",
+    "typedPointers": 126,
+    "rootBegin": 303,
+    "rootEnd": 512,
+    "nativeExecution": false
+  }
 }

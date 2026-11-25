@@ -20,8 +20,9 @@ on:
         description: make -k (collect all compile errors in one run)
         default: "true"
   push:
-    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27, codex/ziyi-gpu-already-off-g28, codex/ziyi-gpu-cp-cohort-g29, codex/ziyi-gpu-witness-g30, codex/ziyi-gpu-sqe-observer-g31, codex/ziyi-gpu-optical-g32, codex/ziyi-gpu-lpac-g33, codex/ziyi-gpu-triangle-g34]
+    branches: [codex/ziyi-hw-in-system, codex/ziyi-hfi-g19, codex/ziyi-hfi-g20, codex/ziyi-hfi-g21, codex/ziyi-gpu-preuser-g22, codex/ziyi-gpu-startup-g23, codex/ziyi-gpu-first-pixel-g24, codex/ziyi-gpu-preuser-g25, codex/ziyi-gpu-clocks-g26, codex/ziyi-gpu-gx-off-g27, codex/ziyi-gpu-already-off-g28, codex/ziyi-gpu-cp-cohort-g29, codex/ziyi-gpu-witness-g30, codex/ziyi-gpu-sqe-observer-g31, codex/ziyi-gpu-optical-g32, codex/ziyi-gpu-lpac-g33, codex/ziyi-gpu-triangle-g34, codex/ziyi-gpu-primitives-g35]
     paths:
+      - "tools/ziyi-g35/**"
       - "tools/ziyi-g34/**"
       - "tools/ziyi-g33/**"
       - "tools/ziyi-g32/**"
@@ -307,6 +308,9 @@ jobs:
       - name: G34 actual triangle adapter and final receipts
         run: python3 tools/ziyi-g34/run_host_tests.py --cc cc --repo . --fixture u1-evidence/g24-host/synthetic-not-signed-capsule.bin --out u1-evidence/g34-host
 
+      - name: G35 actual texture blend depth adapter and receipts
+        run: python3 tools/ziyi-g35/run_host_tests.py --cc cc --repo . --fixture u1-evidence/g24-host/synthetic-not-signed-capsule.bin --out u1-evidence/g35-host
+
       - name: Build
         working-directory: dxb
         env:
@@ -383,6 +387,9 @@ jobs:
 
       - name: Exact G34 compiled VS FS and guarded triangle calls
         run: python3 tools/ziyi-g34/audit_ci.py
+
+      - name: Exact G35 textures blending depth and guarded publish
+        run: python3 tools/ziyi-g35/audit_ci.py
 
       - uses: actions/upload-artifact@v4
         if: always()
