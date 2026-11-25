@@ -25,9 +25,8 @@ jobs:
           mkdir g34-source g34-evidence
           curl --fail --location --retry 3 https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa/+archive/85fda3b36405bcaea8bffc64aa4f2651dc90770d.tar.gz -o mesa.tar.gz
           sha256sum mesa.tar.gz > g34-evidence/archive-compressed-sha256.txt
-          gzip -dc mesa.tar.gz > mesa.tar
-          echo 'd178c2b276121b7fa22ac2079c75e31e38c26824a70f49b40fdb40eff84ae34f  mesa.tar' | sha256sum --check
-          tar -xf mesa.tar -C g34-source
+          python3 tools/ziyi-g34/offline/verify_archive.py mesa.tar.gz tools/ziyi-g34/offline/mesa-content.json g34-evidence/source-identity.json
+          tar -xzf mesa.tar.gz -C g34-source
           python3 tools/ziyi-g34/offline/patch_mesa.py g34-source g34-evidence/source-patch
       - name: Build pinned A6xx IR3 and Turnip host command producer
         run: |
