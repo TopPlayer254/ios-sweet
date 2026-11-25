@@ -5,7 +5,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "d188999307f20193cf719c95bc72317081a8574bdeda4171b9cd1b12b194b025",
-      "after": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8"
+      "after": "6c21f9a083bb61e997d056f45967d36c6f16deff03c4ce0f4056a307e34bbf01"
     }
   ],
   "patch": "xnu/patches/0112-ziyi-g30-native-preaccess-crc-witnesses.patch",
@@ -31,8 +31,8 @@
     },
     {
       "path": "tools/ziyi-g30/audit_ci.py",
-      "sha256": "bdf58e318f2ef95a31165569b10c8219fa088b610375559b47c3b265dfaa08ce",
-      "bytes": 3913
+      "sha256": "cbe64fbc8937cd91e9e1ae1466bf6bfcfe959d108e44b9893f9e25f61c1db67d",
+      "bytes": 3912
     },
     {
       "path": "tools/ziyi-g30/g29-native-before.inc",
@@ -91,5 +91,13 @@
     "LPACStores": 2,
     "publicationWaitMilliseconds": 3000,
     "exactSQEStoreAndDSBUnchanged": true
+  },
+  "g34Triangle": {
+    "patch": "xnu/patches/0116-ziyi-g34-vs-fs-triangle-and-final-receipts.patch",
+    "sha256": "419f6fa5b75e45255220511ed1bca549aea2cb46b6640a8a7aef1ef256be5b06",
+    "nativeSHA256": "6c21f9a083bb61e997d056f45967d36c6f16deff03c4ce0f4056a307e34bbf01",
+    "rootWords": 200,
+    "realCompiledVSFS": true,
+    "nativeExecution": false
   }
 }

@@ -125,5 +125,13 @@
     "LPACStores": 2,
     "publicationWaitMilliseconds": 3000,
     "exactSQEStoreAndDSBUnchanged": true
+  },
+  "g34Triangle": {
+    "patch": "xnu/patches/0116-ziyi-g34-vs-fs-triangle-and-final-receipts.patch",
+    "sha256": "419f6fa5b75e45255220511ed1bca549aea2cb46b6640a8a7aef1ef256be5b06",
+    "nativeSHA256": "6c21f9a083bb61e997d056f45967d36c6f16deff03c4ce0f4056a307e34bbf01",
+    "rootWords": 200,
+    "realCompiledVSFS": true,
+    "nativeExecution": false
   }
 }

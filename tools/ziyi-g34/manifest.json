@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "parentCommit": "2f0ddb6f45542f6e11b9a39846284ebd43359ab7",
+  "files": [
+    {
+      "path": "bsd/dev/ziyi_g24_native.inc",
+      "before": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8",
+      "after": "6c21f9a083bb61e997d056f45967d36c6f16deff03c4ce0f4056a307e34bbf01"
+    }
+  ],
+  "patch": "xnu/patches/0116-ziyi-g34-vs-fs-triangle-and-final-receipts.patch",
+  "patchSHA256": "419f6fa5b75e45255220511ed1bca549aea2cb46b6640a8a7aef1ef256be5b06",
+  "unchanged": {
+    "ziyi_g24_engine.c": "70779c2d638a38dad70ee781684b36ef3c82a69d888a7e824b7d56e530267ee1",
+    "ziyi_g24_engine.h": "4dc3eab93c7f496340547bda6a3a3ca73eb037695a3089a7694b495536cdaddb",
+    "ziyi_g24_profile.inc": "25ceecfce22392fd65e8aed040b6ce92fadffaee1d39c84feb1d2cc069d136ea",
+    "ziyi_g24_record.c": "ab3c671481e06256becc4d73430542088f448dfae2075302a61d699b388ec91f",
+    "ziyi_g24_memory.c": "1416db6518a1ab582471e7c967060b41c12a2249e662348cd7e68df40a4fca03",
+    "ziyi_g24_pixel.c": "cd23eadab377bbcd55167a163ae34a63aa8cc24d2fd0e82150208e9db339755e"
+  },
+  "linkedFunctions": [
+    "_g34_crc",
+    "_g34_check_pixels",
+    "_g34_result_pack",
+    "_g34_final_pack",
+    "_g34_final_packet",
+    "_g34_final_draw",
+    "_g34n_guard",
+    "_g34n_sample",
+    "_g34n_exact_pages",
+    "_g34n_publish",
+    "_g34n_present",
+    "_g34n_run",
+    "_g34n_finish_record",
+    "_g34n_emit_final"
+  ],
+  "publicFiles": [
+    {
+      "path": "tools/ziyi-g34/README.md",
+      "sha256": "9173d7d2bf18110642ac6fea32911ac131331355af504307e6f4bddb31d782f6",
+      "bytes": 1613
+    },
+    {
+      "path": "tools/ziyi-g34/asset.json",
+      "sha256": "4646bf5bff212a277109c265288f66b81d128efdbe1815b09f034c3ed68512d9",
+      "bytes": 13629
+    },
+    {
+      "path": "tools/ziyi-g34/audit_ci.py",
+      "sha256": "4f46000f69f7bc27b854867c8acd5d49ff9e985a211e1b17541cde629082ed3e",
+      "bytes": 5173
+    },
+    {
+      "path": "tools/ziyi-g34/data/fence-template.bin",
+      "sha256": "d3e3c6278d3af26acf49964d1b929c318f573989fc58fee8d2fc729096f2f828",
+      "bytes": 16384
+    },
+    {
+      "path": "tools/ziyi-g34/data/ring-template.bin",
+      "sha256": "969da73a8d8f4e9a275d34aa0b196a238da2067caf734dd16f272755c006d6d1",
+      "bytes": 16384
+    },
+    {
+      "path": "tools/ziyi-g34/files/ziyi_g34_asset.inc",
+      "sha256": "54112a534da743d9c19ab8da5cc3ef2ab9e2c4118089cb7004c2938534d8b769",
+      "bytes": 166842
+    },
+    {
+      "path": "tools/ziyi-g34/final_wire.c",
+      "sha256": "c1b7ed96892a8444c46a656daee81617efc72643997a51c22a55eaa0190811e1",
+      "bytes": 4377
+    },
+    {
+      "path": "tools/ziyi-g34/final_wire.h",
+      "sha256": "a76553c440e3e3bb99a7ff80d8b0834a730f3bb17c02bc83fa896eceb374fea6",
+      "bytes": 585
+    },
+    {
+      "path": "tools/ziyi-g34/native.inc",
+      "sha256": "8a26b9fd3bc10b711688cfc89cb7d1a9ef3b68b56e4874bea18f067318e32ac2",
+      "bytes": 8868
+    },
+    {
+      "path": "tools/ziyi-g34/run_host_tests.py",
+      "sha256": "e1df9233a2bd0ca36b7e468cbbb30ad9ac9f2ab5af9207f1145682a16c8f71b8",
+      "bytes": 2142
+    },
+    {
+      "path": "tools/ziyi-g34/run_native_tests.py",
+      "sha256": "23e9ff91c71daa4766e96f57eef94dfc99591c03fc20321c93675dddc221c9c9",
+      "bytes": 2869
+    },
+    {
+      "path": "tools/ziyi-g34/test_final_wire.c",
+      "sha256": "da3a314818dedc035db323ab0ca3119ad4beabbe2c057f1ef0ebd340f3548660",
+      "bytes": 1530
+    },
+    {
+      "path": "tools/ziyi-g34/test_native.c",
+      "sha256": "85e9bf505672ab8e0db9bee2b466601147e09046818baab5d0337f75e39c5091",
+      "bytes": 3086
+    },
+    {
+      "path": "tools/ziyi-g34/test_triangle_result.c",
+      "sha256": "b6a81c586a0001bb77baca137ceaba32eb9494cbbf142cd68b9c062828f7b42e",
+      "bytes": 1691
+    },
+    {
+      "path": "tools/ziyi-g34/triangle_result.c",
+      "sha256": "4386181284f47a9ada5163f9c5834e0afc5647fce933620db08c0651e819172e",
+      "bytes": 3983
+    },
+    {
+      "path": "tools/ziyi-g34/triangle_result.h",
+      "sha256": "61c6bbdc8c9369b5d0ee31e831c39f606e8bdf8f4a1653f610359c8e532d283f",
+      "bytes": 1331
+    }
+  ],
+  "native": false,
+  "gpuTriangle": false
+}

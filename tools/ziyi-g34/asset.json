@@ -1,0 +1,534 @@
+{
+  "result": "G34_TYPED_ASSET_PASS",
+  "chipId": "06060201",
+  "nativeExecution": false,
+  "rootWords": 200,
+  "begin": 103,
+  "end": 303,
+  "vertexCount": 3,
+  "fragmentOutputs": 1,
+  "omittedOnlyThreeContextAmbleRegistrations": true,
+  "noYieldOrPreemption": true,
+  "shaderCodeByteUnchanged": true,
+  "inverseExact": true,
+  "noNewPages": true,
+  "noTargetCPUWrites": true,
+  "sourceIdentity": "2535b7a5e17280021e5b445994ae2b0e0d9242e7a39197a4598e4e190702b8f3",
+  "assetIdentity": "a269c2cb554779aae1089b4cffbb04dc48bef447fad31cb5ad2f970ee762ee8b",
+  "shaderPreloads": [
+    {
+      "stage": 8,
+      "address": 4294989440,
+      "bytes": 256,
+      "sha256": "9c3524aea6d57a96dc64a1687e22a99289366de1e44f72a5d7b5e3f641ff2148",
+      "newAddress": 1627425408,
+      "crc32": 1166060244
+    },
+    {
+      "stage": 8,
+      "address": 4294989824,
+      "bytes": 256,
+      "sha256": "9c3524aea6d57a96dc64a1687e22a99289366de1e44f72a5d7b5e3f641ff2148",
+      "newAddress": 1627425792,
+      "crc32": 1166060244
+    },
+    {
+      "stage": 12,
+      "address": 4294991872,
+      "bytes": 128,
+      "sha256": "d61df99dffa5f08d838dafe32ebeed578cdd2d3e8f62358b2bb700e891a67380",
+      "newAddress": 1627427840,
+      "crc32": 1665836220
+    }
+  ],
+  "relocations": [
+    {
+      "lowAddress": 4295139720,
+      "highAddress": 4295139724,
+      "oldAddress": 4294984192,
+      "bytes": 1,
+      "highMask": 4294967295,
+      "kind": "TPL1_GFX_BORDER_COLOR_BASE",
+      "sourceBO": 0,
+      "sourceOffset": 16896,
+      "newAddress": 1627402752
+    },
+    {
+      "lowAddress": 4295139732,
+      "highAddress": 4295139736,
+      "oldAddress": 4294984192,
+      "bytes": 1,
+      "highMask": 4294967295,
+      "kind": "TPL1_CS_BORDER_COLOR_BASE",
+      "sourceBO": 0,
+      "sourceOffset": 16896,
+      "newAddress": 1627402752
+    },
+    {
+      "lowAddress": 4295139996,
+      "highAddress": 4295140000,
+      "oldAddress": 4294983680,
+      "bytes": 4,
+      "highMask": 4294967295,
+      "kind": "EVENT_WRITE",
+      "sourceBO": 0,
+      "sourceOffset": 16384,
+      "newAddress": 1627402240
+    },
+    {
+      "lowAddress": 4295140040,
+      "highAddress": 4295140044,
+      "oldAddress": 4295155712,
+      "bytes": 1044,
+      "highMask": 4294967295,
+      "kind": "IB",
+      "sourceBO": 5,
+      "sourceOffset": 0,
+      "newAddress": 1627430144
+    },
+    {
+      "lowAddress": 4295155788,
+      "highAddress": 4295155796,
+      "oldAddress": 4295122944,
+      "bytes": 1,
+      "highMask": 4294967295,
+      "kind": "RB_MRT[0]_BASE",
+      "sourceBO": 3,
+      "sourceOffset": 0,
+      "newAddress": 1627406336
+    },
+    {
+      "lowAddress": 4295155820,
+      "highAddress": 4295155828,
+      "oldAddress": 4295122944,
+      "bytes": 1,
+      "highMask": 4294967295,
+      "kind": "RB_COLOR_FLAG_BUFFER[0]_ADDR",
+      "sourceBO": 3,
+      "sourceOffset": 0,
+      "newAddress": 1627406336
+    },
+    {
+      "lowAddress": 4295156384,
+      "highAddress": 4295156388,
+      "oldAddress": 4294992512,
+      "bytes": 108,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 4736,
+      "newAddress": 1627428480
+    },
+    {
+      "lowAddress": 4295156396,
+      "highAddress": 4295156400,
+      "oldAddress": 4294990208,
+      "bytes": 156,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 2432,
+      "newAddress": 1627426176
+    },
+    {
+      "lowAddress": 4295156408,
+      "highAddress": 4295156412,
+      "oldAddress": 4294990364,
+      "bytes": 276,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 2588,
+      "newAddress": 1627426332
+    },
+    {
+      "lowAddress": 4295156420,
+      "highAddress": 4295156424,
+      "oldAddress": 4294987776,
+      "bytes": 8,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 0,
+      "newAddress": 1627423744
+    },
+    {
+      "lowAddress": 4295156432,
+      "highAddress": 4295156436,
+      "oldAddress": 4294987904,
+      "bytes": 12,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 128,
+      "newAddress": 1627423872
+    },
+    {
+      "lowAddress": 4295156444,
+      "highAddress": 4295156448,
+      "oldAddress": 4294988032,
+      "bytes": 8,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 256,
+      "newAddress": 1627424000
+    },
+    {
+      "lowAddress": 4295156468,
+      "highAddress": 4295156472,
+      "oldAddress": 4294992000,
+      "bytes": 268,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 4224,
+      "newAddress": 1627427968
+    },
+    {
+      "lowAddress": 4295156480,
+      "highAddress": 4295156484,
+      "oldAddress": 4294992620,
+      "bytes": 120,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 4844,
+      "newAddress": 1627428588
+    },
+    {
+      "lowAddress": 4295156492,
+      "highAddress": 4295156496,
+      "oldAddress": 4294992740,
+      "bytes": 8,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 4964,
+      "newAddress": 1627428708
+    },
+    {
+      "lowAddress": 4295156516,
+      "highAddress": 4295156520,
+      "oldAddress": 4295172140,
+      "bytes": 8,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 6,
+      "sourceOffset": 44,
+      "newAddress": 1627431724
+    },
+    {
+      "lowAddress": 4295156552,
+      "highAddress": 4295156556,
+      "oldAddress": 4295172096,
+      "bytes": 12,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 6,
+      "sourceOffset": 0,
+      "newAddress": 1627431680
+    },
+    {
+      "lowAddress": 4295156576,
+      "highAddress": 4295156580,
+      "oldAddress": 4295172108,
+      "bytes": 32,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 6,
+      "sourceOffset": 12,
+      "newAddress": 1627431692
+    },
+    {
+      "lowAddress": 4295156588,
+      "highAddress": 4295156592,
+      "oldAddress": 4294992748,
+      "bytes": 108,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 4972,
+      "newAddress": 1627428716
+    },
+    {
+      "lowAddress": 4295156600,
+      "highAddress": 4295156604,
+      "oldAddress": 4294992856,
+      "bytes": 12,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 5080,
+      "newAddress": 1627428824
+    },
+    {
+      "lowAddress": 4295156612,
+      "highAddress": 4295156616,
+      "oldAddress": 4294992972,
+      "bytes": 92,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 5196,
+      "newAddress": 1627428940
+    },
+    {
+      "lowAddress": 4295156624,
+      "highAddress": 4295156628,
+      "oldAddress": 4294992892,
+      "bytes": 16,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 5116,
+      "newAddress": 1627428860
+    },
+    {
+      "lowAddress": 4295156636,
+      "highAddress": 4295156640,
+      "oldAddress": 4294992952,
+      "bytes": 20,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 5176,
+      "newAddress": 1627428920
+    },
+    {
+      "lowAddress": 4295156648,
+      "highAddress": 4295156652,
+      "oldAddress": 4294993064,
+      "bytes": 40,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 5288,
+      "newAddress": 1627429032
+    },
+    {
+      "lowAddress": 4295156660,
+      "highAddress": 4295156664,
+      "oldAddress": 4294993104,
+      "bytes": 28,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 5328,
+      "newAddress": 1627429072
+    },
+    {
+      "lowAddress": 4295156672,
+      "highAddress": 4295156676,
+      "oldAddress": 4294992868,
+      "bytes": 24,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 5092,
+      "newAddress": 1627428836
+    },
+    {
+      "lowAddress": 4295156684,
+      "highAddress": 4295156688,
+      "oldAddress": 4294992748,
+      "bytes": 0,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 4972,
+      "newAddress": 1627428716
+    },
+    {
+      "lowAddress": 4295156696,
+      "highAddress": 4295156700,
+      "oldAddress": 4294992908,
+      "bytes": 44,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 5132,
+      "newAddress": 1627428876
+    },
+    {
+      "lowAddress": 4295156708,
+      "highAddress": 4295156712,
+      "oldAddress": 4294992748,
+      "bytes": 0,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 4972,
+      "newAddress": 1627428716
+    },
+    {
+      "lowAddress": 4295156720,
+      "highAddress": 4295156724,
+      "oldAddress": 4295172108,
+      "bytes": 0,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 6,
+      "sourceOffset": 12,
+      "newAddress": 1627431692
+    },
+    {
+      "lowAddress": 4295156732,
+      "highAddress": 4295156736,
+      "oldAddress": 4294993132,
+      "bytes": 8,
+      "highMask": 4294967295,
+      "kind": "DRAW_STATE",
+      "sourceBO": 1,
+      "sourceOffset": 5356,
+      "newAddress": 1627429100
+    },
+    {
+      "lowAddress": 4294990240,
+      "highAddress": 4294990248,
+      "oldAddress": 4294989440,
+      "bytes": 1,
+      "highMask": 4294967295,
+      "kind": "SP_VS_BASE",
+      "sourceBO": 1,
+      "sourceOffset": 1664,
+      "newAddress": 1627425408
+    },
+    {
+      "lowAddress": 4294990332,
+      "highAddress": 4294990336,
+      "oldAddress": 4294989440,
+      "bytes": 256,
+      "highMask": 4294967295,
+      "kind": "SHADER",
+      "sourceBO": 1,
+      "sourceOffset": 1664,
+      "newAddress": 1627425408
+    },
+    {
+      "lowAddress": 4294990356,
+      "highAddress": 4294990360,
+      "oldAddress": 4294989696,
+      "bytes": 64,
+      "highMask": 131071,
+      "kind": "UBO",
+      "sourceBO": 1,
+      "sourceOffset": 1920,
+      "newAddress": 1627425664
+    },
+    {
+      "lowAddress": 4294990396,
+      "highAddress": 4294990404,
+      "oldAddress": 4294989824,
+      "bytes": 1,
+      "highMask": 4294967295,
+      "kind": "SP_VS_BASE",
+      "sourceBO": 1,
+      "sourceOffset": 2048,
+      "newAddress": 1627425792
+    },
+    {
+      "lowAddress": 4294990488,
+      "highAddress": 4294990492,
+      "oldAddress": 4294989824,
+      "bytes": 256,
+      "highMask": 4294967295,
+      "kind": "SHADER",
+      "sourceBO": 1,
+      "sourceOffset": 2048,
+      "newAddress": 1627425792
+    },
+    {
+      "lowAddress": 4294990512,
+      "highAddress": 4294990516,
+      "oldAddress": 4294990080,
+      "bytes": 64,
+      "highMask": 131071,
+      "kind": "UBO",
+      "sourceBO": 1,
+      "sourceOffset": 2304,
+      "newAddress": 1627426048
+    },
+    {
+      "lowAddress": 4294992032,
+      "highAddress": 4294992040,
+      "oldAddress": 4294991872,
+      "bytes": 1,
+      "highMask": 4294967295,
+      "kind": "SP_PS_BASE",
+      "sourceBO": 1,
+      "sourceOffset": 4096,
+      "newAddress": 1627427840
+    },
+    {
+      "lowAddress": 4294992260,
+      "highAddress": 4294992264,
+      "oldAddress": 4294991872,
+      "bytes": 128,
+      "highMask": 4294967295,
+      "kind": "SHADER",
+      "sourceBO": 1,
+      "sourceOffset": 4096,
+      "newAddress": 1627427840
+    },
+    {
+      "lowAddress": 4295140100,
+      "highAddress": 4295140104,
+      "oldAddress": 4294983680,
+      "bytes": 4,
+      "highMask": 4294967295,
+      "kind": "EVENT_WRITE",
+      "sourceBO": 0,
+      "sourceOffset": 16384,
+      "newAddress": 1627402240
+    },
+    {
+      "lowAddress": 4295140120,
+      "highAddress": 4295140124,
+      "oldAddress": 4294983680,
+      "bytes": 4,
+      "highMask": 4294967295,
+      "kind": "EVENT_WRITE",
+      "sourceBO": 0,
+      "sourceOffset": 16384,
+      "newAddress": 1627402240
+    }
+  ],
+  "ringTemplateSha256": "969da73a8d8f4e9a275d34aa0b196a238da2067caf734dd16f272755c006d6d1",
+  "fenceTemplateSha256": "d3e3c6278d3af26acf49964d1b929c318f573989fc58fee8d2fc729096f2f828",
+  "cIncludeSha256": "54112a534da743d9c19ab8da5cc3ef2ab9e2c4118089cb7004c2938534d8b769",
+  "blobs": [
+    {
+      "sourceBO": 0,
+      "sourceOffset": 16384,
+      "bytes": 4096,
+      "newIOVA": 1627402240
+    },
+    {
+      "sourceBO": 1,
+      "sourceOffset": 0,
+      "bytes": 5376,
+      "newIOVA": 1627423744
+    },
+    {
+      "sourceBO": 3,
+      "sourceOffset": 0,
+      "bytes": 16384,
+      "newIOVA": 1627406336
+    },
+    {
+      "sourceBO": 5,
+      "sourceOffset": 0,
+      "bytes": 1044,
+      "newIOVA": 1627430144
+    },
+    {
+      "sourceBO": 6,
+      "sourceOffset": 0,
+      "bytes": 52,
+      "newIOVA": 1627431680
+    }
+  ],
+  "nativeStillPending": true,
+  "phoneOperated": false
+}

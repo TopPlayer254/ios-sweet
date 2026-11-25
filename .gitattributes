@@ -70,3 +70,6 @@
 
 /xnu/patches/0115-ziyi-g33-lpac-route-and-cpu-publication.patch -text whitespace=cr-at-eol
 /tools/ziyi-g33/** -text
+
+/xnu/patches/0116-ziyi-g34-vs-fs-triangle-and-final-receipts.patch -text whitespace=cr-at-eol
+/tools/ziyi-g34/** -text

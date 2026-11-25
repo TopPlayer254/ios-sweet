@@ -8,7 +8,7 @@ assert len(rows)==1
 for row in M['publicFiles']:assert sha((R/row['path']).read_bytes())==row['sha256']
 assert sha((R/M['patch']).read_bytes())==M['patchSHA256']
 for n,h in M['unchanged'].items():assert sha((R/'dxb/xnu/bsd/dev'/n).read_bytes())==h
-native=(O/'sources/bsd/dev/ziyi_g24_native.inc').read_text();producer=native.split('static int g30_cp_witness(',1)[1].split('static int g24n_read(',1)[0]
+native=(O/'sources/bsd/dev/ziyi_g24_native.inc').read_text();producer=native.split('static int g30_cp_witness(',1)[1].split('static int g33_live(',1)[0]
 assert 'g30_witness_pack(p,g24n.witness_bytes)' in producer and 'if(ms)zg_sleep(ms)' in producer and 'zg_barrier(ctx)' in producer and 'g24n_raw(' not in producer and 'io_map(' not in producer and 'smc #0' not in producer
 assert 'g30_target(2,space,id,g24n.w.r.phase,g24n.w.r.profile_cursor)&&!g24n_qualified' in native and 'if(g30_target(5,space,id,w->r.phase,w->r.profile_cursor)){' in native and 'memcmp(witness_args,r,sizeof(witness_args))' in native
 old=(R/'tools/ziyi-g30/g29-native-before.inc').read_text();prefix=old.split('static int g24n_write(void*ctx,unsigned space,unsigned id,uint32_t value){\n',1)[1].split(' void*p=g24n_pointer(at);',1)[0];assert native.count(prefix)==2

@@ -5,7 +5,7 @@
     {
       "path": "bsd/dev/ziyi_g24_native.inc",
       "before": "b24b0c188244fb799b617c799f8190039836d8053a054482442153a23be850f3",
-      "after": "fc31aa71e5fde11611de73c7429b0a5f7d8c0f28035223fd4fc8b886a8b1e6a8"
+      "after": "6c21f9a083bb61e997d056f45967d36c6f16deff03c4ce0f4056a307e34bbf01"
     }
   ],
   "patch": "xnu/patches/0115-ziyi-g33-lpac-route-and-cpu-publication.patch",
@@ -96,5 +96,13 @@
     }
   ],
   "native": false,
-  "gpuPixels": false
+  "gpuPixels": false,
+  "g34Triangle": {
+    "patch": "xnu/patches/0116-ziyi-g34-vs-fs-triangle-and-final-receipts.patch",
+    "sha256": "419f6fa5b75e45255220511ed1bca549aea2cb46b6640a8a7aef1ef256be5b06",
+    "nativeSHA256": "6c21f9a083bb61e997d056f45967d36c6f16deff03c4ce0f4056a307e34bbf01",
+    "rootWords": 200,
+    "realCompiledVSFS": true,
+    "nativeExecution": false
+  }
 }
