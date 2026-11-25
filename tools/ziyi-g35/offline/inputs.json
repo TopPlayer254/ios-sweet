@@ -1,0 +1,19 @@
+{
+  "result": "G35_NEW_OFFLINE_INPUTS_PREPARED",
+  "g34ProducerSha256": "2a0a02e898ab83b5be1b46ec9b770c7e636f1e64c3c4e9d47d88c1f6a2ec977d",
+  "target": "A662 06060201 / FD644",
+  "cases": [
+    "2x2 sampled texture",
+    "SRC_ALPHA blending",
+    "D16 depth LESS near-then-far"
+  ],
+  "native": false,
+  "phoneOperated": false,
+  "files": {
+    "primitives.c": "7a2a4d1ad8cbb9172fa25ebfa0ee6cfee7a0c862859a312ae9d8f25cec56e2d7",
+    "primitives.vert": "8bd5dc7e820c4323b81a26a970a51508b1a2bd16dc64b8b4d24a1c06f29070ef",
+    "texture.frag": "c6522989644d439084b1af08770cbee2b93306e01d2d25793564e6f93180eb64",
+    "blend.frag": "ac319c81e24a9233ef697f2310d0c7ffa18d3da3f45a28a6e5f2e992eb432c3e",
+    "depth.frag": "32c8682913d8d5a30b61be4a9e03c57ac0d2d598ead6f8bd88263c0085623e47"
+  }
+}
