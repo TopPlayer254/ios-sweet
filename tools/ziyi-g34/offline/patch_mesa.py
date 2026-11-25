@@ -12,6 +12,13 @@ assert s.count('shim_device.version_minor = 9;')==1
 # Classic softpin submit contains explicit BO/IB bindings. VM_BIND is deliberately
 # not used by this offline capture; it says nothing about the live XNU ABI.
 s=s.replace('shim_device.version_minor = 9;', 'shim_device.version_minor = 7;')
+needle='''      /* Shim doesn't have to do anything with this -- it's binding iovas to
+       * BOs, but since we don't exec the iovas don't matter.
+       */
+      return 0;'''
+assert s.count(needle)==1
+s=s.replace(needle,'''      /* G34 records the classic softpin BO/IB submit ABI explicitly. */
+      return -EOPNOTSUPP;''')
 needle='static const struct msm_device_info device_infos[] = {'
 assert s.count(needle)==1
 s=s.replace(needle,needle+'''
@@ -31,7 +38,9 @@ static int g34_offline_submit(int fd, unsigned long request, void *arg)
    struct drm_msm_gem_submit_bo *bos = (void *)(uintptr_t)submit->bos;
    struct drm_msm_gem_submit_cmd *cmds = (void *)(uintptr_t)submit->cmds;
    struct shim_fd *sf = drm_shim_fd_lookup(fd);
-   if (!sf || !submit->nr_bos || submit->nr_bos > 256 || !submit->nr_cmds) abort();
+   if (!sf || !submit->nr_bos || submit->nr_bos > 256 || !submit->nr_cmds) {
+      fprintf(stderr,"G34_CAPTURE_REFUSED: sf=%d bos=%u cmds=%u\n",sf!=NULL,submit->nr_bos,submit->nr_cmds); abort();
+   }
    char name[4096];
    snprintf(name, sizeof(name), "%s/submit.json", dir);
    FILE *j = fopen(name, "wx"); if (!j) abort();
@@ -59,7 +68,7 @@ static int g34_offline_submit(int fd, unsigned long request, void *arg)
 }
 '''
 s=s.replace(needle,capture+'\n'+needle)
-s=s.replace('#include <sys/ioctl.h>','#include <sys/ioctl.h>\n#include <sys/mman.h>')
+s=s.replace('#include <sys/ioctl.h>','#include <sys/ioctl.h>\n#include <sys/mman.h>\n#include <errno.h>')
 assert s.count('[DRM_MSM_GEM_SUBMIT] = msm_ioctl_noop,')==1
 s=s.replace('[DRM_MSM_GEM_SUBMIT] = msm_ioctl_noop,','[DRM_MSM_GEM_SUBMIT] = g34_offline_submit,')
 (out/'freedreno_noop.original.c').write_bytes(b)

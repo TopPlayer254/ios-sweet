@@ -61,4 +61,6 @@ jobs:
           path: |
             g34-evidence/
             g34-build/meson-logs/
+            g34-build/src/freedreno/vulkan/libvulkan_freedreno.so
+            g34-build/src/freedreno/drm-shim/libfreedreno_noop_drm_shim.so
           if-no-files-found: error
