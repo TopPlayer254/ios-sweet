@@ -35,7 +35,8 @@ static VkImage make_image(VkDevice d,VkPhysicalDevice physical,VkFormat format,
  VkMemoryRequirements mr;vkGetImageMemoryRequirements(d,image,&mr);
  VkPhysicalDeviceMemoryProperties mp;vkGetPhysicalDeviceMemoryProperties(physical,&mp);
  uint32_t mt=0;while(mt<mp.memoryTypeCount&&(!(mr.memoryTypeBits&(1u<<mt))||
-  (mp.memoryTypes[mt].propertyFlags&flags)!=flags))mt++;assert(mt<mp.memoryTypeCount);
+  (mp.memoryTypes[mt].propertyFlags&flags)!=flags)) { mt++; }
+ assert(mt<mp.memoryTypeCount);
  VkMemoryAllocateInfo ai={.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,.allocationSize=mr.size,.memoryTypeIndex=mt};
  CHECK(vkAllocateMemory(d,&ai,NULL,memory));CHECK(vkBindImageMemory(d,image,*memory,0));
  VkImageSubresource sub={.aspectMask=aspect};vkGetImageSubresourceLayout(d,image,&sub,layout);
