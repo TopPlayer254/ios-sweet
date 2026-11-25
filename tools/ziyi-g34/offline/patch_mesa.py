@@ -63,6 +63,7 @@ s=s.replace('#include <sys/ioctl.h>','#include <sys/ioctl.h>\n#include <sys/mman
 assert s.count('[DRM_MSM_GEM_SUBMIT] = msm_ioctl_noop,')==1
 s=s.replace('[DRM_MSM_GEM_SUBMIT] = msm_ioctl_noop,','[DRM_MSM_GEM_SUBMIT] = g34_offline_submit,')
 (out/'freedreno_noop.original.c').write_bytes(b)
+assert (out/'freedreno_noop.original.c').read_bytes()==b
 (out/'freedreno_noop.producer.c').write_text(s)
 p.write_text(s)
 (out/'patch.json').write_text(json.dumps(dict(originalSha256=hashlib.sha256(b).hexdigest(),
